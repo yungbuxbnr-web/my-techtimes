@@ -32,23 +32,42 @@ export default function SettingsScreen() {
   const [monthlyTarget, setMonthlyTarget] = useState(180);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [targetInput, setTargetInput] = useState('180');
+  
+  // Schedule settings
+  const [dailyWorkingHours, setDailyWorkingHours] = useState(8.5);
+  const [saturdayWorking, setSaturdayWorking] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleHoursInput, setScheduleHoursInput] = useState('8.5');
+  
+  // Technician profile
+  const [technicianName, setTechnicianName] = useState('');
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   useEffect(() => {
-    loadMonthlyTarget();
+    loadSettings();
   }, []);
 
-  const loadMonthlyTarget = async () => {
+  const loadSettings = async () => {
     try {
-      console.log('SettingsScreen: Loading monthly target from backend');
-      const result = await api.getMonthlyTarget();
-      setMonthlyTarget(result.value);
-      setTargetInput(result.value.toString());
-      console.log('SettingsScreen: Monthly target loaded:', result.value);
+      console.log('SettingsScreen: Loading settings from backend');
+      const [targetResult, scheduleResult, profileResult] = await Promise.all([
+        api.getMonthlyTarget(),
+        api.getSchedule().catch(() => ({ dailyWorkingHours: 8.5, saturdayWorking: false })),
+        api.getTechnicianProfile().catch(() => ({ name: 'Buckston Rugge' })),
+      ]);
+      
+      setMonthlyTarget(targetResult.value);
+      setTargetInput(targetResult.value.toString());
+      setDailyWorkingHours(scheduleResult.dailyWorkingHours);
+      setSaturdayWorking(scheduleResult.saturdayWorking);
+      setScheduleHoursInput(scheduleResult.dailyWorkingHours.toString());
+      setTechnicianName(profileResult.name);
+      setNameInput(profileResult.name);
+      
+      console.log('SettingsScreen: Settings loaded successfully');
     } catch (error) {
-      console.error('SettingsScreen: Error loading monthly target:', error);
-      // Use default value if backend fails
-      setMonthlyTarget(180);
-      setTargetInput('180');
+      console.error('SettingsScreen: Error loading settings:', error);
     }
   };
 
@@ -68,6 +87,43 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('SettingsScreen: Error updating monthly target:', error);
       Alert.alert('Error', 'Failed to update monthly target');
+    }
+  };
+
+  const handleUpdateSchedule = async () => {
+    const hours = parseFloat(scheduleHoursInput);
+    if (isNaN(hours) || hours <= 0 || hours > 24) {
+      Alert.alert('Invalid Hours', 'Please enter valid working hours (0-24)');
+      return;
+    }
+
+    try {
+      console.log('SettingsScreen: Updating schedule');
+      await api.updateSchedule({ dailyWorkingHours: hours, saturdayWorking });
+      setDailyWorkingHours(hours);
+      setShowScheduleModal(false);
+      Alert.alert('Success', 'Schedule updated successfully');
+    } catch (error) {
+      console.error('SettingsScreen: Error updating schedule:', error);
+      Alert.alert('Error', 'Failed to update schedule');
+    }
+  };
+
+  const handleUpdateName = async () => {
+    if (!nameInput.trim()) {
+      Alert.alert('Invalid Name', 'Please enter a valid name');
+      return;
+    }
+
+    try {
+      console.log('SettingsScreen: Updating technician name');
+      await api.updateTechnicianProfile({ name: nameInput.trim() });
+      setTechnicianName(nameInput.trim());
+      setShowNameModal(false);
+      Alert.alert('Success', 'Name updated successfully');
+    } catch (error) {
+      console.error('SettingsScreen: Error updating name:', error);
+      Alert.alert('Error', 'Failed to update name');
     }
   };
 
@@ -101,10 +157,10 @@ export default function SettingsScreen() {
     try {
       const jobs = await api.getAllJobs();
 
-      const csvHeader = 'createdAt,wipNumber,vehicleReg,aw,minutes,notes\n';
+      const csvHeader = 'createdAt,wipNumber,vehicleReg,aw,minutes,vhcStatus,notes\n';
       const csvRows = jobs.map((job) => {
         const minutes = job.aw * 5;
-        return `${job.createdAt},"${job.wipNumber}","${job.vehicleReg}",${job.aw},${minutes},"${job.notes || ''}"`;
+        return `${job.createdAt},"${job.wipNumber}","${job.vehicleReg}",${job.aw},${minutes},"${job.vhcStatus || 'N/A'}","${job.notes || ''}"`;
       }).join('\n');
       
       const csv = csvHeader + csvRows;
@@ -142,6 +198,10 @@ export default function SettingsScreen() {
           overlayStrength,
           biometricsEnabled,
           lockOnResume,
+          monthlyTarget,
+          dailyWorkingHours,
+          saturdayWorking,
+          technicianName,
         },
       };
 
@@ -234,6 +294,108 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          {/* Technician Profile */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Technician Profile</Text>
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Name</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  {technicianName || 'Not set'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: theme.primary }]}
+                onPress={() => setShowNameModal(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={16}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Work Schedule */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Schedule & Time Tracking</Text>
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Daily Working Hours</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  {dailyWorkingHours} hours per day
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: theme.primary }]}
+                onPress={() => setShowScheduleModal(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={16}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Saturday Working</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  Include Saturdays in available hours
+                </Text>
+              </View>
+              <Switch
+                value={saturdayWorking}
+                onValueChange={async (value) => {
+                  console.log('SettingsScreen: Saturday working toggled:', value);
+                  try {
+                    await api.updateSchedule({ saturdayWorking: value });
+                    setSaturdayWorking(value);
+                  } catch (error) {
+                    console.error('SettingsScreen: Error updating Saturday working:', error);
+                  }
+                }}
+                trackColor={{ false: theme.border, true: theme.primary }}
+                thumbColor="#ffffff"
+              />
+            </View>
+          </View>
+
+          {/* Performance */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Performance</Text>
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Monthly Target</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  {monthlyTarget} hours per month
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  console.log('SettingsScreen: User tapped Edit Target button');
+                  setShowTargetModal(true);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={16}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Security */}
           <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
 
@@ -330,33 +492,7 @@ export default function SettingsScreen() {
             )}
           </View>
 
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Performance</Text>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Monthly Target</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  {monthlyTarget} hours per month
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  console.log('SettingsScreen: User tapped Edit Target button');
-                  setShowTargetModal(true);
-                }}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={16}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
+          {/* Appearance */}
           <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
 
@@ -399,6 +535,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          {/* Data Management */}
           <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
 
@@ -456,6 +593,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </ScrollView>
 
+        {/* Modals */}
         <Modal
           visible={showTargetModal}
           transparent
@@ -487,7 +625,7 @@ export default function SettingsScreen() {
                   placeholderTextColor={theme.textSecondary}
                 />
                 <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                  Default is 180 hours per month (based on 21 working days × 8.5 hours)
+                  Default is 180 hours per month
                 </Text>
 
                 <TouchableOpacity
@@ -495,6 +633,92 @@ export default function SettingsScreen() {
                   onPress={handleUpdateTarget}
                 >
                   <Text style={styles.saveButtonText}>Save Target</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={showScheduleModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowScheduleModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modal, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Work Schedule</Text>
+                <TouchableOpacity onPress={() => setShowScheduleModal(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalContent}>
+                <Text style={[styles.label, { color: theme.text }]}>Daily Working Hours</Text>
+                <TextInput
+                  style={[styles.targetInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  value={scheduleHoursInput}
+                  onChangeText={setScheduleHoursInput}
+                  keyboardType="decimal-pad"
+                  placeholder="8.5"
+                  placeholderTextColor={theme.textSecondary}
+                />
+                <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                  Standard is 8.5 hours per working day
+                </Text>
+
+                <TouchableOpacity
+                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                  onPress={handleUpdateSchedule}
+                >
+                  <Text style={styles.saveButtonText}>Save Schedule</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={showNameModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowNameModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modal, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Name</Text>
+                <TouchableOpacity onPress={() => setShowNameModal(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalContent}>
+                <Text style={[styles.label, { color: theme.text }]}>Technician Name</Text>
+                <TextInput
+                  style={[styles.targetInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  value={nameInput}
+                  onChangeText={setNameInput}
+                  placeholder="Enter your name"
+                  placeholderTextColor={theme.textSecondary}
+                />
+
+                <TouchableOpacity
+                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                  onPress={handleUpdateName}
+                >
+                  <Text style={styles.saveButtonText}>Save Name</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -517,7 +741,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   header: {
     marginBottom: 24,

@@ -3,17 +3,26 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { AppState, AppStateStatus } from 'react-native';
+import { authClient } from '@/lib/auth';
+import { useRouter } from 'expo-router';
 
 interface AuthContextType {
   isAuthenticated: boolean;
   biometricsEnabled: boolean;
   lockOnResume: boolean;
   biometricsAvailable: boolean;
+  loading: boolean;
+  user: any;
   login: (pin: string) => Promise<boolean>;
   logout: () => void;
   setBiometricsEnabled: (enabled: boolean) => void;
   setLockOnResume: (enabled: boolean) => void;
   changePin: (currentPin: string, newPin: string) => Promise<boolean>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
+  signInWithGitHub: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,10 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [lockOnResume, setLockOnResumeState] = useState(true);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     checkBiometricsAvailability();
     loadSettings();
+    checkAuthStatus();
   }, []);
 
   useEffect(() => {
@@ -40,6 +52,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.remove();
     };
   }, [lockOnResume, isAuthenticated]);
+
+  const checkAuthStatus = async () => {
+    try {
+      console.log('AuthContext: Checking authentication status');
+      const session = await authClient.getSession();
+      if (session?.user) {
+        console.log('AuthContext: User is authenticated:', session.user.email);
+        setIsAuthenticated(true);
+        setUser(session.user);
+      } else {
+        console.log('AuthContext: No active session');
+        setIsAuthenticated(false);
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('AuthContext: Error checking auth status:', error);
+      setIsAuthenticated(false);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const checkBiometricsAvailability = async () => {
     const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -69,6 +103,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAppState(nextAppState);
   };
 
+  const signInWithEmail = async (email: string, password: string) => {
+    console.log('AuthContext: Signing in with email:', email);
+    const result = await authClient.signIn.email({ email, password });
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    await checkAuthStatus();
+  };
+
+  const signUpWithEmail = async (email: string, password: string, name?: string) => {
+    console.log('AuthContext: Signing up with email:', email);
+    const result = await authClient.signUp.email({ email, password, name });
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    await checkAuthStatus();
+  };
+
+  const signInWithGoogle = async () => {
+    console.log('AuthContext: Signing in with Google');
+    const result = await authClient.signIn.social({ provider: 'google' });
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    await checkAuthStatus();
+  };
+
+  const signInWithApple = async () => {
+    console.log('AuthContext: Signing in with Apple');
+    const result = await authClient.signIn.social({ provider: 'apple' });
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    await checkAuthStatus();
+  };
+
+  const signInWithGitHub = async () => {
+    console.log('AuthContext: Signing in with GitHub');
+    const result = await authClient.signIn.social({ provider: 'github' });
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    await checkAuthStatus();
+  };
+
   const login = async (pin: string): Promise<boolean> => {
     try {
       const storedPin = await SecureStore.getItemAsync(PIN_KEY);
@@ -93,8 +172,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    console.log('AuthContext: Logging out');
+    await authClient.signOut();
     setIsAuthenticated(false);
+    setUser(null);
   };
 
   const setBiometricsEnabled = async (enabled: boolean) => {
@@ -138,11 +220,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         biometricsEnabled,
         lockOnResume,
         biometricsAvailable,
+        loading,
+        user,
         login,
         logout,
         setBiometricsEnabled,
         setLockOnResume,
         changePin,
+        signInWithEmail,
+        signUpWithEmail,
+        signInWithGoogle,
+        signInWithApple,
+        signInWithGitHub,
       }}
     >
       {children}
