@@ -9,6 +9,7 @@ const KEYS = {
   PROFILE: '@techtimes_profile',
   ABSENCES: '@techtimes_absences',
   SETTINGS: '@techtimes_settings',
+  NOTIFICATION_SETTINGS: '@techtimes_notification_settings',
 };
 
 // Types
@@ -30,6 +31,9 @@ export interface Schedule {
   startTime?: string; // HH:MM format
   endTime?: string; // HH:MM format
   lunchBreakMinutes?: number;
+  saturdayFrequency?: 'none' | 'every' | '1-in-2' | '1-in-3' | '1-in-4' | 'custom'; // Saturday frequency
+  nextWorkingSaturday?: string; // ISO date string for next working Saturday
+  customSaturdayDates?: string[]; // Array of ISO date strings for custom Saturday schedule
 }
 
 export interface TechnicianProfile {
@@ -50,6 +54,17 @@ export interface Absence {
 
 export interface Settings {
   monthlyTarget: number;
+}
+
+export interface NotificationSettings {
+  dailyReminder: boolean;
+  dailyReminderTime: string; // HH:MM format
+  weeklyReport: boolean;
+  weeklyReportDay: number; // 0-6, 0=Sunday
+  monthlyReport: boolean;
+  targetReminder: boolean;
+  efficiencyAlert: boolean;
+  lowEfficiencyThreshold: number; // Percentage
 }
 
 // Helper functions
@@ -190,6 +205,9 @@ export const offlineStorage = {
       startTime: '07:00',
       endTime: '18:00',
       lunchBreakMinutes: 30,
+      saturdayFrequency: 'none',
+      nextWorkingSaturday: undefined,
+      customSaturdayDates: [],
     });
   },
 
@@ -263,6 +281,30 @@ export const offlineStorage = {
     return updated;
   },
 
+  // Notification Settings
+  async getNotificationSettings(): Promise<NotificationSettings> {
+    console.log('OfflineStorage: Getting notification settings');
+    return await getItem<NotificationSettings>(KEYS.NOTIFICATION_SETTINGS, {
+      dailyReminder: true,
+      dailyReminderTime: '08:00',
+      weeklyReport: true,
+      weeklyReportDay: 1, // Monday
+      monthlyReport: true,
+      targetReminder: true,
+      efficiencyAlert: true,
+      lowEfficiencyThreshold: 75,
+    });
+  },
+
+  async updateNotificationSettings(settings: Partial<NotificationSettings>): Promise<NotificationSettings> {
+    console.log('OfflineStorage: Updating notification settings');
+    const current = await this.getNotificationSettings();
+    const updated = { ...current, ...settings };
+    await setItem(KEYS.NOTIFICATION_SETTINGS, updated);
+    console.log('OfflineStorage: Notification settings updated');
+    return updated;
+  },
+
   // Export all data for backup
   async exportAllData(): Promise<string> {
     console.log('OfflineStorage: Exporting all data');
@@ -271,6 +313,7 @@ export const offlineStorage = {
     const profile = await this.getTechnicianProfile();
     const absences = await getItem<Absence[]>(KEYS.ABSENCES, []);
     const settings = await this.getSettings();
+    const notificationSettings = await this.getNotificationSettings();
 
     const backup = {
       version: '1.0',
@@ -280,6 +323,7 @@ export const offlineStorage = {
       profile,
       absences,
       settings,
+      notificationSettings,
     };
 
     return JSON.stringify(backup, null, 2);
@@ -295,6 +339,7 @@ export const offlineStorage = {
     if (backup.profile) await setItem(KEYS.PROFILE, backup.profile);
     if (backup.absences) await setItem(KEYS.ABSENCES, backup.absences);
     if (backup.settings) await setItem(KEYS.SETTINGS, backup.settings);
+    if (backup.notificationSettings) await setItem(KEYS.NOTIFICATION_SETTINGS, backup.notificationSettings);
     
     console.log('OfflineStorage: All data imported successfully');
   },
@@ -308,6 +353,7 @@ export const offlineStorage = {
       KEYS.PROFILE,
       KEYS.ABSENCES,
       KEYS.SETTINGS,
+      KEYS.NOTIFICATION_SETTINGS,
     ]);
     console.log('OfflineStorage: All data cleared');
   },

@@ -63,6 +63,27 @@ export default function RootLayout() {
                   title: 'Calendar',
                 }} 
               />
+              <Stack.Screen 
+                name="edit-work-schedule" 
+                options={{ 
+                  headerShown: true,
+                  title: 'Edit Work Schedule',
+                }} 
+              />
+              <Stack.Screen 
+                name="notification-settings" 
+                options={{ 
+                  headerShown: true,
+                  title: 'Notification Settings',
+                }} 
+              />
+              <Stack.Screen 
+                name="about" 
+                options={{ 
+                  headerShown: true,
+                  title: 'About TechTimes',
+                }} 
+              />
             </Stack>
           </WidgetProvider>
         </AuthProvider>

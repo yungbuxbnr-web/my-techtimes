@@ -540,7 +540,10 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Calendar</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => router.push('/calendar')}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped View Calendar button');
+              router.push('/calendar');
+            }}
           >
             <IconSymbol
               ios_icon_name="calendar"
@@ -550,6 +553,52 @@ export default function SettingsScreen() {
             />
             <Text style={styles.buttonText}>View Calendar</Text>
           </TouchableOpacity>
+        </View>
+        
+        {/* Notifications */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Notifications</Text>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Notification Settings button');
+              router.push('/notification-settings');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="bell.fill"
+              android_material_icon_name="notifications"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.buttonText}>Notification Settings</Text>
+          </TouchableOpacity>
+          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
+            Customize which notifications you receive and when
+          </Text>
+        </View>
+        
+        {/* About */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped About TechTimes button');
+              router.push('/about');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="info.circle.fill"
+              android_material_icon_name="info"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.buttonText}>About TechTimes</Text>
+          </TouchableOpacity>
+          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
+            View comprehensive user guide and app information
+          </Text>
         </View>
         
         {/* Backup & Restore */}

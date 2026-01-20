@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { workshopThemes } from '@/constants/Colors';
-import { ImageSourcePropType } from 'react-native';
+import { ImageSourcePropType, Platform } from 'react-native';
 
 type ThemeMode = 'dark' | 'light';
 
@@ -33,21 +33,51 @@ const lightWorkshopBackgrounds: ImageSourcePropType[] = [
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// Helper functions for cross-platform storage
+async function setSecureItem(key: string, value: string) {
+  try {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  } catch (error) {
+    console.error('ThemeContext: Error setting item:', key, error);
+  }
+}
+
+async function getSecureItem(key: string): Promise<string | null> {
+  try {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    } else {
+      return await SecureStore.getItemAsync(key);
+    }
+  } catch (error) {
+    console.error('ThemeContext: Error getting item:', key, error);
+    return null;
+  }
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
   const [overlayStrength, setOverlayStrengthState] = useState(0.35); // Default 35% for dark mode
   const [currentBackgroundIndex, setCurrentBackgroundIndex] = useState(0);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    console.log('ThemeProvider: Loading theme settings from SecureStore');
-    loadThemeSettings();
-  }, []);
+    if (!initialized) {
+      console.log('ThemeProvider: Loading theme settings');
+      loadThemeSettings();
+      setInitialized(true);
+    }
+  }, [initialized]);
 
   const loadThemeSettings = async () => {
     try {
-      const savedTheme = await SecureStore.getItemAsync('themeMode');
-      const savedOverlay = await SecureStore.getItemAsync('overlayStrength');
-      const savedBgIndex = await SecureStore.getItemAsync('backgroundIndex');
+      const savedTheme = await getSecureItem('themeMode');
+      const savedOverlay = await getSecureItem('overlayStrength');
+      const savedBgIndex = await getSecureItem('backgroundIndex');
       
       if (savedTheme) {
         console.log('ThemeProvider: Loaded theme mode:', savedTheme);
@@ -79,8 +109,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setOverlayStrengthState(newDefaultOverlay);
     
     try {
-      await SecureStore.setItemAsync('themeMode', newTheme);
-      await SecureStore.setItemAsync('overlayStrength', newDefaultOverlay.toString());
+      await setSecureItem('themeMode', newTheme);
+      await setSecureItem('overlayStrength', newDefaultOverlay.toString());
     } catch (error) {
       console.error('ThemeProvider: Error saving theme:', error);
     }
@@ -90,7 +120,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     console.log('ThemeProvider: Setting overlay strength to:', value);
     setOverlayStrengthState(value);
     try {
-      await SecureStore.setItemAsync('overlayStrength', value.toString());
+      await setSecureItem('overlayStrength', value.toString());
     } catch (error) {
       console.error('ThemeProvider: Error saving overlay strength:', error);
     }
@@ -102,7 +132,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     console.log('ThemeProvider: Rotating background to index:', newIndex);
     setCurrentBackgroundIndex(newIndex);
     try {
-      await SecureStore.setItemAsync('backgroundIndex', newIndex.toString());
+      await setSecureItem('backgroundIndex', newIndex.toString());
     } catch (error) {
       console.error('ThemeProvider: Error saving background index:', error);
     }

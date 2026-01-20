@@ -9,12 +9,14 @@ import {
   TextInput,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const DAYS_OF_WEEK = [
   { id: 1, name: 'Monday', short: 'Mon' },
@@ -26,6 +28,15 @@ const DAYS_OF_WEEK = [
   { id: 0, name: 'Sunday', short: 'Sun' },
 ];
 
+const SATURDAY_FREQUENCIES = [
+  { id: 'none', label: 'No Saturdays' },
+  { id: 'every', label: 'Every Saturday' },
+  { id: '1-in-2', label: '1 in 2 (Every Other)' },
+  { id: '1-in-3', label: '1 in 3' },
+  { id: '1-in-4', label: '1 in 4' },
+  { id: 'custom', label: 'Custom Dates' },
+];
+
 export default function EditWorkScheduleScreen() {
   console.log('EditWorkScheduleScreen: Rendering work schedule editor');
   const { theme } = useThemeContext();
@@ -35,6 +46,9 @@ export default function EditWorkScheduleScreen() {
   const [startTime, setStartTime] = useState('07:00');
   const [endTime, setEndTime] = useState('18:00');
   const [lunchBreakMinutes, setLunchBreakMinutes] = useState('30');
+  const [saturdayFrequency, setSaturdayFrequency] = useState<string>('none');
+  const [nextWorkingSaturday, setNextWorkingSaturday] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,6 +78,16 @@ export default function EditWorkScheduleScreen() {
         setLunchBreakMinutes(schedule.lunchBreakMinutes.toString());
       }
       
+      // Load Saturday frequency
+      if (schedule.saturdayFrequency) {
+        setSaturdayFrequency(schedule.saturdayFrequency);
+      }
+      
+      // Load next working Saturday
+      if (schedule.nextWorkingSaturday) {
+        setNextWorkingSaturday(new Date(schedule.nextWorkingSaturday));
+      }
+      
       console.log('EditWorkScheduleScreen: Schedule loaded', schedule);
     } catch (error) {
       console.error('EditWorkScheduleScreen: Error loading schedule:', error);
@@ -74,6 +98,13 @@ export default function EditWorkScheduleScreen() {
 
   const toggleWorkingDay = (dayId: number) => {
     console.log('EditWorkScheduleScreen: Toggling working day', dayId);
+    
+    // Don't allow toggling Saturday if frequency is set
+    if (dayId === 6 && saturdayFrequency !== 'none') {
+      Alert.alert('Saturday Schedule', 'Saturday is managed by the Saturday Frequency setting below');
+      return;
+    }
+    
     if (workingDays.includes(dayId)) {
       // Remove day
       const newDays = workingDays.filter(d => d !== dayId);
@@ -109,11 +140,32 @@ export default function EditWorkScheduleScreen() {
     return regex.test(time);
   };
 
+  const getNextSaturday = (): Date => {
+    const today = new Date();
+    const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
+    const nextSat = new Date(today);
+    nextSat.setDate(today.getDate() + daysUntilSaturday);
+    return nextSat;
+  };
+
   const handleSave = async () => {
     console.log('EditWorkScheduleScreen: Saving work schedule');
     
     // Validate inputs
-    if (workingDays.length === 0) {
+    let finalWorkingDays = [...workingDays];
+    
+    // Remove Saturday from working days if frequency is none
+    if (saturdayFrequency === 'none') {
+      finalWorkingDays = finalWorkingDays.filter(d => d !== 6);
+    }
+    
+    // Add Saturday to working days if frequency is 'every'
+    if (saturdayFrequency === 'every' && !finalWorkingDays.includes(6)) {
+      finalWorkingDays.push(6);
+      finalWorkingDays.sort();
+    }
+    
+    if (finalWorkingDays.length === 0) {
       Alert.alert('Error', 'Please select at least one working day');
       return;
     }
@@ -145,19 +197,36 @@ export default function EditWorkScheduleScreen() {
       return;
     }
     
+    // Validate Saturday settings
+    if (saturdayFrequency !== 'none' && saturdayFrequency !== 'every' && !nextWorkingSaturday) {
+      Alert.alert('Error', 'Please set the date of your next working Saturday');
+      return;
+    }
+    
     try {
       await api.updateSchedule({
-        workingDays,
+        workingDays: finalWorkingDays,
         startTime,
         endTime,
         lunchBreakMinutes: lunchMinutes,
         dailyWorkingHours: dailyHours,
-        saturdayWorking: workingDays.includes(6),
+        saturdayWorking: finalWorkingDays.includes(6),
+        saturdayFrequency,
+        nextWorkingSaturday: nextWorkingSaturday ? nextWorkingSaturday.toISOString() : undefined,
       });
+      
+      let saturdayInfo = '';
+      if (saturdayFrequency === 'none') {
+        saturdayInfo = '\nSaturdays: Not working';
+      } else if (saturdayFrequency === 'every') {
+        saturdayInfo = '\nSaturdays: Every Saturday';
+      } else if (nextWorkingSaturday) {
+        saturdayInfo = `\nSaturdays: ${saturdayFrequency}\nNext: ${nextWorkingSaturday.toLocaleDateString('en-GB')}`;
+      }
       
       Alert.alert(
         'Success',
-        `Work schedule updated!\n\nWorking Days: ${workingDays.length}\nDaily Hours: ${dailyHours.toFixed(2)}h\n\nAll efficiency calculations will now use this schedule.`,
+        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.length}\nDaily Hours: ${dailyHours.toFixed(2)}h${saturdayInfo}\n\nAll efficiency calculations will now use this schedule.`,
         [
           {
             text: 'OK',
@@ -175,7 +244,7 @@ export default function EditWorkScheduleScreen() {
     console.log('EditWorkScheduleScreen: Resetting to defaults');
     Alert.alert(
       'Reset to Defaults',
-      'Reset to Monday-Friday, 7:00 AM - 6:00 PM with 30 min lunch break?',
+      'Reset to Monday-Friday, 7:00 AM - 6:00 PM with 30 min lunch break and no Saturdays?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -186,6 +255,8 @@ export default function EditWorkScheduleScreen() {
             setStartTime('07:00');
             setEndTime('18:00');
             setLunchBreakMinutes('30');
+            setSaturdayFrequency('none');
+            setNextWorkingSaturday(null);
           },
         },
       ]
@@ -242,11 +313,11 @@ export default function EditWorkScheduleScreen() {
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Working Days</Text>
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
-            Select the days you work each week
+            Select the days you work each week (Saturday managed below)
           </Text>
           
           <View style={styles.daysGrid}>
-            {DAYS_OF_WEEK.map((day) => {
+            {DAYS_OF_WEEK.filter(day => day.id !== 6).map((day) => {
               const isSelected = workingDays.includes(day.id);
               return (
                 <TouchableOpacity
@@ -281,9 +352,99 @@ export default function EditWorkScheduleScreen() {
           
           <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.summaryText, { color: theme.text }]}>
-              Selected: {workingDays.length} day{workingDays.length !== 1 ? 's' : ''} per week
+              Selected: {workingDays.filter(d => d !== 6).length} day{workingDays.filter(d => d !== 6).length !== 1 ? 's' : ''} per week
             </Text>
           </View>
+        </View>
+
+        {/* Saturday Frequency Section */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Saturday Schedule</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+            Configure how often you work on Saturdays
+          </Text>
+          
+          <View style={styles.frequencyGrid}>
+            {SATURDAY_FREQUENCIES.map((freq) => {
+              const isSelected = saturdayFrequency === freq.id;
+              return (
+                <TouchableOpacity
+                  key={freq.id}
+                  style={[
+                    styles.frequencyButton,
+                    { borderColor: theme.border },
+                    isSelected && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}
+                  onPress={() => {
+                    console.log('EditWorkScheduleScreen: Setting Saturday frequency to', freq.id);
+                    setSaturdayFrequency(freq.id);
+                    if (freq.id === 'none') {
+                      setNextWorkingSaturday(null);
+                    } else if (freq.id === 'every') {
+                      setNextWorkingSaturday(null);
+                    } else if (!nextWorkingSaturday) {
+                      setNextWorkingSaturday(getNextSaturday());
+                    }
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.frequencyButtonText,
+                      { color: isSelected ? '#ffffff' : theme.text },
+                    ]}
+                  >
+                    {freq.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          
+          {saturdayFrequency !== 'none' && saturdayFrequency !== 'every' && (
+            <View style={styles.saturdayDateSection}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Next Working Saturday</Text>
+              <TouchableOpacity
+                style={[styles.datePickerButton, { backgroundColor: theme.background }]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="calendar"
+                  android_material_icon_name="calendar-today"
+                  size={20}
+                  color={theme.primary}
+                />
+                <Text style={[styles.datePickerText, { color: theme.text }]}>
+                  {nextWorkingSaturday 
+                    ? nextWorkingSaturday.toLocaleDateString('en-GB', { 
+                        weekday: 'short', 
+                        day: 'numeric', 
+                        month: 'short', 
+                        year: 'numeric' 
+                      })
+                    : 'Select Date'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.hint, { color: theme.textSecondary }]}>
+                The app will track your Saturday schedule based on this date and frequency
+              </Text>
+            </View>
+          )}
+          
+          {saturdayFrequency === 'every' && (
+            <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
+              <Text style={[styles.summaryText, { color: theme.text }]}>
+                ✅ Working every Saturday
+              </Text>
+            </View>
+          )}
+          
+          {saturdayFrequency === 'none' && (
+            <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
+              <Text style={[styles.summaryText, { color: theme.text }]}>
+                ❌ Not working Saturdays
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Working Hours Section */}
@@ -352,6 +513,15 @@ export default function EditWorkScheduleScreen() {
           
           <View style={styles.calculationRow}>
             <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
+              Weekly Working Days:
+            </Text>
+            <Text style={[styles.calculationValue, { color: theme.primary }]}>
+              {workingDays.length} days
+            </Text>
+          </View>
+          
+          <View style={styles.calculationRow}>
+            <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
               Weekly Working Hours:
             </Text>
             <Text style={[styles.calculationValue, { color: theme.primary }]}>
@@ -374,6 +544,7 @@ export default function EditWorkScheduleScreen() {
               • Available Hours = Working Days × Daily Hours{'\n'}
               • Efficiency % = (Sold Hours ÷ Available Hours) × 100{'\n'}
               • Only selected working days count toward available hours{'\n'}
+              • Saturday schedule is tracked separately based on frequency{'\n'}
               • 1 AW = 5 minutes = 0.0833 hours
             </Text>
           </View>
@@ -410,6 +581,43 @@ export default function EditWorkScheduleScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <Modal
+          visible={showDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Next Working Saturday</Text>
+              <DateTimePicker
+                value={nextWorkingSaturday || getNextSaturday()}
+                mode="date"
+                display="spinner"
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    // Ensure it's a Saturday
+                    if (selectedDate.getDay() !== 6) {
+                      Alert.alert('Invalid Date', 'Please select a Saturday');
+                      return;
+                    }
+                    setNextWorkingSaturday(selectedDate);
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.primary }]}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Text style={styles.modalButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </AppBackground>
   );
 }
@@ -482,6 +690,39 @@ const styles = StyleSheet.create({
   },
   dayButtonSubtext: {
     fontSize: 11,
+  },
+  frequencyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  frequencyButton: {
+    flex: 1,
+    minWidth: '45%',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+  },
+  frequencyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  saturdayDateSection: {
+    marginTop: 12,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+    marginTop: 8,
+  },
+  datePickerText: {
+    fontSize: 16,
+    flex: 1,
   },
   summaryBox: {
     padding: 12,
@@ -576,6 +817,36 @@ const styles = StyleSheet.create({
   },
   resetButtonText: {
     color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    padding: 20,
+    borderRadius: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalButton: {
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  modalButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },

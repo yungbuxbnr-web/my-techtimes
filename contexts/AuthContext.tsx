@@ -29,18 +29,27 @@ const SETUP_COMPLETE_KEY = 'setup_complete';
 
 // Helper functions for cross-platform storage
 async function setSecureItem(key: string, value: string) {
-  if (Platform.OS === 'web') {
-    localStorage.setItem(key, value);
-  } else {
-    await SecureStore.setItemAsync(key, value);
+  try {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  } catch (error) {
+    console.error('AuthContext: Error setting secure item:', key, error);
   }
 }
 
 async function getSecureItem(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem(key);
-  } else {
-    return await SecureStore.getItemAsync(key);
+  try {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    } else {
+      return await SecureStore.getItemAsync(key);
+    }
+  } catch (error) {
+    console.error('AuthContext: Error getting secure item:', key, error);
+    return null;
   }
 }
 
@@ -52,10 +61,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    initializeAuth();
-  }, []);
+    if (!initialized) {
+      initializeAuth();
+      setInitialized(true);
+    }
+  }, [initialized]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);

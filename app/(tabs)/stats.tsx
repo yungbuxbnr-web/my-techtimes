@@ -24,22 +24,32 @@ export default function StatsScreen() {
   const [weekStats, setWeekStats] = useState<any>(null);
   const [allTimeStats, setAllTimeStats] = useState<any>(null);
   const [recentJobs, setRecentJobs] = useState<any[]>([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [schedule, setSchedule] = useState<any>(null);
 
   useEffect(() => {
     console.log('StatsScreen: Loading statistics');
     loadStats();
+    
+    // Update time every second for live timers
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    
+    return () => clearInterval(timer);
   }, []);
 
   const loadStats = async () => {
     try {
       console.log('StatsScreen: Fetching all statistics');
       const currentMonth = getCurrentMonth();
-      const [monthly, today, week, allTime, jobs] = await Promise.all([
+      const [monthly, today, week, allTime, jobs, sched] = await Promise.all([
         api.getMonthlyStats(currentMonth),
         api.getTodayStats(),
         api.getWeekStats(),
         api.getAllTimeStats(),
         api.getRecentJobs(10),
+        api.getSchedule(),
       ]);
 
       setMonthlyStats(monthly);
@@ -47,6 +57,7 @@ export default function StatsScreen() {
       setWeekStats(week);
       setAllTimeStats(allTime);
       setRecentJobs(jobs);
+      setSchedule(sched);
       console.log('StatsScreen: Stats loaded successfully');
     } catch (error) {
       console.error('StatsScreen: Error loading stats:', error);
@@ -77,7 +88,76 @@ export default function StatsScreen() {
     return 'Poor';
   };
 
-  if (!monthlyStats || !todayStats || !weekStats || !allTimeStats) {
+  // Calculate time elapsed today (from start time to now)
+  const calculateTimeElapsed = (): string => {
+    if (!schedule) return '00:00:00';
+    
+    const now = currentTime;
+    const [startHour, startMin] = (schedule.startTime || '08:00').split(':').map(Number);
+    const startOfDay = new Date(now);
+    startOfDay.setHours(startHour, startMin, 0, 0);
+    
+    if (now < startOfDay) return '00:00:00';
+    
+    const elapsed = now.getTime() - startOfDay.getTime();
+    const hours = Math.floor(elapsed / 3600000);
+    const minutes = Math.floor((elapsed % 3600000) / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate time remaining today (from now to end time)
+  const calculateTimeRemaining = (): string => {
+    if (!schedule) return '00:00:00';
+    
+    const now = currentTime;
+    const [endHour, endMin] = (schedule.endTime || '17:00').split(':').map(Number);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(endHour, endMin, 0, 0);
+    
+    if (now > endOfDay) return '00:00:00';
+    
+    const remaining = endOfDay.getTime() - now.getTime();
+    const hours = Math.floor(remaining / 3600000);
+    const minutes = Math.floor((remaining % 3600000) / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate available hours timer (cumulative from start time)
+  const calculateAvailableHours = (): string => {
+    if (!schedule) return '0.00';
+    
+    const now = currentTime;
+    const [startHour, startMin] = (schedule.startTime || '08:00').split(':').map(Number);
+    const [endHour, endMin] = (schedule.endTime || '17:00').split(':').map(Number);
+    const lunchMinutes = schedule.lunchBreakMinutes || 30;
+    
+    const startOfDay = new Date(now);
+    startOfDay.setHours(startHour, startMin, 0, 0);
+    
+    const endOfDay = new Date(now);
+    endOfDay.setHours(endHour, endMin, 0, 0);
+    
+    // If before start time, return 0
+    if (now < startOfDay) return '0.00';
+    
+    // If after end time, return full day hours
+    if (now > endOfDay) {
+      const totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin) - lunchMinutes;
+      return (totalMinutes / 60).toFixed(2);
+    }
+    
+    // Calculate elapsed minutes from start time
+    const elapsedMinutes = (now.getTime() - startOfDay.getTime()) / 60000;
+    const availableMinutes = Math.max(0, elapsedMinutes - lunchMinutes);
+    
+    return (availableMinutes / 60).toFixed(2);
+  };
+
+  if (!monthlyStats || !todayStats || !weekStats || !allTimeStats || !schedule) {
     return (
       <ImageBackground
         source={{ uri: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=1200' }}
@@ -109,10 +189,86 @@ export default function StatsScreen() {
           }
         >
           <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-            <Text style={[styles.title, { color: '#ffffff' }]}>Statistics</Text>
+            <Text style={[styles.title, { color: '#ffffff' }]}>Time Statistics</Text>
+          </View>
+
+          {/* Live Clock */}
+          <View style={[styles.clockCard, { backgroundColor: theme.card }]}>
+            <Text style={[styles.clockLabel, { color: theme.textSecondary }]}>Current Time</Text>
+            <Text style={[styles.clockValue, { color: theme.primary }]}>
+              {currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </Text>
+            <Text style={[styles.clockDate, { color: theme.textSecondary }]}>
+              {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </Text>
+          </View>
+
+          {/* Live Timers Section */}
+          <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Live Timers</Text>
+
+          <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
+            <View style={styles.timerRow}>
+              <IconSymbol
+                ios_icon_name="clock.fill"
+                android_material_icon_name="access-time"
+                size={32}
+                color={theme.primary}
+              />
+              <View style={styles.timerInfo}>
+                <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Available Hours Today</Text>
+                <Text style={[styles.timerValue, { color: theme.primary }]}>
+                  {calculateAvailableHours()}h
+                </Text>
+                <Text style={[styles.timerSubtext, { color: theme.textSecondary }]}>
+                  Counting from {schedule.startTime || '08:00'} to {schedule.endTime || '17:00'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
+            <View style={styles.timerRow}>
+              <IconSymbol
+                ios_icon_name="arrow.up.circle.fill"
+                android_material_icon_name="arrow-upward"
+                size={32}
+                color={theme.chartGreen}
+              />
+              <View style={styles.timerInfo}>
+                <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Time Elapsed Today</Text>
+                <Text style={[styles.timerValue, { color: theme.chartGreen }]}>
+                  {calculateTimeElapsed()}
+                </Text>
+                <Text style={[styles.timerSubtext, { color: theme.textSecondary }]}>
+                  Since {schedule.startTime || '08:00'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
+            <View style={styles.timerRow}>
+              <IconSymbol
+                ios_icon_name="arrow.down.circle.fill"
+                android_material_icon_name="arrow-downward"
+                size={32}
+                color={theme.chartYellow}
+              />
+              <View style={styles.timerInfo}>
+                <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Time Remaining Today</Text>
+                <Text style={[styles.timerValue, { color: theme.chartYellow }]}>
+                  {calculateTimeRemaining()}
+                </Text>
+                <Text style={[styles.timerSubtext, { color: theme.textSecondary }]}>
+                  Until {schedule.endTime || '17:00'}
+                </Text>
+              </View>
+            </View>
           </View>
 
           {/* Monthly Efficiency Card */}
+          <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Monthly Performance</Text>
+
           <View style={[styles.efficiencyCard, { backgroundColor: theme.card }]}>
             <Text style={[styles.efficiencyPercent, { color: efficiencyColor }]}>
               {monthlyStats.efficiency.toFixed(0)}%
@@ -287,6 +443,67 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
+  },
+  clockCard: {
+    padding: 24,
+    borderRadius: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  clockLabel: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  clockValue: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
+  },
+  clockDate: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  timerCard: {
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  timerInfo: {
+    flex: 1,
+  },
+  timerLabel: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  timerValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
+    marginBottom: 2,
+  },
+  timerSubtext: {
+    fontSize: 12,
   },
   efficiencyCard: {
     padding: 24,
