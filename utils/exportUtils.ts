@@ -9,6 +9,7 @@ export interface ExportOptions {
   month?: string;
   week?: number;
   day?: string;
+  year?: number;
 }
 
 // Group jobs by day
@@ -50,39 +51,49 @@ function getWeekRange(date: Date): { start: Date; end: Date } {
   return { start: monday, end: saturday };
 }
 
-// Generate PDF HTML
-function generatePdfHtml(
-  jobs: Job[],
-  technicianName: string,
-  options: ExportOptions
-): string {
-  const groupedByDay = groupJobsByDay(jobs);
-  const sortedDays = Array.from(groupedByDay.keys()).sort();
+// Group days by week (Monday to Saturday)
+function groupDaysByWeek(days: string[]): Map<string, string[]> {
+  const weekGroups = new Map<string, string[]>();
   
-  // Group days by week
-  const weekGroups = new Map<string, { days: string[]; jobs: Job[] }>();
-  sortedDays.forEach(day => {
+  days.forEach(day => {
     const date = new Date(day);
     const weekRange = getWeekRange(new Date(date));
     const weekKey = `${weekRange.start.toISOString().split('T')[0]}_${weekRange.end.toISOString().split('T')[0]}`;
     
     if (!weekGroups.has(weekKey)) {
-      weekGroups.set(weekKey, { days: [], jobs: [] });
+      weekGroups.set(weekKey, []);
     }
-    weekGroups.get(weekKey)!.days.push(day);
-    weekGroups.get(weekKey)!.jobs.push(...groupedByDay.get(day)!);
+    weekGroups.get(weekKey)!.push(day);
   });
   
-  // Group by month
-  const monthGroups = new Map<string, Job[]>();
-  jobs.forEach(job => {
-    const month = job.createdAt.substring(0, 7);
+  return weekGroups;
+}
+
+// Group days by month
+function groupDaysByMonth(days: string[]): Map<string, string[]> {
+  const monthGroups = new Map<string, string[]>();
+  
+  days.forEach(day => {
+    const month = day.substring(0, 7); // YYYY-MM
     if (!monthGroups.has(month)) {
       monthGroups.set(month, []);
     }
-    monthGroups.get(month)!.push(job);
+    monthGroups.get(month)!.push(day);
   });
   
+  return monthGroups;
+}
+
+// Generate PDF HTML with enhanced grouping
+function generatePdfHtml(
+  jobs: Job[],
+  technicianName: string,
+  options: ExportOptions
+): string {
+  console.log('ExportUtils: Generating PDF HTML for', options.type, 'export');
+  
+  const groupedByDay = groupJobsByDay(jobs);
+  const sortedDays = Array.from(groupedByDay.keys()).sort();
   const overallTotals = calculateTotals(jobs);
   
   let html = `
@@ -115,6 +126,12 @@ function generatePdfHtml(
         .header .date {
           color: #666;
           font-size: 14px;
+        }
+        .header .export-type {
+          color: #2196F3;
+          font-size: 16px;
+          font-weight: bold;
+          margin-top: 10px;
         }
         .summary {
           background: #f5f5f5;
@@ -196,6 +213,10 @@ function generatePdfHtml(
           color: #2196F3;
           float: right;
         }
+        .section-divider {
+          border-top: 2px dashed #ccc;
+          margin: 30px 0;
+        }
       </style>
     </head>
     <body>
@@ -203,6 +224,7 @@ function generatePdfHtml(
         <h1>TechTimes Job Report</h1>
         <div class="technician">${technicianName}</div>
         <div class="date">Generated: ${new Date().toLocaleString('en-GB')}</div>
+        <div class="export-type">${options.type.toUpperCase()} EXPORT</div>
       </div>
       
       <div class="summary">
@@ -221,12 +243,17 @@ function generatePdfHtml(
       </div>
   `;
   
-  // Generate daily sections
-  sortedDays.forEach(day => {
-    const dayJobs = groupedByDay.get(day)!;
+  if (options.type === 'daily') {
+    // Daily export - just show the selected day
+    const dayJobs = groupedByDay.get(options.day!) || [];
     const dayTotals = calculateTotals(dayJobs);
-    const dayDate = new Date(day);
-    const dayName = dayDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const dayDate = new Date(options.day!);
+    const dayName = dayDate.toLocaleDateString('en-GB', { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    });
     
     html += `
       <div class="day-section">
@@ -265,36 +292,245 @@ function generatePdfHtml(
         </div>
       </div>
     `;
-  });
-  
-  // Add week totals (Monday to Saturday)
-  Array.from(weekGroups.entries()).forEach(([weekKey, weekData]) => {
-    const [startStr, endStr] = weekKey.split('_');
-    const weekTotals = calculateTotals(weekData.jobs);
-    const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  } else if (options.type === 'weekly') {
+    // Weekly export - show each day with totals, then week total
+    const weekGroups = groupDaysByWeek(sortedDays);
     
-    html += `
-      <div class="week-total">
-        <div><span class="total-label">Week Total (${startDate} - ${endDate}):</span></div>
-        <div><span class="total-value">${weekTotals.jobCount} jobs | ${weekTotals.totalAw} AW | ${weekTotals.totalHours.toFixed(2)}h</span></div>
-      </div>
-    `;
-  });
-  
-  // Add month totals
-  Array.from(monthGroups.entries()).sort().forEach(([month, monthJobs]) => {
-    const monthTotals = calculateTotals(monthJobs);
-    const monthDate = new Date(month + '-01');
-    const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
+      const [startStr, endStr] = weekKey.split('_');
+      const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      
+      html += `<div class="section-divider"></div>`;
+      html += `<h2 style="color: #2196F3;">Week: ${startDate} - ${endDate}</h2>`;
+      
+      // Show each day in the week
+      weekDays.sort().forEach(day => {
+        const dayJobs = groupedByDay.get(day)!;
+        const dayTotals = calculateTotals(dayJobs);
+        const dayDate = new Date(day);
+        const dayName = dayDate.toLocaleDateString('en-GB', { 
+          weekday: 'long', 
+          day: 'numeric', 
+          month: 'long' 
+        });
+        
+        html += `
+          <div class="day-section">
+            <div class="day-header">${dayName}</div>
+            <table class="job-table">
+              <thead>
+                <tr>
+                  <th>WIP Number</th>
+                  <th>Work Done</th>
+                  <th>AW</th>
+                  <th>Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        
+        dayJobs.forEach(job => {
+          const hours = (job.aw * 5) / 60;
+          const workDone = job.notes || job.vehicleReg;
+          html += `
+            <tr>
+              <td>${job.wipNumber}</td>
+              <td>${workDone}</td>
+              <td>${job.aw}</td>
+              <td>${hours.toFixed(2)}h</td>
+            </tr>
+          `;
+        });
+        
+        html += `
+              </tbody>
+            </table>
+            <div class="day-total">
+              <span class="total-label">Day Total:</span>
+              <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+            </div>
+          </div>
+        `;
+      });
+      
+      // Week total
+      const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
+      const weekTotals = calculateTotals(weekJobs);
+      
+      html += `
+        <div class="week-total">
+          <div><span class="total-label">Week Total (${startDate} - ${endDate}):</span></div>
+          <div><span class="total-value">${weekTotals.jobCount} jobs | ${weekTotals.totalAw} AW | ${weekTotals.totalHours.toFixed(2)}h</span></div>
+        </div>
+      `;
+    });
+  } else if (options.type === 'monthly') {
+    // Monthly export - show each day with totals, then month total
+    const monthGroups = groupDaysByMonth(sortedDays);
     
-    html += `
-      <div class="month-total">
-        <div><span class="total-label">Month Total (${monthName}):</span></div>
-        <div><span class="total-value">${monthTotals.jobCount} jobs | ${monthTotals.totalAw} AW | ${monthTotals.totalHours.toFixed(2)}h</span></div>
-      </div>
-    `;
-  });
+    Array.from(monthGroups.entries()).sort().forEach(([month, monthDays]) => {
+      const monthDate = new Date(month + '-01');
+      const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      
+      html += `<div class="section-divider"></div>`;
+      html += `<h2 style="color: #2196F3;">${monthName}</h2>`;
+      
+      // Show each day in the month
+      monthDays.sort().forEach(day => {
+        const dayJobs = groupedByDay.get(day)!;
+        const dayTotals = calculateTotals(dayJobs);
+        const dayDate = new Date(day);
+        const dayName = dayDate.toLocaleDateString('en-GB', { 
+          weekday: 'long', 
+          day: 'numeric', 
+          month: 'long' 
+        });
+        
+        html += `
+          <div class="day-section">
+            <div class="day-header">${dayName}</div>
+            <table class="job-table">
+              <thead>
+                <tr>
+                  <th>WIP Number</th>
+                  <th>Work Done</th>
+                  <th>AW</th>
+                  <th>Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        
+        dayJobs.forEach(job => {
+          const hours = (job.aw * 5) / 60;
+          const workDone = job.notes || job.vehicleReg;
+          html += `
+            <tr>
+              <td>${job.wipNumber}</td>
+              <td>${workDone}</td>
+              <td>${job.aw}</td>
+              <td>${hours.toFixed(2)}h</td>
+            </tr>
+          `;
+        });
+        
+        html += `
+              </tbody>
+            </table>
+            <div class="day-total">
+              <span class="total-label">Day Total:</span>
+              <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+            </div>
+          </div>
+        `;
+      });
+      
+      // Month total
+      const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
+      const monthTotals = calculateTotals(monthJobs);
+      
+      html += `
+        <div class="month-total">
+          <div><span class="total-label">Month Total (${monthName}):</span></div>
+          <div><span class="total-value">${monthTotals.jobCount} jobs | ${monthTotals.totalAw} AW | ${monthTotals.totalHours.toFixed(2)}h</span></div>
+        </div>
+      `;
+    });
+  } else {
+    // All/Entire export - show days, week totals, and month totals
+    const weekGroups = groupDaysByWeek(sortedDays);
+    const monthGroups = groupDaysByMonth(sortedDays);
+    
+    // Show all days grouped by month
+    Array.from(monthGroups.entries()).sort().forEach(([month, monthDays]) => {
+      const monthDate = new Date(month + '-01');
+      const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      
+      html += `<div class="section-divider"></div>`;
+      html += `<h2 style="color: #2196F3;">${monthName}</h2>`;
+      
+      // Show each day
+      monthDays.sort().forEach(day => {
+        const dayJobs = groupedByDay.get(day)!;
+        const dayTotals = calculateTotals(dayJobs);
+        const dayDate = new Date(day);
+        const dayName = dayDate.toLocaleDateString('en-GB', { 
+          weekday: 'long', 
+          day: 'numeric', 
+          month: 'long' 
+        });
+        
+        html += `
+          <div class="day-section">
+            <div class="day-header">${dayName}</div>
+            <table class="job-table">
+              <thead>
+                <tr>
+                  <th>WIP Number</th>
+                  <th>Work Done</th>
+                  <th>AW</th>
+                  <th>Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        
+        dayJobs.forEach(job => {
+          const hours = (job.aw * 5) / 60;
+          const workDone = job.notes || job.vehicleReg;
+          html += `
+            <tr>
+              <td>${job.wipNumber}</td>
+              <td>${workDone}</td>
+              <td>${job.aw}</td>
+              <td>${hours.toFixed(2)}h</td>
+            </tr>
+          `;
+        });
+        
+        html += `
+              </tbody>
+            </table>
+            <div class="day-total">
+              <span class="total-label">Day Total:</span>
+              <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+            </div>
+          </div>
+        `;
+      });
+      
+      // Month total
+      const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
+      const monthTotals = calculateTotals(monthJobs);
+      
+      html += `
+        <div class="month-total">
+          <div><span class="total-label">Month Total (${monthName}):</span></div>
+          <div><span class="total-value">${monthTotals.jobCount} jobs | ${monthTotals.totalAw} AW | ${monthTotals.totalHours.toFixed(2)}h</span></div>
+        </div>
+      `;
+    });
+    
+    // Add week totals summary at the end
+    html += `<div class="section-divider"></div>`;
+    html += `<h2 style="color: #2196F3;">Weekly Summary</h2>`;
+    
+    Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
+      const [startStr, endStr] = weekKey.split('_');
+      const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
+      const weekTotals = calculateTotals(weekJobs);
+      const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      
+      html += `
+        <div class="week-total">
+          <div><span class="total-label">Week (${startDate} - ${endDate}):</span></div>
+          <div><span class="total-value">${weekTotals.jobCount} jobs | ${weekTotals.totalAw} AW | ${weekTotals.totalHours.toFixed(2)}h</span></div>
+        </div>
+      `;
+    });
+  }
   
   html += `
     </body>
@@ -310,7 +546,7 @@ export async function exportToPdf(
   technicianName: string,
   options: ExportOptions
 ): Promise<void> {
-  console.log('ExportUtils: Generating PDF with', jobs.length, 'jobs');
+  console.log('ExportUtils: Generating PDF with', jobs.length, 'jobs for', options.type, 'export');
   
   const html = generatePdfHtml(jobs, technicianName, options);
   
@@ -318,7 +554,7 @@ export async function exportToPdf(
   console.log('ExportUtils: PDF generated at', uri);
   
   // Move to a permanent location
-  const fileName = `techtimes_report_${options.type}_${new Date().toISOString().split('T')[0]}.pdf`;
+  const fileName = `techtimes_${options.type}_${new Date().toISOString().split('T')[0]}.pdf`;
   const newUri = FileSystem.documentDirectory + fileName;
   await FileSystem.moveAsync({ from: uri, to: newUri });
   
