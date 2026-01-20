@@ -1,7 +1,8 @@
+
 {
   "expo": {
-    "name": "TechTimes",
-    "slug": "techtimes",
+    "name": "Tech Times",
+    "slug": "Tech Times",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/natively-dark.png",
@@ -17,7 +18,8 @@
       "bundleIdentifier": "com.techtimes.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "TechTimes uses Face ID to securely unlock the app and protect your job data."
+        "NSFaceIDUsageDescription": "TechTimes uses Face ID to securely unlock the app and protect your job data.",
+        "UIBackgroundModes": ["fetch", "remote-notification"]
       }
     },
     "android": {
@@ -29,7 +31,12 @@
       "package": "com.techtimes.app",
       "permissions": [
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK"
       ]
     },
     "web": {
@@ -45,6 +52,14 @@
         {
           "faceIDPermission": "TechTimes uses Face ID to securely unlock the app and protect your job data."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/natively-dark.png",
+          "color": "#ff6b35",
+          "sounds": []
+        }
       ]
     ],
     "scheme": "techtimes",
@@ -55,5 +70,6 @@
       "router": {},
       "backendUrl": "https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev"
     }
-  }
+  },
+  "scheme": "Tech Times"
 }

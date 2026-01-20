@@ -11,6 +11,7 @@ import {
   TextInput,
   Platform,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import * as Sharing from 'expo-sharing';
@@ -22,6 +23,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
 import { offlineStorage } from '@/utils/offlineStorage';
 import AppBackground from '@/components/AppBackground';
+import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
+import { requestAllPermissions, checkPermissions, showPermissionsInfo } from '@/utils/permissions';
 
 export default function SettingsScreen() {
   const { isDarkMode, toggleTheme, overlayStrength, setOverlayStrength, backgroundImage } = useThemeContext();
@@ -45,9 +48,27 @@ export default function SettingsScreen() {
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmNewPin, setConfirmNewPin] = useState('');
+  
+  // Export modal
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportType, setExportType] = useState<'pdf' | 'json'>('pdf');
+  const [exportRange, setExportRange] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [selectedDay, setSelectedDay] = useState('');
+  const [exporting, setExporting] = useState(false);
+  
+  // Import modal
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0, job: null as any });
+  
+  // Permissions
+  const [permissions, setPermissions] = useState({ notifications: false, storage: false });
 
   useEffect(() => {
     loadSettings();
+    checkAppPermissions();
   }, []);
 
   const loadSettings = async () => {
@@ -63,9 +84,34 @@ export default function SettingsScreen() {
       const target = await api.getMonthlyTarget();
       setMonthlyTarget(target.value.toString());
       
+      // Set default month to current
+      const now = new Date();
+      setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+      setSelectedDay(now.toISOString().split('T')[0]);
+      
       console.log('Settings: Loaded - schedule:', schedule, 'profile:', profile, 'target:', target.value);
     } catch (error) {
       console.error('Settings: Error loading settings:', error);
+    }
+  };
+  
+  const checkAppPermissions = async () => {
+    const perms = await checkPermissions();
+    setPermissions(perms);
+  };
+  
+  const handleRequestPermissions = async () => {
+    console.log('Settings: User requesting app permissions');
+    const perms = await requestAllPermissions();
+    setPermissions(perms);
+    
+    if (perms.notifications && perms.storage) {
+      Alert.alert('Success', 'All permissions granted successfully!');
+    } else {
+      Alert.alert(
+        'Permissions',
+        'Some permissions were not granted. You can enable them later in your device settings.'
+      );
     }
   };
 
@@ -233,6 +279,121 @@ export default function SettingsScreen() {
       Alert.alert('Error', 'Failed to export CSV');
     }
   };
+  
+  const handleOpenExportModal = () => {
+    console.log('Settings: Opening export modal');
+    setShowExportModal(true);
+  };
+  
+  const handleExport = async () => {
+    console.log('Settings: Starting export -', exportType, exportRange);
+    setExporting(true);
+    
+    try {
+      let jobs = await api.getAllJobs();
+      
+      // Filter jobs based on range
+      if (exportRange === 'daily') {
+        jobs = jobs.filter(job => job.createdAt.startsWith(selectedDay));
+      } else if (exportRange === 'weekly') {
+        const weekStart = new Date(selectedMonth + '-01');
+        weekStart.setDate(1 + (selectedWeek - 1) * 7);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        
+        jobs = jobs.filter(job => {
+          const jobDate = new Date(job.createdAt);
+          return jobDate >= weekStart && jobDate <= weekEnd;
+        });
+      } else if (exportRange === 'monthly') {
+        jobs = jobs.filter(job => job.createdAt.startsWith(selectedMonth));
+      }
+      
+      if (jobs.length === 0) {
+        Alert.alert('No Data', 'No jobs found for the selected period');
+        setExporting(false);
+        return;
+      }
+      
+      const profile = await api.getTechnicianProfile();
+      
+      if (exportType === 'pdf') {
+        await exportToPdf(jobs, profile.name, {
+          type: exportRange,
+          month: selectedMonth,
+          week: selectedWeek,
+          day: selectedDay,
+        });
+        Alert.alert('Success', 'PDF report exported successfully!');
+      } else {
+        await exportToJson(jobs);
+        Alert.alert('Success', 'JSON data exported successfully!');
+      }
+      
+      setShowExportModal(false);
+    } catch (error) {
+      console.error('Settings: Error exporting:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to export data');
+    } finally {
+      setExporting(false);
+    }
+  };
+  
+  const handleOpenImportModal = async () => {
+    console.log('Settings: Opening import modal');
+    
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const fileUri = result.assets[0].uri;
+      setShowImportModal(true);
+      setImporting(true);
+      
+      await importFromJson(
+        fileUri,
+        async (current, total, job) => {
+          console.log('Settings: Importing job', current, 'of', total);
+          setImportProgress({ current, total, job });
+          
+          // Import the job
+          await api.createJob({
+            wipNumber: job.wipNumber,
+            vehicleReg: job.vehicleReg,
+            aw: job.aw,
+            notes: job.notes,
+            vhcStatus: job.vhcStatus,
+            createdAt: job.createdAt,
+          });
+        }
+      );
+      
+      setImporting(false);
+      Alert.alert(
+        'Import Complete',
+        `Successfully imported ${importProgress.total} jobs!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowImportModal(false);
+              setImportProgress({ current: 0, total: 0, job: null });
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Settings: Error importing:', error);
+      setImporting(false);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to import data');
+    }
+  };
 
   const handleBackup = async () => {
     try {
@@ -366,6 +527,61 @@ export default function SettingsScreen() {
               All data is stored securely on your device. No internet connection required.
             </Text>
           </View>
+        </View>
+        
+        {/* Permissions Section */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            App Permissions
+          </Text>
+          
+          <View style={styles.permissionRow}>
+            <View style={styles.permissionLeft}>
+              <IconSymbol
+                ios_icon_name="bell.fill"
+                android_material_icon_name="notifications"
+                size={24}
+                color={permissions.notifications ? '#4CAF50' : '#999'}
+              />
+              <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+                Notifications
+              </Text>
+            </View>
+            <Text style={[styles.permissionStatus, { color: permissions.notifications ? '#4CAF50' : '#999' }]}>
+              {permissions.notifications ? 'Granted' : 'Not Granted'}
+            </Text>
+          </View>
+          
+          <View style={styles.permissionRow}>
+            <View style={styles.permissionLeft}>
+              <IconSymbol
+                ios_icon_name="folder.fill"
+                android_material_icon_name="folder"
+                size={24}
+                color={permissions.storage ? '#4CAF50' : '#999'}
+              />
+              <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+                Storage Access
+              </Text>
+            </View>
+            <Text style={[styles.permissionStatus, { color: permissions.storage ? '#4CAF50' : '#999' }]}>
+              {permissions.storage ? 'Granted' : 'Not Granted'}
+            </Text>
+          </View>
+          
+          <TouchableOpacity style={styles.updateButton} onPress={handleRequestPermissions}>
+            <Text style={styles.updateButtonText}>Request Permissions</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.infoButton} onPress={showPermissionsInfo}>
+            <IconSymbol
+              ios_icon_name="info.circle"
+              android_material_icon_name="info"
+              size={20}
+              color="#2196F3"
+            />
+            <Text style={styles.infoButtonText}>Why does the app need these?</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Technician Profile */}
@@ -560,10 +776,30 @@ export default function SettingsScreen() {
             Data Management
           </Text>
           
-          <TouchableOpacity style={styles.actionButton} onPress={handleExportCSV}>
+          <TouchableOpacity style={styles.actionButton} onPress={handleOpenExportModal}>
             <IconSymbol
               ios_icon_name="square.and.arrow.up"
               android_material_icon_name="upload"
+              size={24}
+              color="#2196F3"
+            />
+            <Text style={styles.actionButtonText}>Export Reports</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.actionButton} onPress={handleOpenImportModal}>
+            <IconSymbol
+              ios_icon_name="square.and.arrow.down"
+              android_material_icon_name="download"
+              size={24}
+              color="#4CAF50"
+            />
+            <Text style={[styles.actionButtonText, { color: '#4CAF50' }]}>Import Jobs</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton} onPress={handleExportCSV}>
+            <IconSymbol
+              ios_icon_name="doc.text"
+              android_material_icon_name="description"
               size={24}
               color="#2196F3"
             />
@@ -685,6 +921,207 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+      
+      {/* Export Modal */}
+      <Modal
+        visible={showExportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowExportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDarkMode ? styles.modalDark : styles.modalLight]}>
+            <Text style={[styles.modalTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+              Export Reports
+            </Text>
+            
+            <View style={styles.modalInputGroup}>
+              <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                Export Format
+              </Text>
+              <View style={styles.radioGroup}>
+                <TouchableOpacity
+                  style={styles.radioOption}
+                  onPress={() => setExportType('pdf')}
+                >
+                  <View style={[styles.radio, exportType === 'pdf' && styles.radioSelected]} />
+                  <Text style={[styles.radioLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                    PDF Report (Stylish)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.radioOption}
+                  onPress={() => setExportType('json')}
+                >
+                  <View style={[styles.radio, exportType === 'json' && styles.radioSelected]} />
+                  <Text style={[styles.radioLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                    JSON Data
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            <View style={styles.modalInputGroup}>
+              <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                Export Range
+              </Text>
+              <View style={styles.radioGroup}>
+                <TouchableOpacity
+                  style={styles.radioOption}
+                  onPress={() => setExportRange('daily')}
+                >
+                  <View style={[styles.radio, exportRange === 'daily' && styles.radioSelected]} />
+                  <Text style={[styles.radioLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Daily
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.radioOption}
+                  onPress={() => setExportRange('weekly')}
+                >
+                  <View style={[styles.radio, exportRange === 'weekly' && styles.radioSelected]} />
+                  <Text style={[styles.radioLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Weekly
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.radioOption}
+                  onPress={() => setExportRange('monthly')}
+                >
+                  <View style={[styles.radio, exportRange === 'monthly' && styles.radioSelected]} />
+                  <Text style={[styles.radioLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Monthly
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.radioOption}
+                  onPress={() => setExportRange('all')}
+                >
+                  <View style={[styles.radio, exportRange === 'all' && styles.radioSelected]} />
+                  <Text style={[styles.radioLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                    All Data
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            {exportRange === 'daily' && (
+              <View style={styles.modalInputGroup}>
+                <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                  Select Day
+                </Text>
+                <TextInput
+                  style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                  value={selectedDay}
+                  onChangeText={setSelectedDay}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                />
+              </View>
+            )}
+            
+            {exportRange === 'weekly' && (
+              <>
+                <View style={styles.modalInputGroup}>
+                  <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Select Month
+                  </Text>
+                  <TextInput
+                    style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                    value={selectedMonth}
+                    onChangeText={setSelectedMonth}
+                    placeholder="YYYY-MM"
+                    placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                  />
+                </View>
+                <View style={styles.modalInputGroup}>
+                  <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Select Week (1-5)
+                  </Text>
+                  <TextInput
+                    style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                    value={selectedWeek.toString()}
+                    onChangeText={(text) => setSelectedWeek(parseInt(text) || 1)}
+                    keyboardType="number-pad"
+                    placeholder="1"
+                    placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                  />
+                </View>
+              </>
+            )}
+            
+            {exportRange === 'monthly' && (
+              <View style={styles.modalInputGroup}>
+                <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                  Select Month
+                </Text>
+                <TextInput
+                  style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                  value={selectedMonth}
+                  onChangeText={setSelectedMonth}
+                  placeholder="YYYY-MM"
+                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                />
+              </View>
+            )}
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setShowExportModal(false)}
+                disabled={exporting}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleExport}
+                disabled={exporting}
+              >
+                {exporting ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.modalButtonTextConfirm}>Export</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Import Progress Modal */}
+      <Modal
+        visible={showImportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDarkMode ? styles.modalDark : styles.modalLight]}>
+            <Text style={[styles.modalTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+              Importing Jobs
+            </Text>
+            
+            <View style={styles.progressContainer}>
+              <ActivityIndicator size="large" color="#2196F3" />
+              <Text style={[styles.progressText, isDarkMode ? styles.textLight : styles.textDark]}>
+                {importProgress.current} of {importProgress.total}
+              </Text>
+              {importProgress.job && (
+                <View style={styles.currentJobInfo}>
+                  <Text style={[styles.currentJobText, isDarkMode ? styles.textLight : styles.textDark]}>
+                    WIP: {importProgress.job.wipNumber}
+                  </Text>
+                  <Text style={[styles.currentJobText, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Reg: {importProgress.job.vehicleReg}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </AppBackground>
   );
 }
@@ -739,6 +1176,36 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 16,
+  },
+  permissionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
+  },
+  permissionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  permissionStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  infoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 8,
+  },
+  infoButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
   },
   settingRow: {
     flexDirection: 'row',
@@ -849,6 +1316,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: 16,
     padding: 24,
+    maxHeight: '80%',
   },
   modalLight: {
     backgroundColor: '#fff',
@@ -864,6 +1332,28 @@ const styles = StyleSheet.create({
   },
   modalInputGroup: {
     marginBottom: 16,
+  },
+  radioGroup: {
+    gap: 12,
+  },
+  radioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+  },
+  radioSelected: {
+    backgroundColor: '#2196F3',
+  },
+  radioLabel: {
+    fontSize: 16,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -891,5 +1381,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  progressContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  progressText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+  },
+  currentJobInfo: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  currentJobText: {
+    fontSize: 14,
+    marginTop: 4,
   },
 });

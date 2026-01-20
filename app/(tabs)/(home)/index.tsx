@@ -280,7 +280,10 @@ export default function HomeScreen() {
         {/* Action Buttons */}
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: theme.primary }]}
-          onPress={() => router.push('/(tabs)/add-job')}
+          onPress={() => {
+            console.log('HomeScreen: User tapped Add New Job button');
+            router.push('/add-job-modal');
+          }}
         >
           <IconSymbol
             ios_icon_name="plus.circle.fill"
