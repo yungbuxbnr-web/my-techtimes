@@ -10,26 +10,28 @@ export function registerProfileRoutes(app: App) {
   const fastify = app.fastify;
 
   // GET /api/profile - Returns technician profile
+  // Accessible without authentication to support setup flow
   fastify.get(
     '/api/profile',
     {
       schema: {
-        description: 'Get technician profile',
+        description: 'Get technician profile (accessible during setup)',
         tags: ['profile'],
       },
     },
-    async (request, reply) => {
-      const session = await requireAuth(request, reply);
-      if (!session) return;
-
+    async (request: FastifyRequest, reply: FastifyReply) => {
       app.logger.info({}, 'Fetching technician profile');
 
       try {
         const profiles = await app.db.select().from(schema.technicianProfile).limit(1);
 
         if (profiles.length === 0) {
-          app.logger.warn({}, 'No profile found');
-          return reply.status(404).send({ error: 'Profile not found' });
+          app.logger.info({}, 'No profile found - returning default for setup');
+          return {
+            id: null,
+            name: null,
+            exists: false,
+          };
         }
 
         const profile = profiles[0];
@@ -38,6 +40,7 @@ export function registerProfileRoutes(app: App) {
         return {
           id: profile.id,
           name: profile.name,
+          exists: true,
           createdAt: profile.createdAt,
           updatedAt: profile.updatedAt,
         };
@@ -48,12 +51,13 @@ export function registerProfileRoutes(app: App) {
     }
   );
 
-  // PUT /api/profile - Update technician name
+  // PUT /api/profile - Update/Create technician name
+  // Accessible without authentication for initial setup, requires auth for updates
   fastify.put<{ Body: any }>(
     '/api/profile',
     {
       schema: {
-        description: 'Update technician profile',
+        description: 'Update/Create technician profile (first creation does not require auth)',
         tags: ['profile'],
         body: {
           type: 'object',
@@ -65,9 +69,6 @@ export function registerProfileRoutes(app: App) {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const session = await requireAuth(request, reply);
-      if (!session) return;
-
       const { name } = request.body as { name: string };
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -75,13 +76,14 @@ export function registerProfileRoutes(app: App) {
         return reply.status(400).send({ error: 'Name is required and must be non-empty' });
       }
 
-      app.logger.info({ name }, 'Updating technician profile');
+      app.logger.info({ name }, 'Processing profile update/creation');
 
       try {
         const profiles = await app.db.select().from(schema.technicianProfile).limit(1);
 
         if (profiles.length === 0) {
-          // Create new profile
+          // Initial profile creation - allow without authentication
+          app.logger.info({ name }, 'Creating initial profile (setup flow)');
           const [newProfile] = await app.db
             .insert(schema.technicianProfile)
             .values({
@@ -89,16 +91,24 @@ export function registerProfileRoutes(app: App) {
             })
             .returning();
 
-          app.logger.info({ id: newProfile.id }, 'Profile created');
+          app.logger.info({ id: newProfile.id }, 'Initial profile created successfully');
           return {
             id: newProfile.id,
             name: newProfile.name,
+            isInitialSetup: true,
             createdAt: newProfile.createdAt,
             updatedAt: newProfile.updatedAt,
           };
         }
 
-        // Update existing profile
+        // Updating existing profile - require authentication
+        const session = await requireAuth(request, reply);
+        if (!session) {
+          app.logger.warn({}, 'Attempt to update profile without authentication');
+          return;
+        }
+
+        app.logger.info({ profileId: profiles[0].id }, 'Updating existing profile (authenticated)');
         const [updatedProfile] = await app.db
           .update(schema.technicianProfile)
           .set({
@@ -106,15 +116,16 @@ export function registerProfileRoutes(app: App) {
           })
           .returning();
 
-        app.logger.info({ id: updatedProfile.id }, 'Profile updated');
+        app.logger.info({ id: updatedProfile.id }, 'Profile updated successfully');
         return {
           id: updatedProfile.id,
           name: updatedProfile.name,
+          isInitialSetup: false,
           createdAt: updatedProfile.createdAt,
           updatedAt: updatedProfile.updatedAt,
         };
       } catch (error) {
-        app.logger.error({ err: error }, 'Failed to update profile');
+        app.logger.error({ err: error }, 'Failed to update/create profile');
         throw error;
       }
     }
