@@ -63,61 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  const initializeAuth = useCallback(async () => {
-    console.log('AuthContext: Initializing authentication');
-    try {
-      await checkBiometricsAvailability();
-      await loadSettings();
-      await checkSetupStatus();
-    } catch (error) {
-      console.error('AuthContext: Error initializing auth:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
-    if (appState.match(/inactive|background/) && nextAppState === 'active') {
-      if (lockOnResume && isAuthenticated) {
-        console.log('AuthContext: App resumed, locking due to lockOnResume setting');
-        setIsAuthenticated(false);
-      }
-    }
-    setAppState(nextAppState);
-  }, [appState, lockOnResume, isAuthenticated]);
-
-  const checkSetupStatus = useCallback(async (): Promise<boolean> => {
-    try {
-      console.log('AuthContext: Checking setup status');
-      const setupDone = await getSecureItem(SETUP_COMPLETE_KEY);
-      const storedPin = await getSecureItem(PIN_KEY);
-      
-      // Setup is complete if both the flag is set AND a PIN exists
-      const isComplete = setupDone === 'true' && !!storedPin;
-      console.log('AuthContext: Setup complete:', isComplete, 'setupDone:', setupDone, 'hasPin:', !!storedPin);
-      setSetupComplete(isComplete);
-      return isComplete;
-    } catch (error) {
-      console.error('AuthContext: Error checking setup status:', error);
-      setSetupComplete(false);
-      return false;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!initialized) {
-      initializeAuth();
-      setInitialized(true);
-    }
-  }, [initialized, initializeAuth]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => {
-      subscription.remove();
-    };
-  }, [handleAppStateChange]);
-
   const checkBiometricsAvailability = async () => {
     try {
       console.log('AuthContext: Checking biometrics availability');
@@ -160,7 +105,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
+  const checkSetupStatus = useCallback(async (): Promise<boolean> => {
+    try {
+      console.log('AuthContext: Checking setup status');
+      const setupDone = await getSecureItem(SETUP_COMPLETE_KEY);
+      const storedPin = await getSecureItem(PIN_KEY);
+      
+      // Setup is complete if both the flag is set AND a PIN exists
+      const isComplete = setupDone === 'true' && !!storedPin;
+      console.log('AuthContext: Setup complete:', isComplete, 'setupDone:', setupDone, 'hasPin:', !!storedPin);
+      setSetupComplete(isComplete);
+      return isComplete;
+    } catch (error) {
+      console.error('AuthContext: Error checking setup status:', error);
+      setSetupComplete(false);
+      return false;
+    }
+  }, []);
+
+  const initializeAuth = useCallback(async () => {
+    console.log('AuthContext: Initializing authentication');
+    try {
+      await checkBiometricsAvailability();
+      await loadSettings();
+      await checkSetupStatus();
+    } catch (error) {
+      console.error('AuthContext: Error initializing auth:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [checkSetupStatus]);
+
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (appState.match(/inactive|background/) && nextAppState === 'active') {
       if (lockOnResume && isAuthenticated) {
         console.log('AuthContext: App resumed, locking due to lockOnResume setting');
@@ -168,7 +144,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     setAppState(nextAppState);
-  };
+  }, [appState, lockOnResume, isAuthenticated]);
+
+  useEffect(() => {
+    if (!initialized) {
+      initializeAuth();
+      setInitialized(true);
+    }
+  }, [initialized, initializeAuth]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
 
   const login = async (pin: string): Promise<boolean> => {
     try {
