@@ -577,6 +577,22 @@ export default function EditWorkScheduleScreen() {
             />
             <Text style={styles.resetButtonText}>Reset to Defaults</Text>
           </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.calendarButton, { backgroundColor: theme.accent }]}
+            onPress={() => {
+              console.log('EditWorkScheduleScreen: User tapped Work Calendar button');
+              router.push('/work-calendar');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="calendar"
+              android_material_icon_name="calendar-today"
+              size={20}
+              color="#ffffff"
+            />
+            <Text style={styles.calendarButtonText}>Work Calendar & Absences</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={{ height: 40 }} />
@@ -816,6 +832,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resetButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  calendarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 12,
+  },
+  calendarButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',

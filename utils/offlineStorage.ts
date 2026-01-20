@@ -48,6 +48,7 @@ export interface Absence {
   isHalfDay?: boolean;
   customHours?: number;
   deductionType: 'target' | 'available';
+  absenceType?: 'holiday' | 'sickness' | 'training';
   note?: string;
   createdAt: string;
 }

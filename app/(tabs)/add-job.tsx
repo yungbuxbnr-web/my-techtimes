@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validateAW } from '@/utils/jobCalculations';
 import { api, OCRRegResult, OCRJobCardResult } from '@/utils/api';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function AddJobScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -31,6 +32,9 @@ export default function AddJobScreen() {
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmationOpacity] = useState(new Animated.Value(0));
+  const [jobDateTime, setJobDateTime] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
 
@@ -59,6 +63,7 @@ export default function AddJobScreen() {
         vehicleReg: vehicleReg.toUpperCase(),
         aw,
         notes: notes.trim() || undefined,
+        createdAt: jobDateTime.toISOString(),
       };
       
       console.log('AddJobScreen: Saving job:', jobData);
@@ -87,6 +92,7 @@ export default function AddJobScreen() {
       setVehicleReg('');
       setAw(0);
       setNotes('');
+      setJobDateTime(new Date());
     } catch (error) {
       console.error('AddJobScreen: Error saving job:', error);
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save job. Please try again.');
@@ -316,6 +322,40 @@ export default function AddJobScreen() {
               </View>
 
               <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: theme.text }]}>Date & Time</Text>
+                <View style={styles.dateTimeRow}>
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="calendar"
+                      android_material_icon_name="calendar-today"
+                      size={20}
+                      color={theme.primary}
+                    />
+                    <Text style={[styles.dateTimeText, { color: theme.text }]}>
+                      {jobDateTime.toLocaleDateString('en-GB')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                    onPress={() => setShowTimePicker(true)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="access-time"
+                      size={20}
+                      color={theme.primary}
+                    />
+                    <Text style={[styles.dateTimeText, { color: theme.text }]}>
+                      {jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
                 <Text style={[styles.label, { color: theme.text }]}>Notes (Optional)</Text>
                 <TextInput
                   style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
@@ -416,6 +456,43 @@ export default function AddJobScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* Date Picker */}
+        {showDatePicker && (
+          <DateTimePicker
+            value={jobDateTime}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(false);
+              if (selectedDate) {
+                const newDateTime = new Date(jobDateTime);
+                newDateTime.setFullYear(selectedDate.getFullYear());
+                newDateTime.setMonth(selectedDate.getMonth());
+                newDateTime.setDate(selectedDate.getDate());
+                setJobDateTime(newDateTime);
+              }
+            }}
+          />
+        )}
+
+        {/* Time Picker */}
+        {showTimePicker && (
+          <DateTimePicker
+            value={jobDateTime}
+            mode="time"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowTimePicker(false);
+              if (selectedDate) {
+                const newDateTime = new Date(jobDateTime);
+                newDateTime.setHours(selectedDate.getHours());
+                newDateTime.setMinutes(selectedDate.getMinutes());
+                setJobDateTime(newDateTime);
+              }
+            }}
+          />
+        )}
       </View>
     </ImageBackground>
   );
@@ -613,5 +690,23 @@ const styles = StyleSheet.create({
   pickerOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  dateTimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 56,
+    borderWidth: 1,
+    borderRadius: 12,
+    gap: 8,
+  },
+  dateTimeText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

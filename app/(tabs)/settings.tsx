@@ -269,14 +269,20 @@ export default function SettingsScreen() {
       const importData = JSON.parse(jsonString);
       
       for (const job of importData.jobs) {
-        if (job.wipNumber && job.vehicleReg && job.aw !== undefined) {
+        // Support both old format (aw) and new format (aws)
+        const awValue = job.aws !== undefined ? job.aws : job.aw;
+        const vhcStatus = job.vhcStatus === 'NONE' ? 'N/A' : (job.vhcStatus || 'N/A');
+        const notes = job.description || job.notes || '';
+        const createdAt = job.jobDateTime || job.createdAt;
+        
+        if (job.wipNumber && job.vehicleReg && awValue !== undefined) {
           await api.createJob({
             wipNumber: job.wipNumber,
             vehicleReg: job.vehicleReg,
-            aw: job.aw,
-            notes: job.notes,
-            vhcStatus: job.vhcStatus || 'N/A',
-            createdAt: job.createdAt,
+            aw: awValue,
+            notes: notes,
+            vhcStatus: vhcStatus as 'GREEN' | 'AMBER' | 'RED' | 'N/A',
+            createdAt: createdAt,
           });
         }
       }

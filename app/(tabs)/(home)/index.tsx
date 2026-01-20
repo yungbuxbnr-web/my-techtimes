@@ -23,6 +23,8 @@ export default function HomeScreen() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [technicianName, setTechnicianName] = useState('Technician');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [workSchedule, setWorkSchedule] = useState({ startTime: '07:00', endTime: '18:00', dailyWorkingHours: 8.5 });
+  const [liveAvailableHours, setLiveAvailableHours] = useState(0);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -44,10 +46,49 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const loadSchedule = useCallback(async () => {
+    try {
+      const schedule = await api.getSchedule();
+      setWorkSchedule({
+        startTime: schedule.startTime || '07:00',
+        endTime: schedule.endTime || '18:00',
+        dailyWorkingHours: schedule.dailyWorkingHours || 8.5,
+      });
+    } catch (error) {
+      console.error('HomeScreen: Error loading schedule:', error);
+    }
+  }, []);
+
+  const calculateLiveAvailableHours = useCallback(() => {
+    const now = new Date();
+    const [startHour, startMinute] = workSchedule.startTime.split(':').map(Number);
+    const [endHour, endMinute] = workSchedule.endTime.split(':').map(Number);
+    
+    const startTime = new Date(now);
+    startTime.setHours(startHour, startMinute, 0, 0);
+    
+    const endTime = new Date(now);
+    endTime.setHours(endHour, endMinute, 0, 0);
+    
+    // Check if current time is within work hours
+    if (now >= startTime && now <= endTime) {
+      const elapsedMs = now.getTime() - startTime.getTime();
+      const elapsedHours = elapsedMs / (1000 * 60 * 60);
+      setLiveAvailableHours(elapsedHours);
+    } else if (now > endTime) {
+      // Work day is over
+      setLiveAvailableHours(workSchedule.dailyWorkingHours);
+    } else {
+      // Before work starts
+      setLiveAvailableHours(0);
+    }
+  }, [workSchedule]);
+
   useEffect(() => {
     console.log('HomeScreen: Loading dashboard data');
     loadDashboard();
     loadProfile();
+    loadSchedule();
     
     // Update time every second
     const timer = setInterval(() => {
@@ -55,7 +96,12 @@ export default function HomeScreen() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [loadDashboard, loadProfile]);
+  }, [loadDashboard, loadProfile, loadSchedule]);
+
+  useEffect(() => {
+    // Calculate live available hours every second
+    calculateLiveAvailableHours();
+  }, [currentTime, calculateLiveAvailableHours]);
 
   const getCurrentMonth = () => {
     const now = new Date();
@@ -67,6 +113,7 @@ export default function HomeScreen() {
     setRefreshing(true);
     await loadDashboard();
     await loadProfile();
+    await loadSchedule();
     setRefreshing(false);
   };
 
@@ -96,6 +143,24 @@ export default function HomeScreen() {
   const efficiencyLabel = getEfficiencyLabel(dashboardData.efficiency);
   const targetPercent = (dashboardData.soldHours / dashboardData.targetAdjusted) * 100;
 
+  // Calculate work day progress
+  const now = new Date();
+  const [startHour, startMinute] = workSchedule.startTime.split(':').map(Number);
+  const [endHour, endMinute] = workSchedule.endTime.split(':').map(Number);
+  
+  const startTime = new Date(now);
+  startTime.setHours(startHour, startMinute, 0, 0);
+  
+  const endTime = new Date(now);
+  endTime.setHours(endHour, endMinute, 0, 0);
+  
+  const totalWorkMs = endTime.getTime() - startTime.getTime();
+  const elapsedMs = now.getTime() - startTime.getTime();
+  const workDayProgress = Math.max(0, Math.min(100, (elapsedMs / totalWorkMs) * 100));
+  
+  const isWorkTime = now >= startTime && now <= endTime;
+  const workDayStatus = now < startTime ? 'Not Started' : now > endTime ? 'Completed' : 'In Progress';
+
   return (
     <AppBackground>
       <ScrollView
@@ -113,7 +178,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Live Timer Card */}
+        {/* Live Timer Card with Progress Bar */}
         <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
           <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Current Time</Text>
           <Text style={[styles.timerValue, { color: theme.primary }]}>
@@ -122,6 +187,43 @@ export default function HomeScreen() {
           <Text style={[styles.dateValue, { color: theme.textSecondary }]}>
             {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </Text>
+          
+          {/* Work Day Progress Bar */}
+          <View style={styles.progressSection}>
+            <View style={styles.progressHeader}>
+              <Text style={[styles.progressLabel, { color: theme.textSecondary }]}>Work Day Progress</Text>
+              <Text style={[styles.progressStatus, { color: isWorkTime ? theme.primary : theme.textSecondary }]}>
+                {workDayStatus}
+              </Text>
+            </View>
+            <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { 
+                    width: `${workDayProgress}%`,
+                    backgroundColor: isWorkTime ? theme.primary : theme.textSecondary
+                  }
+                ]} 
+              />
+            </View>
+            <View style={styles.progressTimes}>
+              <Text style={[styles.progressTime, { color: theme.textSecondary }]}>
+                {workSchedule.startTime}
+              </Text>
+              <Text style={[styles.progressTime, { color: theme.textSecondary }]}>
+                {workSchedule.endTime}
+              </Text>
+            </View>
+            <View style={styles.liveHoursRow}>
+              <Text style={[styles.liveHoursLabel, { color: theme.textSecondary }]}>
+                Available Hours Today:
+              </Text>
+              <Text style={[styles.liveHoursValue, { color: theme.primary }]}>
+                {liveAvailableHours.toFixed(2)}h / {workSchedule.dailyWorkingHours.toFixed(2)}h
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Progress Rings */}
@@ -364,6 +466,57 @@ const styles = StyleSheet.create({
   dateValue: {
     fontSize: 14,
     marginTop: 4,
+  },
+  progressSection: {
+    marginTop: 20,
+    width: '100%',
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  progressStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  progressBarContainer: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressTimes: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  progressTime: {
+    fontSize: 11,
+  },
+  liveHoursRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  liveHoursLabel: {
+    fontSize: 12,
+  },
+  liveHoursValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   ringsContainer: {
     flexDirection: 'row',

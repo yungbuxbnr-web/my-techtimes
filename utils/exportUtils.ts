@@ -570,25 +570,24 @@ export async function exportToPdf(
   }
 }
 
-// Export to JSON
+// Export to JSON - Format matching the image
 export async function exportToJson(jobs: Job[]): Promise<void> {
   console.log('ExportUtils: Exporting', jobs.length, 'jobs to JSON');
   
+  // Format exactly as shown in the image
   const exportData = {
-    version: '1.0',
-    exportDate: new Date().toISOString(),
     jobs: jobs.map(job => ({
       wipNumber: job.wipNumber,
       vehicleReg: job.vehicleReg,
-      aw: job.aw,
-      notes: job.notes || '',
-      vhcStatus: job.vhcStatus || 'N/A',
-      createdAt: job.createdAt,
+      vhcStatus: job.vhcStatus || 'NONE',
+      description: job.notes || '',
+      aws: job.aw,
+      jobDateTime: job.createdAt, // ISO format: "2025-11-28T16:18:00"
     })),
   };
   
   const jsonString = JSON.stringify(exportData, null, 2);
-  const fileName = `techtimes_jobs_${new Date().toISOString().split('T')[0]}.json`;
+  const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
   const fileUri = FileSystem.documentDirectory + fileName;
   
   await FileSystem.writeAsStringAsync(fileUri, jsonString);
@@ -598,13 +597,13 @@ export async function exportToJson(jobs: Job[]): Promise<void> {
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(fileUri, {
       mimeType: 'application/json',
-      dialogTitle: 'Share TechTimes Jobs Data',
+      dialogTitle: 'Export TechTimes Backup',
     });
     console.log('ExportUtils: JSON shared successfully');
   }
 }
 
-// Import from JSON
+// Import from JSON - Supports both old and new format
 export async function importFromJson(
   jsonUri: string,
   onProgress: (current: number, total: number, job: any) => void
@@ -632,8 +631,14 @@ export async function importFromJson(
     try {
       onProgress(i + 1, total, job);
       
+      // Support both old format (aw) and new format (aws)
+      const awValue = job.aws !== undefined ? job.aws : job.aw;
+      const vhcStatus = job.vhcStatus === 'NONE' ? 'N/A' : (job.vhcStatus || 'N/A');
+      const notes = job.description || job.notes || '';
+      const createdAt = job.jobDateTime || job.createdAt;
+      
       // Validate job data
-      if (!job.wipNumber || !job.vehicleReg || job.aw === undefined) {
+      if (!job.wipNumber || !job.vehicleReg || awValue === undefined) {
         results.skipped++;
         results.errors.push(`Job ${i + 1}: Missing required fields`);
         continue;

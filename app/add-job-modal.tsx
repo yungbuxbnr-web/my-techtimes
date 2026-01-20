@@ -19,6 +19,7 @@ import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validat
 import { api, OCRRegResult, OCRJobCardResult } from '@/utils/api';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function AddJobModal() {
   const { theme, overlayStrength, isDarkMode } = useThemeContext();
@@ -33,6 +34,9 @@ export default function AddJobModal() {
   const [showVhcPicker, setShowVhcPicker] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmationOpacity] = useState(new Animated.Value(0));
+  const [jobDateTime, setJobDateTime] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
   const vhcOptions: ('GREEN' | 'AMBER' | 'RED' | 'N/A')[] = ['N/A', 'GREEN', 'AMBER', 'RED'];
@@ -63,6 +67,7 @@ export default function AddJobModal() {
         aw,
         notes: notes.trim() || undefined,
         vhcStatus,
+        createdAt: jobDateTime.toISOString(),
       };
       
       console.log('AddJobModal: Saving job:', jobData);
@@ -93,6 +98,7 @@ export default function AddJobModal() {
         setAw(0);
         setNotes('');
         setVhcStatus('N/A');
+        setJobDateTime(new Date());
       } else {
         // Close modal and go back
         router.back();
@@ -362,6 +368,46 @@ export default function AddJobModal() {
               </View>
 
               <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Date & Time</Text>
+                <View style={styles.dateTimeRow}>
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, { 
+                      backgroundColor: isDarkMode ? '#000' : '#fff',
+                      borderColor: theme.primary
+                    }]}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="calendar"
+                      android_material_icon_name="calendar-today"
+                      size={20}
+                      color={theme.primary}
+                    />
+                    <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                      {jobDateTime.toLocaleDateString('en-GB')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, { 
+                      backgroundColor: isDarkMode ? '#000' : '#fff',
+                      borderColor: theme.primary
+                    }]}
+                    onPress={() => setShowTimePicker(true)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="access-time"
+                      size={20}
+                      color={theme.primary}
+                    />
+                    <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                      {jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
                 <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Notes (Optional)</Text>
                 <TextInput
                   style={[styles.textArea, { 
@@ -530,6 +576,43 @@ export default function AddJobModal() {
             </View>
           </View>
         </Modal>
+
+        {/* Date Picker */}
+        {showDatePicker && (
+          <DateTimePicker
+            value={jobDateTime}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(false);
+              if (selectedDate) {
+                const newDateTime = new Date(jobDateTime);
+                newDateTime.setFullYear(selectedDate.getFullYear());
+                newDateTime.setMonth(selectedDate.getMonth());
+                newDateTime.setDate(selectedDate.getDate());
+                setJobDateTime(newDateTime);
+              }
+            }}
+          />
+        )}
+
+        {/* Time Picker */}
+        {showTimePicker && (
+          <DateTimePicker
+            value={jobDateTime}
+            mode="time"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowTimePicker(false);
+              if (selectedDate) {
+                const newDateTime = new Date(jobDateTime);
+                newDateTime.setHours(selectedDate.getHours());
+                newDateTime.setMinutes(selectedDate.getMinutes());
+                setJobDateTime(newDateTime);
+              }
+            }}
+          />
+        )}
       </View>
     </>
   );
@@ -704,5 +787,23 @@ const styles = StyleSheet.create({
   pickerOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  dateTimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 56,
+    borderWidth: 2,
+    borderRadius: 12,
+    gap: 8,
+  },
+  dateTimeText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
