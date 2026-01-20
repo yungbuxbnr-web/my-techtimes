@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
-import ErrorBoundary from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import * as SplashScreen from 'expo-splash-screen';
 
 // Keep the splash screen visible while we fetch resources
