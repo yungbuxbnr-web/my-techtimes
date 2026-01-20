@@ -5,6 +5,7 @@ export interface Job {
   vehicleReg: string;
   aw: number;
   notes?: string;
+  vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   createdAt: string;
 }
 

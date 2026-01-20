@@ -14,7 +14,7 @@ export interface Job {
   vehicleReg: string;
   aw: number;
   notes?: string;
-  vhcStatus?: 'GREEN' | 'AMBER' | 'RED' | 'N/A';
+  vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   createdAt: string;
   updatedAt?: string;
 }
@@ -231,7 +231,7 @@ export const api = {
     vehicleReg: string; 
     aw: number; 
     notes?: string;
-    vhcStatus?: 'GREEN' | 'AMBER' | 'RED' | 'N/A';
+    vhcStatus?: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
     createdAt?: string;
   }): Promise<Job> {
     console.log('API: Creating job in local storage', job);
@@ -240,13 +240,9 @@ export const api = {
       vehicleReg: job.vehicleReg,
       aw: job.aw,
       notes: job.notes,
-      vhcStatus: job.vhcStatus || 'N/A',
+      vhcStatus: job.vhcStatus || 'NONE',
+      createdAt: job.createdAt || new Date().toISOString(),
     });
-    
-    // If a custom createdAt was provided, update it
-    if (job.createdAt) {
-      return await offlineStorage.updateJob(newJob.id, { createdAt: job.createdAt });
-    }
     
     return newJob;
   },
@@ -256,7 +252,7 @@ export const api = {
     vehicleReg: string; 
     aw: number; 
     notes: string;
-    vhcStatus: 'GREEN' | 'AMBER' | 'RED' | 'N/A';
+    vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
     createdAt: string;
   }>): Promise<Job> {
     console.log('API: Updating job in local storage', id, updates);

@@ -36,7 +36,7 @@ export default function JobRecordsScreen() {
   const [editReg, setEditReg] = useState('');
   const [editAw, setEditAw] = useState('');
   const [editNotes, setEditNotes] = useState('');
-  const [editVhc, setEditVhc] = useState<'GREEN' | 'AMBER' | 'RED' | 'N/A'>('N/A');
+  const [editVhc, setEditVhc] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
   const [editDate, setEditDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -112,7 +112,7 @@ export default function JobRecordsScreen() {
     setEditReg(job.vehicleReg);
     setEditAw(job.aw.toString());
     setEditNotes(job.notes || '');
-    setEditVhc(job.vhcStatus || 'N/A');
+    setEditVhc(job.vhcStatus || 'NONE');
     setEditDate(new Date(job.createdAt));
     setShowEditModal(true);
   };
@@ -195,7 +195,7 @@ export default function JobRecordsScreen() {
   const getVhcColor = (vhc: string) => {
     switch (vhc) {
       case 'GREEN': return theme.chartGreen;
-      case 'AMBER': return theme.chartYellow;
+      case 'ORANGE': return theme.chartYellow;
       case 'RED': return theme.chartRed;
       default: return 'transparent';
     }
@@ -231,7 +231,7 @@ export default function JobRecordsScreen() {
   const renderJob = ({ item }: { item: Job }) => {
     const minutes = awToMinutes(item.aw);
     const date = new Date(item.createdAt);
-    const vhcColor = getVhcColor(item.vhcStatus || 'N/A');
+    const vhcColor = getVhcColor(item.vhcStatus || 'NONE');
     const isSelected = selectedJobs.has(item.id);
 
     return (
@@ -253,7 +253,7 @@ export default function JobRecordsScreen() {
           }
         }}
       >
-        {item.vhcStatus && item.vhcStatus !== 'N/A' && (
+        {item.vhcStatus && item.vhcStatus !== 'NONE' && (
           <View style={[styles.vhcStrip, { backgroundColor: vhcColor }]} />
         )}
         
@@ -275,7 +275,7 @@ export default function JobRecordsScreen() {
               <Text style={[styles.wipNumber, { color: theme.primary }]}>
                 WIP: {item.wipNumber}
               </Text>
-              {item.vhcStatus && item.vhcStatus !== 'N/A' && (
+              {item.vhcStatus && item.vhcStatus !== 'NONE' && (
                 <View style={[styles.vhcBadge, { backgroundColor: vhcColor }]}>
                   <Text style={styles.vhcText}>● VHC: {item.vhcStatus}</Text>
                 </View>
@@ -535,7 +535,7 @@ export default function JobRecordsScreen() {
 
                 <Text style={[styles.label, { color: theme.text }]}>VHC Status</Text>
                 <View style={styles.vhcSelector}>
-                  {(['N/A', 'GREEN', 'AMBER', 'RED'] as const).map((vhc) => (
+                  {(['NONE', 'GREEN', 'ORANGE', 'RED'] as const).map((vhc) => (
                     <TouchableOpacity
                       key={vhc}
                       style={[

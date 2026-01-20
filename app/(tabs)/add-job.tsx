@@ -27,8 +27,10 @@ export default function AddJobScreen() {
   const [vehicleReg, setVehicleReg] = useState('');
   const [aw, setAw] = useState(0);
   const [notes, setNotes] = useState('');
+  const [vhcStatus, setVhcStatus] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
   const [saving, setSaving] = useState(false);
   const [showAwPicker, setShowAwPicker] = useState(false);
+  const [showVhcPicker, setShowVhcPicker] = useState(false);
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmationOpacity] = useState(new Animated.Value(0));
@@ -37,6 +39,16 @@ export default function AddJobScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
+  const vhcOptions: ('NONE' | 'GREEN' | 'ORANGE' | 'RED')[] = ['NONE', 'GREEN', 'ORANGE', 'RED'];
+  
+  const getVhcColor = (status: string) => {
+    switch (status) {
+      case 'GREEN': return '#4CAF50';
+      case 'ORANGE': return '#FF9800';
+      case 'RED': return '#f44336';
+      default: return '#999';
+    }
+  };
 
   const handleSave = async (saveAnother: boolean = false) => {
     console.log('AddJobScreen: User tapped Save button, saveAnother:', saveAnother);
@@ -63,6 +75,7 @@ export default function AddJobScreen() {
         vehicleReg: vehicleReg.toUpperCase(),
         aw,
         notes: notes.trim() || undefined,
+        vhcStatus,
         createdAt: jobDateTime.toISOString(),
       };
       
@@ -92,6 +105,7 @@ export default function AddJobScreen() {
       setVehicleReg('');
       setAw(0);
       setNotes('');
+      setVhcStatus('NONE');
       setJobDateTime(new Date());
     } catch (error) {
       console.error('AddJobScreen: Error saving job:', error);
@@ -305,6 +319,28 @@ export default function AddJobScreen() {
                   />
                 </TouchableOpacity>
               </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: theme.text }]}>VHC Status</Text>
+                <TouchableOpacity
+                  style={[styles.pickerButton, { 
+                    backgroundColor: theme.background,
+                    borderColor: getVhcColor(vhcStatus),
+                    borderWidth: 2
+                  }]}
+                  onPress={() => setShowVhcPicker(true)}
+                >
+                  <Text style={[styles.pickerButtonText, { color: getVhcColor(vhcStatus) }]}>
+                    VHC: {vhcStatus}
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="arrow-drop-down"
+                    size={24}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
 
               <View style={[styles.timeDisplay, { backgroundColor: theme.background }]}>
                 <View style={styles.timeItem}>
@@ -449,6 +485,54 @@ export default function AddJobScreen() {
                       ]}
                     >
                       {value} AW ({formatTime(awToMinutes(value))})
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+        
+        <Modal
+          visible={showVhcPicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowVhcPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.pickerModal, { backgroundColor: theme.card }]}>
+              <View style={styles.pickerHeader}>
+                <Text style={[styles.pickerTitle, { color: theme.text }]}>Select VHC Status</Text>
+                <TouchableOpacity onPress={() => setShowVhcPicker(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.pickerScroll}>
+                {vhcOptions.map((value) => (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.pickerOption,
+                      { backgroundColor: vhcStatus === value ? getVhcColor(value) : 'transparent' },
+                    ]}
+                    onPress={() => {
+                      console.log('AddJobScreen: User selected VHC status:', value);
+                      setVhcStatus(value);
+                      setShowVhcPicker(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.pickerOptionText,
+                        { color: vhcStatus === value ? '#ffffff' : getVhcColor(value) },
+                      ]}
+                    >
+                      {value}
                     </Text>
                   </TouchableOpacity>
                 ))}

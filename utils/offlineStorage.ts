@@ -19,7 +19,7 @@ export interface Job {
   vehicleReg: string;
   aw: number;
   notes?: string;
-  vhcStatus?: 'GREEN' | 'AMBER' | 'RED' | 'N/A';
+  vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   createdAt: string;
   updatedAt?: string;
 }
@@ -154,13 +154,13 @@ export const offlineStorage = {
       .slice(0, limit);
   },
 
-  async createJob(job: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>): Promise<Job> {
+  async createJob(job: Omit<Job, 'id' | 'updatedAt'>): Promise<Job> {
     console.log('OfflineStorage: Creating job');
     const allJobs = await this.getAllJobs();
     const newJob: Job = {
       ...job,
+      vhcStatus: job.vhcStatus || 'NONE',
       id: generateId(),
-      createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     allJobs.push(newJob);

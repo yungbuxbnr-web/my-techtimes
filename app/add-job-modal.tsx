@@ -28,7 +28,7 @@ export default function AddJobModal() {
   const [vehicleReg, setVehicleReg] = useState('');
   const [aw, setAw] = useState(0);
   const [notes, setNotes] = useState('');
-  const [vhcStatus, setVhcStatus] = useState<'GREEN' | 'AMBER' | 'RED' | 'N/A'>('N/A');
+  const [vhcStatus, setVhcStatus] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
   const [saving, setSaving] = useState(false);
   const [showAwPicker, setShowAwPicker] = useState(false);
   const [showVhcPicker, setShowVhcPicker] = useState(false);
@@ -39,7 +39,7 @@ export default function AddJobModal() {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
-  const vhcOptions: ('GREEN' | 'AMBER' | 'RED' | 'N/A')[] = ['N/A', 'GREEN', 'AMBER', 'RED'];
+  const vhcOptions: ('NONE' | 'GREEN' | 'ORANGE' | 'RED')[] = ['NONE', 'GREEN', 'ORANGE', 'RED'];
 
   const handleSave = async (saveAnother: boolean = false) => {
     console.log('AddJobModal: User tapped Save button, saveAnother:', saveAnother);
@@ -97,7 +97,7 @@ export default function AddJobModal() {
         setVehicleReg('');
         setAw(0);
         setNotes('');
-        setVhcStatus('N/A');
+        setVhcStatus('NONE');
         setJobDateTime(new Date());
       } else {
         // Close modal and go back
@@ -199,7 +199,7 @@ export default function AddJobModal() {
   const getVhcColor = (status: string) => {
     switch (status) {
       case 'GREEN': return '#4CAF50';
-      case 'AMBER': return '#FF9800';
+      case 'ORANGE': return '#FF9800';
       case 'RED': return '#f44336';
       default: return '#999';
     }

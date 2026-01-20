@@ -84,6 +84,15 @@ function groupDaysByMonth(days: string[]): Map<string, string[]> {
   return monthGroups;
 }
 
+// Helper to get VHC display HTML
+function getVhcDisplayHtml(vhcStatus?: string): string {
+  if (!vhcStatus || vhcStatus === 'NONE') return '-';
+  const vhcColor = vhcStatus === 'GREEN' ? '#4CAF50' : 
+                  vhcStatus === 'ORANGE' ? '#FF9800' : 
+                  vhcStatus === 'RED' ? '#f44336' : '#999';
+  return `<span style="color: ${vhcColor}; font-weight: bold;">● ${vhcStatus}</span>`;
+}
+
 // Generate PDF HTML with enhanced grouping
 function generatePdfHtml(
   jobs: Job[],
@@ -277,6 +286,7 @@ function generatePdfHtml(
         <tr>
           <td>${job.wipNumber}</td>
           <td>${workDone}</td>
+          <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
           <td>${job.aw}</td>
           <td>${hours.toFixed(2)}h</td>
         </tr>
@@ -323,6 +333,7 @@ function generatePdfHtml(
                 <tr>
                   <th>WIP Number</th>
                   <th>Work Done</th>
+                  <th>VHC</th>
                   <th>AW</th>
                   <th>Hours</th>
                 </tr>
@@ -333,10 +344,17 @@ function generatePdfHtml(
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
           const workDone = job.notes || job.vehicleReg;
+          const vhcColor = job.vhcStatus === 'GREEN' ? '#4CAF50' : 
+                          job.vhcStatus === 'ORANGE' ? '#FF9800' : 
+                          job.vhcStatus === 'RED' ? '#f44336' : '#999';
+          const vhcDisplay = job.vhcStatus && job.vhcStatus !== 'NONE' 
+            ? `<span style="color: ${vhcColor}; font-weight: bold;">● ${job.vhcStatus}</span>` 
+            : '-';
           html += `
             <tr>
               <td>${job.wipNumber}</td>
               <td>${workDone}</td>
+              <td>${vhcDisplay}</td>
               <td>${job.aw}</td>
               <td>${hours.toFixed(2)}h</td>
             </tr>
@@ -395,6 +413,7 @@ function generatePdfHtml(
                 <tr>
                   <th>WIP Number</th>
                   <th>Work Done</th>
+                  <th>VHC</th>
                   <th>AW</th>
                   <th>Hours</th>
                 </tr>
@@ -405,10 +424,17 @@ function generatePdfHtml(
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
           const workDone = job.notes || job.vehicleReg;
+          const vhcColor = job.vhcStatus === 'GREEN' ? '#4CAF50' : 
+                          job.vhcStatus === 'ORANGE' ? '#FF9800' : 
+                          job.vhcStatus === 'RED' ? '#f44336' : '#999';
+          const vhcDisplay = job.vhcStatus && job.vhcStatus !== 'NONE' 
+            ? `<span style="color: ${vhcColor}; font-weight: bold;">● ${job.vhcStatus}</span>` 
+            : '-';
           html += `
             <tr>
               <td>${job.wipNumber}</td>
               <td>${workDone}</td>
+              <td>${vhcDisplay}</td>
               <td>${job.aw}</td>
               <td>${hours.toFixed(2)}h</td>
             </tr>
@@ -469,6 +495,7 @@ function generatePdfHtml(
                 <tr>
                   <th>WIP Number</th>
                   <th>Work Done</th>
+                  <th>VHC</th>
                   <th>AW</th>
                   <th>Hours</th>
                 </tr>
@@ -479,10 +506,17 @@ function generatePdfHtml(
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
           const workDone = job.notes || job.vehicleReg;
+          const vhcColor = job.vhcStatus === 'GREEN' ? '#4CAF50' : 
+                          job.vhcStatus === 'ORANGE' ? '#FF9800' : 
+                          job.vhcStatus === 'RED' ? '#f44336' : '#999';
+          const vhcDisplay = job.vhcStatus && job.vhcStatus !== 'NONE' 
+            ? `<span style="color: ${vhcColor}; font-weight: bold;">● ${job.vhcStatus}</span>` 
+            : '-';
           html += `
             <tr>
               <td>${job.wipNumber}</td>
               <td>${workDone}</td>
+              <td>${vhcDisplay}</td>
               <td>${job.aw}</td>
               <td>${hours.toFixed(2)}h</td>
             </tr>
@@ -579,7 +613,7 @@ export async function exportToJson(jobs: Job[]): Promise<void> {
     jobs: jobs.map(job => ({
       wipNumber: job.wipNumber,
       vehicleReg: job.vehicleReg,
-      vhcStatus: job.vhcStatus || 'NONE',
+      vhcStatus: job.vhcStatus,
       description: job.notes || '',
       aws: job.aw,
       jobDateTime: job.createdAt, // ISO format: "2025-11-28T16:18:00"
@@ -642,14 +676,7 @@ export async function importFromJson(
       const awValue = job.aws !== undefined ? job.aws : job.aw;
       const notes = job.description !== undefined ? job.description : job.notes;
       const createdAt = job.jobDateTime !== undefined ? job.jobDateTime : job.createdAt;
-      let vhcStatus = job.vhcStatus || 'NONE';
-      
-      // Map vhcStatus from JSON format to internal format
-      if (vhcStatus === 'NONE') {
-        vhcStatus = 'N/A';
-      } else if (vhcStatus === 'ORANGE') {
-        vhcStatus = 'AMBER';
-      }
+      const vhcStatus = job.vhcStatus || 'NONE';
       
       // Validate required fields
       if (!job.wipNumber || !job.vehicleReg || awValue === undefined || !createdAt) {
@@ -659,13 +686,22 @@ export async function importFromJson(
         continue;
       }
       
+      // Validate vhcStatus
+      const validVhcStatuses = ['NONE', 'GREEN', 'ORANGE', 'RED'];
+      if (!validVhcStatuses.includes(vhcStatus)) {
+        results.skipped++;
+        results.errors.push(`Job ${i + 1}: Invalid vhcStatus "${vhcStatus}". Must be one of: NONE, GREEN, ORANGE, RED`);
+        console.warn('ExportUtils: Skipping job', i + 1, 'due to invalid vhcStatus:', vhcStatus);
+        continue;
+      }
+      
       // Create the job object in the format expected by the API
       const jobToImport = {
         wipNumber: job.wipNumber,
         vehicleReg: job.vehicleReg.toUpperCase(),
         aw: awValue,
         notes: notes || '',
-        vhcStatus: vhcStatus as 'GREEN' | 'AMBER' | 'RED' | 'N/A',
+        vhcStatus: vhcStatus as 'NONE' | 'GREEN' | 'ORANGE' | 'RED',
         createdAt: createdAt,
       };
       
