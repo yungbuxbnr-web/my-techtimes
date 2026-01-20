@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { workshopThemes } from '@/constants/Colors';
 import { ImageSourcePropType, Platform } from 'react-native';
@@ -63,18 +63,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
   const [overlayStrength, setOverlayStrengthState] = useState(0.35); // Default 35% for dark mode
   const [currentBackgroundIndex, setCurrentBackgroundIndex] = useState(0);
-  const [initialized, setInitialized] = useState(false);
 
-  useEffect(() => {
-    if (!initialized) {
-      console.log('ThemeProvider: Loading theme settings');
-      loadThemeSettings();
-      setInitialized(true);
-    }
-  }, [initialized]);
-
-  const loadThemeSettings = async () => {
+  const loadThemeSettings = useCallback(async () => {
     try {
+      console.log('ThemeProvider: Loading theme settings');
       const savedTheme = await getSecureItem('themeMode');
       const savedOverlay = await getSecureItem('overlayStrength');
       const savedBgIndex = await getSecureItem('backgroundIndex');
@@ -97,9 +89,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('ThemeProvider: Error loading theme settings:', error);
     }
-  };
+  }, []);
 
-  const toggleTheme = async () => {
+  useEffect(() => {
+    loadThemeSettings();
+  }, [loadThemeSettings]);
+
+  const toggleTheme = useCallback(async () => {
     const newTheme = themeMode === 'dark' ? 'light' : 'dark';
     console.log('ThemeProvider: Toggling theme to:', newTheme);
     setThemeMode(newTheme);
@@ -114,9 +110,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('ThemeProvider: Error saving theme:', error);
     }
-  };
+  }, [themeMode]);
 
-  const setOverlayStrength = async (value: number) => {
+  const setOverlayStrength = useCallback(async (value: number) => {
     console.log('ThemeProvider: Setting overlay strength to:', value);
     setOverlayStrengthState(value);
     try {
@@ -124,9 +120,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('ThemeProvider: Error saving overlay strength:', error);
     }
-  };
+  }, []);
 
-  const rotateBackground = async () => {
+  const rotateBackground = useCallback(async () => {
     const backgrounds = themeMode === 'dark' ? darkWorkshopBackgrounds : lightWorkshopBackgrounds;
     const newIndex = (currentBackgroundIndex + 1) % backgrounds.length;
     console.log('ThemeProvider: Rotating background to index:', newIndex);
@@ -136,7 +132,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('ThemeProvider: Error saving background index:', error);
     }
-  };
+  }, [themeMode, currentBackgroundIndex]);
 
   const theme = workshopThemes[themeMode];
   const isDarkMode = themeMode === 'dark';

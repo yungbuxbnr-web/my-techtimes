@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { AppState, AppStateStatus, Platform } from 'react-native';
@@ -59,11 +59,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [biometricsEnabled, setBiometricsEnabledState] = useState(false);
   const [lockOnResume, setLockOnResumeState] = useState(true);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
-  const [appState, setAppState] = useState(AppState.currentState);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  
+  // Use refs to track current values without causing re-renders
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  const lockOnResumeRef = useRef(lockOnResume);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+  
+  useEffect(() => {
+    lockOnResumeRef.current = lockOnResume;
+  }, [lockOnResume]);
 
-  const checkBiometricsAvailability = async () => {
+  const checkBiometricsAvailability = useCallback(async () => {
     try {
       console.log('AuthContext: Checking biometrics availability');
       
@@ -81,17 +92,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('AuthContext: Biometrics available:', available);
       
       // If biometrics become unavailable, disable the setting
-      if (!available && biometricsEnabled) {
-        console.log('AuthContext: Biometrics no longer available, disabling');
-        await setBiometricsEnabled(false);
+      if (!available) {
+        const currentBiometrics = await getSecureItem(BIOMETRICS_KEY);
+        if (currentBiometrics === 'true') {
+          console.log('AuthContext: Biometrics no longer available, disabling');
+          await setSecureItem(BIOMETRICS_KEY, 'false');
+          setBiometricsEnabledState(false);
+        }
       }
     } catch (error) {
       console.error('AuthContext: Error checking biometrics:', error);
       setBiometricsAvailable(false);
     }
-  };
+  }, []);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       console.log('AuthContext: Loading settings');
       const biometrics = await getSecureItem(BIOMETRICS_KEY);
@@ -103,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('AuthContext: Failed to load settings:', error);
     }
-  };
+  }, []);
 
   const checkSetupStatus = useCallback(async (): Promise<boolean> => {
     try {
@@ -134,33 +149,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [checkSetupStatus]);
+  }, [checkBiometricsAvailability, loadSettings, checkSetupStatus]);
 
-  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
-    if (appState.match(/inactive|background/) && nextAppState === 'active') {
-      if (lockOnResume && isAuthenticated) {
-        console.log('AuthContext: App resumed, locking due to lockOnResume setting');
-        setIsAuthenticated(false);
+  // Initialize auth on mount
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
+  // Handle app state changes using refs to avoid dependency issues
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      const currentAppState = AppState.currentState;
+      
+      if (currentAppState.match(/inactive|background/) && nextAppState === 'active') {
+        if (lockOnResumeRef.current && isAuthenticatedRef.current) {
+          console.log('AuthContext: App resumed, locking due to lockOnResume setting');
+          setIsAuthenticated(false);
+        }
       }
-    }
-    setAppState(nextAppState);
-  }, [appState, lockOnResume, isAuthenticated]);
+    };
 
-  useEffect(() => {
-    if (!initialized) {
-      initializeAuth();
-      setInitialized(true);
-    }
-  }, [initialized, initializeAuth]);
-
-  useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
     return () => {
       subscription.remove();
     };
-  }, [handleAppStateChange]);
+  }, []); // Empty dependency array - uses refs instead
 
-  const login = async (pin: string): Promise<boolean> => {
+  const login = useCallback(async (pin: string): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting login with PIN');
       const storedPin = await getSecureItem(PIN_KEY);
@@ -182,14 +198,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('AuthContext: Login failed:', error);
       return false;
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     console.log('AuthContext: Logging out');
     setIsAuthenticated(false);
-  };
+  }, []);
 
-  const setBiometricsEnabled = async (enabled: boolean): Promise<boolean> => {
+  const setBiometricsEnabled = useCallback(async (enabled: boolean): Promise<boolean> => {
     try {
       console.log('AuthContext: Setting biometrics enabled:', enabled);
       
@@ -207,9 +223,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('AuthContext: Failed to save biometrics setting:', error);
       return false;
     }
-  };
+  }, [biometricsAvailable]);
 
-  const setLockOnResume = async (enabled: boolean) => {
+  const setLockOnResume = useCallback(async (enabled: boolean) => {
     try {
       console.log('AuthContext: Setting lock on resume:', enabled);
       await setSecureItem(LOCK_ON_RESUME_KEY, enabled.toString());
@@ -217,9 +233,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('AuthContext: Failed to save lock on resume setting:', error);
     }
-  };
+  }, []);
 
-  const changePin = async (currentPin: string, newPin: string): Promise<boolean> => {
+  const changePin = useCallback(async (currentPin: string, newPin: string): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting to change PIN');
       const storedPin = await getSecureItem(PIN_KEY);
@@ -236,9 +252,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('AuthContext: Failed to change PIN:', error);
       return false;
     }
-  };
+  }, []);
 
-  const authenticateWithBiometrics = async (): Promise<boolean> => {
+  const authenticateWithBiometrics = useCallback(async (): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting biometric authentication');
       
@@ -265,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('AuthContext: Error with biometric authentication:', error);
       return false;
     }
-  };
+  }, [biometricsAvailable]);
 
   return (
     <AuthContext.Provider
