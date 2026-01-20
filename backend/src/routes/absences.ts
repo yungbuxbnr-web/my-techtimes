@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, gte, lte } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
@@ -7,12 +7,17 @@ function validateMonthFormat(month: string): boolean {
   return /^\d{4}-\d{2}$/.test(month);
 }
 
+function parseMonthString(monthStr: string): { year: number; month: number } {
+  const [year, month] = monthStr.split('-').map(Number);
+  return { year, month: month - 1 }; // month is 0-indexed for Date
+}
+
 export function registerAbsenceRoutes(app: App) {
   const requireAuth = app.requireAuth();
   const fastify = app.fastify;
 
-  // GET /api/absences/:month - Get all absences for a month
-  fastify.get(
+  // GET /api/absences/:month - Get absences for a month
+  fastify.get<{ Params: { month: string } }>(
     '/api/absences/:month',
     {
       schema: {
@@ -25,29 +30,13 @@ export function registerAbsenceRoutes(app: App) {
           },
           required: ['month'],
         },
-        response: {
-          200: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                month: { type: 'string' },
-                daysCount: { type: 'string' },
-                isHalfDay: { type: 'boolean' },
-                deductionType: { type: 'string' },
-                createdAt: { type: 'string' },
-              },
-            },
-          },
-        },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { month } = request.params as { month: string };
+      const { month } = request.params;
 
       app.logger.info({ month }, 'Fetching absences for month');
 
@@ -59,14 +48,29 @@ export function registerAbsenceRoutes(app: App) {
       }
 
       try {
+        const { year, month: monthNum } = parseMonthString(month);
+        const startDateStr = `${year}-${String(monthNum + 1).padStart(2, '0')}-01`;
+        const endDateStr = `${year}-${String(monthNum + 2).padStart(2, '0')}-01`;
+
         const absences = await app.db
           .select()
           .from(schema.absences)
-          .where(eq(schema.absences.month, month))
-          .orderBy(desc(schema.absences.createdAt));
+          .where(
+            and(
+              gte(schema.absences.absenceDate, startDateStr),
+              lte(schema.absences.absenceDate, endDateStr)
+            )
+          )
+          .orderBy(desc(schema.absences.absenceDate));
 
-        app.logger.info({ month, count: absences.length }, 'Absences fetched successfully');
-        return absences;
+        const response = absences.map((absence) => ({
+          ...absence,
+          daysCount: absence.daysCount ? parseFloat(absence.daysCount.toString()) : null,
+          customHours: absence.customHours ? parseFloat(absence.customHours.toString()) : null,
+        }));
+
+        app.logger.info({ month, count: absences.length }, 'Absences fetched');
+        return response;
       } catch (error) {
         app.logger.error({ err: error, month }, 'Failed to fetch absences');
         throw error;
@@ -75,7 +79,7 @@ export function registerAbsenceRoutes(app: App) {
   );
 
   // POST /api/absences - Create absence
-  fastify.post(
+  fastify.post<{ Body: any }>(
     '/api/absences',
     {
       schema: {
@@ -85,15 +89,14 @@ export function registerAbsenceRoutes(app: App) {
           type: 'object',
           properties: {
             month: { type: 'string' },
+            absenceDate: { type: 'string' },
             daysCount: { type: 'number' },
             isHalfDay: { type: 'boolean' },
+            customHours: { type: 'number' },
             deductionType: { type: 'string' },
+            note: { type: 'string' },
           },
-          required: ['month', 'daysCount', 'deductionType'],
-        },
-        response: {
-          200: { type: 'object' },
-          400: { type: 'object' },
+          required: ['month', 'absenceDate', 'deductionType'],
         },
       },
     },
@@ -101,14 +104,19 @@ export function registerAbsenceRoutes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { month, daysCount, isHalfDay, deductionType } = request.body as {
+      const { month, absenceDate, daysCount, isHalfDay, customHours, deductionType: deductionTypeInput, note } = request.body as {
         month: string;
-        daysCount: number;
+        absenceDate: string;
+        daysCount?: number;
         isHalfDay?: boolean;
-        deductionType: 'target' | 'available';
+        customHours?: number;
+        deductionType: string;
+        note?: string;
       };
 
-      app.logger.info({ month, daysCount, deductionType }, 'Creating absence');
+      const deductionType = deductionTypeInput as 'MONTHLY_TARGET' | 'AVAILABLE_HOURS';
+
+      app.logger.info({ month, deductionType }, 'Creating absence');
 
       // Validation
       if (!validateMonthFormat(month)) {
@@ -118,17 +126,28 @@ export function registerAbsenceRoutes(app: App) {
         });
       }
 
-      if (!daysCount || daysCount <= 0) {
-        app.logger.warn({ daysCount }, 'Invalid days count');
+      if (!['MONTHLY_TARGET', 'AVAILABLE_HOURS'].includes(deductionType)) {
+        app.logger.warn({ deductionType }, 'Invalid deduction type');
         return reply.status(400).send({
-          error: 'Days count must be greater than 0',
+          error: 'Deduction type must be either "MONTHLY_TARGET" or "AVAILABLE_HOURS"',
         });
       }
 
-      if (!['target', 'available'].includes(deductionType)) {
-        app.logger.warn({ deductionType }, 'Invalid deduction type');
+      // Validate that either (daysCount + isHalfDay) OR customHours is provided
+      const hasDaysCount = daysCount !== undefined && daysCount !== null;
+      const hasCustomHours = customHours !== undefined && customHours !== null;
+
+      if (!hasDaysCount && !hasCustomHours) {
+        app.logger.warn({}, 'Either daysCount or customHours must be provided');
         return reply.status(400).send({
-          error: 'Deduction type must be either "target" or "available"',
+          error: 'Either daysCount (with optional isHalfDay) or customHours must be provided',
+        });
+      }
+
+      if (hasDaysCount && hasCustomHours) {
+        app.logger.warn({}, 'Cannot provide both daysCount and customHours');
+        return reply.status(400).send({
+          error: 'Cannot provide both daysCount and customHours - use one or the other',
         });
       }
 
@@ -137,23 +156,110 @@ export function registerAbsenceRoutes(app: App) {
           .insert(schema.absences)
           .values({
             month,
-            daysCount: daysCount.toString(),
+            absenceDate: absenceDate,
+            daysCount: hasDaysCount ? daysCount!.toString() : null,
             isHalfDay: isHalfDay ?? false,
+            customHours: hasCustomHours ? customHours!.toString() : null,
             deductionType,
+            note: note || null,
           })
           .returning();
 
-        app.logger.info({ absenceId: absence.id }, 'Absence created successfully');
-        return absence;
+        app.logger.info({ absenceId: absence.id }, 'Absence created');
+
+        return {
+          ...absence,
+          daysCount: absence.daysCount ? parseFloat(absence.daysCount.toString()) : null,
+          customHours: absence.customHours ? parseFloat(absence.customHours.toString()) : null,
+        };
       } catch (error) {
-        app.logger.error({ err: error, month, daysCount }, 'Failed to create absence');
+        app.logger.error({ err: error }, 'Failed to create absence');
+        throw error;
+      }
+    }
+  );
+
+  // PUT /api/absences/:id - Update absence
+  fastify.put<{ Params: { id: string }; Body: any }>(
+    '/api/absences/:id',
+    {
+      schema: {
+        description: 'Update absence',
+        tags: ['absences'],
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            daysCount: { type: 'number' },
+            isHalfDay: { type: 'boolean' },
+            customHours: { type: 'number' },
+            note: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params as { id: string };
+      const { daysCount, isHalfDay, customHours, note } = request.body as {
+        daysCount?: number;
+        isHalfDay?: boolean;
+        customHours?: number;
+        note?: string;
+      };
+
+      app.logger.info({ absenceId: id }, 'Updating absence');
+
+      try {
+        const updateData: Record<string, any> = {};
+
+        if (daysCount !== undefined) {
+          updateData.daysCount = daysCount ? daysCount.toString() : null;
+        }
+        if (isHalfDay !== undefined) {
+          updateData.isHalfDay = isHalfDay;
+        }
+        if (customHours !== undefined) {
+          updateData.customHours = customHours ? customHours.toString() : null;
+        }
+        if (note !== undefined) {
+          updateData.note = note || null;
+        }
+
+        const [absence] = await app.db
+          .update(schema.absences)
+          .set(updateData)
+          .where(eq(schema.absences.id, id))
+          .returning();
+
+        if (!absence) {
+          app.logger.warn({ absenceId: id }, 'Absence not found for update');
+          return reply.status(404).send({ error: 'Absence not found' });
+        }
+
+        app.logger.info({ absenceId: id }, 'Absence updated');
+
+        return {
+          ...absence,
+          daysCount: absence.daysCount ? parseFloat(absence.daysCount.toString()) : null,
+          customHours: absence.customHours ? parseFloat(absence.customHours.toString()) : null,
+        };
+      } catch (error) {
+        app.logger.error({ err: error }, 'Failed to update absence');
         throw error;
       }
     }
   );
 
   // DELETE /api/absences/:id - Delete absence
-  fastify.delete(
+  fastify.delete<{ Params: { id: string } }>(
     '/api/absences/:id',
     {
       schema: {
@@ -164,24 +270,14 @@ export function registerAbsenceRoutes(app: App) {
           properties: {
             id: { type: 'string' },
           },
-          required: ['id'],
-        },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-            },
-          },
-          404: { type: 'object' },
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { id } = request.params as { id: string };
+      const { id } = request.params;
 
       app.logger.info({ absenceId: id }, 'Deleting absence');
 
@@ -193,15 +289,13 @@ export function registerAbsenceRoutes(app: App) {
 
         if (result.length === 0) {
           app.logger.warn({ absenceId: id }, 'Absence not found for deletion');
-          return reply.status(404).send({
-            error: 'Absence not found',
-          });
+          return reply.status(404).send({ error: 'Absence not found' });
         }
 
-        app.logger.info({ absenceId: id }, 'Absence deleted successfully');
+        app.logger.info({ absenceId: id }, 'Absence deleted');
         return { success: true };
       } catch (error) {
-        app.logger.error({ err: error, absenceId: id }, 'Failed to delete absence');
+        app.logger.error({ err: error }, 'Failed to delete absence');
         throw error;
       }
     }

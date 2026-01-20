@@ -1,31 +1,22 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, desc, gte, lte, and, or, ilike } from 'drizzle-orm';
+import type { FastifyRequest, FastifyReply } from 'fastify';
+import { eq, desc, gte, lte, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
-// Validation helpers
-function validateWipNumber(wipNumber: string): boolean {
-  return /^\d{5}$/.test(wipNumber);
+function convertAwToHours(aw: string | number): number {
+  const awNum = typeof aw === 'string' ? parseFloat(aw) : aw;
+  return Math.round((awNum * 5 / 60) * 100) / 100;
 }
 
-function validateAwValue(aw: number): boolean {
-  return typeof aw === 'number' && aw >= 0 && aw <= 100;
-}
-
-function convertAwToTime(aw: number): { minutes: number; hours: number } {
-  const minutes = aw * 5;
-  const hours = Math.round((minutes / 60) * 100) / 100;
-  return { minutes, hours };
-}
-
-interface JobWithTime {
+interface JobResponse {
   id: string;
   wipNumber: string;
   vehicleReg: string;
   aw: number;
   notes: string | null;
+  vhcStatus: string;
   createdAt: Date;
-  minutes: number;
+  updatedAt: Date;
   hours: number;
 }
 
@@ -33,8 +24,8 @@ export function registerJobRoutes(app: App) {
   const requireAuth = app.requireAuth();
   const fastify = app.fastify;
 
-  // POST /api/jobs - Create a new job record
-  fastify.post(
+  // POST /api/jobs - Create a new job
+  fastify.post<{ Body: any }>(
     '/api/jobs',
     {
       schema: {
@@ -47,12 +38,10 @@ export function registerJobRoutes(app: App) {
             vehicleReg: { type: 'string' },
             aw: { type: 'number' },
             notes: { type: 'string' },
+            vhcStatus: { type: 'string' },
+            createdAt: { type: 'string' },
           },
           required: ['wipNumber', 'vehicleReg', 'aw'],
-        },
-        response: {
-          200: { type: 'object' },
-          400: { type: 'object' },
         },
       },
     },
@@ -60,94 +49,60 @@ export function registerJobRoutes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { wipNumber, vehicleReg, aw, notes } = request.body as {
+      const { wipNumber, vehicleReg, aw, notes, vhcStatus: vhcStatusInput, createdAt } = request.body as {
         wipNumber: string;
         vehicleReg: string;
         aw: number;
         notes?: string;
+        vhcStatus?: string;
+        createdAt?: string;
       };
+
+      const vhcStatus = (vhcStatusInput || 'N/A') as 'GREEN' | 'AMBER' | 'RED' | 'N/A';
 
       app.logger.info({ wipNumber, vehicleReg, aw }, 'Creating job');
 
-      // Validation
-      if (!validateWipNumber(wipNumber)) {
-        app.logger.warn({ wipNumber }, 'Invalid WIP number format');
-        return reply.status(400).send({
-          error: 'WIP number must be exactly 5 digits',
-        });
-      }
-
-      if (!vehicleReg || typeof vehicleReg !== 'string') {
-        app.logger.warn({ vehicleReg }, 'Invalid vehicle registration');
-        return reply.status(400).send({
-          error: 'Vehicle registration is required',
-        });
-      }
-
-      if (!validateAwValue(aw)) {
-        app.logger.warn({ aw }, 'Invalid AW value');
-        return reply.status(400).send({
-          error: 'AW value must be between 0 and 100',
-        });
-      }
-
       try {
+        const jobDate = createdAt ? new Date(createdAt) : new Date();
+
         const [job] = await app.db
           .insert(schema.jobs)
           .values({
             wipNumber,
             vehicleReg: vehicleReg.toUpperCase(),
-            aw,
+            aw: aw.toString(),
             notes: notes || null,
+            vhcStatus,
+            createdAt: jobDate,
           })
           .returning();
 
-        const time = convertAwToTime(job.aw);
-        const jobWithTime: JobWithTime = {
+        const response: JobResponse = {
           ...job,
-          ...time,
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
         };
 
         app.logger.info({ jobId: job.id }, 'Job created successfully');
-        return jobWithTime;
+        return response;
       } catch (error) {
-        app.logger.error({ err: error, wipNumber, vehicleReg }, 'Failed to create job');
+        app.logger.error({ err: error }, 'Failed to create job');
         throw error;
       }
     }
   );
 
-  // GET /api/jobs - List all job records with search and filtering
-  fastify.get(
+  // GET /api/jobs - List all jobs with optional month filter
+  fastify.get<{ Querystring: any }>(
     '/api/jobs',
     {
       schema: {
-        description: 'Get jobs with search and filtering',
+        description: 'Get jobs with optional month filter',
         tags: ['jobs'],
         querystring: {
           type: 'object',
           properties: {
-            search: { type: 'string' },
-            wipNumber: { type: 'string' },
-            vehicleReg: { type: 'string' },
             month: { type: 'string' },
-          },
-        },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              jobs: { type: 'array' },
-              count: { type: 'number' },
-              summary: {
-                type: 'object',
-                properties: {
-                  totalJobs: { type: 'number' },
-                  totalAw: { type: 'number' },
-                  totalHours: { type: 'number' },
-                },
-              },
-            },
           },
         },
       },
@@ -156,89 +111,47 @@ export function registerJobRoutes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { search, wipNumber, vehicleReg, month } = request.query as {
-        search?: string;
-        wipNumber?: string;
-        vehicleReg?: string;
-        month?: string;
-      };
-
-      app.logger.info({ search, wipNumber, vehicleReg, month }, 'Fetching jobs with filters');
+      const { month } = request.query as { month?: string };
+      app.logger.info({ month }, 'Fetching jobs');
 
       try {
-        // Build where conditions
-        const conditions: any[] = [];
-
-        if (wipNumber) {
-          conditions.push(eq(schema.jobs.wipNumber, wipNumber));
-        }
-
-        if (vehicleReg) {
-          conditions.push(eq(schema.jobs.vehicleReg, vehicleReg.toUpperCase()));
-        }
-
-        if (search) {
-          conditions.push(
-            or(
-              ilike(schema.jobs.wipNumber, `%${search}%`),
-              ilike(schema.jobs.vehicleReg, `%${search}%`),
-              ilike(schema.jobs.notes, `%${search}%`)
-            )
-          );
-        }
+        let jobs: any[];
 
         if (month) {
-          // Parse YYYY-MM format
           const [year, monthNum] = month.split('-');
-          if (year && monthNum) {
-            const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
-            const endDate = new Date(parseInt(year), parseInt(monthNum), 1);
-            conditions.push(
-              and(
-                gte(schema.jobs.createdAt, startDate),
-                lte(schema.jobs.createdAt, endDate)
-              )
-            );
-          }
+          const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+          const endDate = new Date(parseInt(year), parseInt(monthNum), 1);
+
+          jobs = await app.db
+            .select()
+            .from(schema.jobs)
+            .where(and(gte(schema.jobs.createdAt, startDate), lte(schema.jobs.createdAt, endDate)))
+            .orderBy(desc(schema.jobs.createdAt));
+        } else {
+          jobs = await app.db
+            .select()
+            .from(schema.jobs)
+            .orderBy(desc(schema.jobs.createdAt));
         }
 
-        // Execute query with or without filters
-        const jobs: any[] = conditions.length > 0
-          ? await app.db
-              .select()
-              .from(schema.jobs)
-              .where(and(...conditions))
-              .orderBy(desc(schema.jobs.createdAt))
-          : await app.db
-              .select()
-              .from(schema.jobs)
-              .orderBy(desc(schema.jobs.createdAt));
+        const totalAw = jobs.reduce((sum, job) => sum + parseFloat(job.aw.toString()), 0);
+        const totalHours = Math.round((totalAw * 5 / 60) * 100) / 100;
 
-        // Calculate summary
-        const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
-        const totalMinutes = totalAw * 5;
-        const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+        const jobsWithHours: JobResponse[] = jobs.map((job) => ({
+          ...job,
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
+        }));
 
-        const jobsWithTime: JobWithTime[] = jobs.map((job) => {
-          const time = convertAwToTime(job.aw);
-          return {
-            ...job,
-            ...time,
-          };
-        });
-
-        const response = {
-          jobs: jobsWithTime,
-          count: jobs.length,
-          summary: {
-            totalJobs: jobs.length,
+        app.logger.info({ count: jobs.length }, 'Jobs fetched successfully');
+        return {
+          jobs: jobsWithHours,
+          totals: {
+            jobCount: jobs.length,
             totalAw,
-            totalHours,
+            totalTime: totalHours,
           },
         };
-
-        app.logger.info({ count: jobs.length, totalAw }, 'Jobs fetched successfully');
-        return response;
       } catch (error) {
         app.logger.error({ err: error }, 'Failed to fetch jobs');
         throw error;
@@ -246,8 +159,8 @@ export function registerJobRoutes(app: App) {
     }
   );
 
-  // GET /api/jobs/:id - Get single job record
-  fastify.get(
+  // GET /api/jobs/:id - Get single job
+  fastify.get<{ Params: { id: string } }>(
     '/api/jobs/:id',
     {
       schema: {
@@ -258,20 +171,14 @@ export function registerJobRoutes(app: App) {
           properties: {
             id: { type: 'string' },
           },
-          required: ['id'],
-        },
-        response: {
-          200: { type: 'object' },
-          404: { type: 'object' },
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { id } = request.params as { id: string };
-
+      const { id } = request.params;
       app.logger.info({ jobId: id }, 'Fetching single job');
 
       try {
@@ -282,48 +189,47 @@ export function registerJobRoutes(app: App) {
 
         if (!job) {
           app.logger.warn({ jobId: id }, 'Job not found');
-          return reply.status(404).send({
-            error: 'Job not found',
-          });
+          return reply.status(404).send({ error: 'Job not found' });
         }
 
-        const time = convertAwToTime(job.aw);
-        const jobWithTime: JobWithTime = {
+        const response: JobResponse = {
           ...job,
-          ...time,
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
         };
 
         app.logger.info({ jobId: id }, 'Job fetched successfully');
-        return jobWithTime;
+        return response;
       } catch (error) {
-        app.logger.error({ err: error, jobId: id }, 'Failed to fetch job');
+        app.logger.error({ err: error }, 'Failed to fetch job');
         throw error;
       }
     }
   );
 
-  // DELETE /api/jobs/:id - Delete a job record
-  fastify.delete(
+  // PUT /api/jobs/:id - Update job
+  fastify.put<{ Params: { id: string }; Body: any }>(
     '/api/jobs/:id',
     {
       schema: {
-        description: 'Delete a job',
+        description: 'Update job',
         tags: ['jobs'],
         params: {
           type: 'object',
           properties: {
             id: { type: 'string' },
           },
-          required: ['id'],
         },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-            },
+        body: {
+          type: 'object',
+          properties: {
+            wipNumber: { type: 'string' },
+            vehicleReg: { type: 'string' },
+            aw: { type: 'number' },
+            notes: { type: 'string' },
+            vhcStatus: { type: 'string' },
+            createdAt: { type: 'string' },
           },
-          404: { type: 'object' },
         },
       },
     },
@@ -332,7 +238,74 @@ export function registerJobRoutes(app: App) {
       if (!session) return;
 
       const { id } = request.params as { id: string };
+      const { wipNumber, vehicleReg, aw, notes, vhcStatus: vhcStatusInput, createdAt } = request.body as {
+        wipNumber?: string;
+        vehicleReg?: string;
+        aw?: number;
+        notes?: string;
+        vhcStatus?: string;
+        createdAt?: string;
+      };
 
+      const vhcStatus = vhcStatusInput as 'GREEN' | 'AMBER' | 'RED' | 'N/A' | undefined;
+
+      app.logger.info({ jobId: id }, 'Updating job');
+
+      try {
+        const updateData: Record<string, any> = {};
+        if (wipNumber !== undefined) updateData.wipNumber = wipNumber;
+        if (vehicleReg !== undefined) updateData.vehicleReg = vehicleReg.toUpperCase();
+        if (aw !== undefined) updateData.aw = aw.toString();
+        if (notes !== undefined) updateData.notes = notes || null;
+        if (vhcStatus !== undefined && vhcStatus) updateData.vhcStatus = vhcStatus;
+        if (createdAt !== undefined) updateData.createdAt = new Date(createdAt);
+
+        const [job] = await app.db
+          .update(schema.jobs)
+          .set(updateData)
+          .where(eq(schema.jobs.id, id))
+          .returning();
+
+        if (!job) {
+          app.logger.warn({ jobId: id }, 'Job not found for update');
+          return reply.status(404).send({ error: 'Job not found' });
+        }
+
+        const response: JobResponse = {
+          ...job,
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
+        };
+
+        app.logger.info({ jobId: id }, 'Job updated successfully');
+        return response;
+      } catch (error) {
+        app.logger.error({ err: error }, 'Failed to update job');
+        throw error;
+      }
+    }
+  );
+
+  // DELETE /api/jobs/:id - Delete job
+  fastify.delete<{ Params: { id: string } }>(
+    '/api/jobs/:id',
+    {
+      schema: {
+        description: 'Delete job',
+        tags: ['jobs'],
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
       app.logger.info({ jobId: id }, 'Deleting job');
 
       try {
@@ -343,40 +316,33 @@ export function registerJobRoutes(app: App) {
 
         if (result.length === 0) {
           app.logger.warn({ jobId: id }, 'Job not found for deletion');
-          return reply.status(404).send({
-            error: 'Job not found',
-          });
+          return reply.status(404).send({ error: 'Job not found' });
         }
 
         app.logger.info({ jobId: id }, 'Job deleted successfully');
         return { success: true };
       } catch (error) {
-        app.logger.error({ err: error, jobId: id }, 'Failed to delete job');
+        app.logger.error({ err: error }, 'Failed to delete job');
         throw error;
       }
     }
   );
 
-  // GET /api/jobs/today - Returns jobs from today only
+  // GET /api/jobs/today - Jobs for current day
   fastify.get(
     '/api/jobs/today',
     {
       schema: {
-        description: 'Get jobs from today',
+        description: 'Get today jobs',
         tags: ['jobs'],
-        response: {
-          200: {
-            type: 'array',
-            items: { type: 'object' },
-          },
-        },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      app.logger.info({}, 'Fetching jobs for today');
+      app.logger.info({}, 'Fetching today jobs');
+
       try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -389,13 +355,24 @@ export function registerJobRoutes(app: App) {
           .where(and(gte(schema.jobs.createdAt, today), lte(schema.jobs.createdAt, tomorrow)))
           .orderBy(desc(schema.jobs.createdAt));
 
-        const jobsWithTime = jobs.map((job) => ({
+        const totalAw = jobs.reduce((sum, job) => sum + parseFloat(job.aw.toString()), 0);
+        const totalHours = Math.round((totalAw * 5 / 60) * 100) / 100;
+
+        const jobsWithHours = jobs.map((job) => ({
           ...job,
-          ...convertAwToTime(job.aw),
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
         }));
 
-        app.logger.info({ jobCount: jobs.length }, 'Today jobs fetched successfully');
-        return jobsWithTime;
+        app.logger.info({ count: jobs.length }, 'Today jobs fetched');
+        return {
+          jobs: jobsWithHours,
+          totals: {
+            jobCount: jobs.length,
+            totalAw,
+            totalTime: totalHours,
+          },
+        };
       } catch (error) {
         app.logger.error({ err: error }, 'Failed to fetch today jobs');
         throw error;
@@ -403,26 +380,21 @@ export function registerJobRoutes(app: App) {
     }
   );
 
-  // GET /api/jobs/week - Returns jobs from current week
+  // GET /api/jobs/week - Jobs for current week
   fastify.get(
     '/api/jobs/week',
     {
       schema: {
-        description: 'Get jobs from current week',
+        description: 'Get week jobs',
         tags: ['jobs'],
-        response: {
-          200: {
-            type: 'array',
-            items: { type: 'object' },
-          },
-        },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      app.logger.info({}, 'Fetching jobs for current week');
+      app.logger.info({}, 'Fetching week jobs');
+
       try {
         const today = new Date();
         const dayOfWeek = today.getDay();
@@ -439,13 +411,24 @@ export function registerJobRoutes(app: App) {
           .where(and(gte(schema.jobs.createdAt, startOfWeek), lte(schema.jobs.createdAt, endOfWeek)))
           .orderBy(desc(schema.jobs.createdAt));
 
-        const jobsWithTime = jobs.map((job) => ({
+        const totalAw = jobs.reduce((sum, job) => sum + parseFloat(job.aw.toString()), 0);
+        const totalHours = Math.round((totalAw * 5 / 60) * 100) / 100;
+
+        const jobsWithHours = jobs.map((job) => ({
           ...job,
-          ...convertAwToTime(job.aw),
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
         }));
 
-        app.logger.info({ jobCount: jobs.length }, 'Week jobs fetched successfully');
-        return jobsWithTime;
+        app.logger.info({ count: jobs.length }, 'Week jobs fetched');
+        return {
+          jobs: jobsWithHours,
+          totals: {
+            jobCount: jobs.length,
+            totalAw,
+            totalTime: totalHours,
+          },
+        };
       } catch (error) {
         app.logger.error({ err: error }, 'Failed to fetch week jobs');
         throw error;
@@ -453,86 +436,33 @@ export function registerJobRoutes(app: App) {
     }
   );
 
-  // GET /api/jobs/month - Returns jobs from current month
-  fastify.get(
+  // GET /api/jobs/month - Jobs for specified month
+  fastify.get<{ Querystring: { month: string } }>(
     '/api/jobs/month',
     {
       schema: {
-        description: 'Get jobs from current month',
-        tags: ['jobs'],
-        response: {
-          200: {
-            type: 'array',
-            items: { type: 'object' },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const session = await requireAuth(request, reply);
-      if (!session) return;
-
-      app.logger.info({}, 'Fetching jobs for current month');
-      try {
-        const today = new Date();
-        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-
-        const jobs = await app.db
-          .select()
-          .from(schema.jobs)
-          .where(and(gte(schema.jobs.createdAt, startOfMonth), lte(schema.jobs.createdAt, endOfMonth)))
-          .orderBy(desc(schema.jobs.createdAt));
-
-        const jobsWithTime = jobs.map((job) => ({
-          ...job,
-          ...convertAwToTime(job.aw),
-        }));
-
-        app.logger.info({ jobCount: jobs.length }, 'Month jobs fetched successfully');
-        return jobsWithTime;
-      } catch (error) {
-        app.logger.error({ err: error }, 'Failed to fetch month jobs');
-        throw error;
-      }
-    }
-  );
-
-  // GET /api/jobs/range?start=YYYY-MM-DD&end=YYYY-MM-DD - Returns jobs in date range
-  fastify.get(
-    '/api/jobs/range',
-    {
-      schema: {
-        description: 'Get jobs in date range',
+        description: 'Get month jobs',
         tags: ['jobs'],
         querystring: {
           type: 'object',
           properties: {
-            start: { type: 'string' },
-            end: { type: 'string' },
+            month: { type: 'string' },
           },
-          required: ['start', 'end'],
-        },
-        response: {
-          200: {
-            type: 'array',
-            items: { type: 'object' },
-          },
+          required: ['month'],
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { start, end } = request.query as { start: string; end: string };
+      const { month } = request.query;
+      app.logger.info({ month }, 'Fetching month jobs');
 
-      app.logger.info({ start, end }, 'Fetching jobs for date range');
       try {
-        const startDate = new Date(start);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(end);
-        endDate.setHours(23, 59, 59, 999);
+        const [year, monthNum] = month.split('-');
+        const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const endDate = new Date(parseInt(year), parseInt(monthNum), 1);
 
         const jobs = await app.db
           .select()
@@ -540,116 +470,70 @@ export function registerJobRoutes(app: App) {
           .where(and(gte(schema.jobs.createdAt, startDate), lte(schema.jobs.createdAt, endDate)))
           .orderBy(desc(schema.jobs.createdAt));
 
-        const jobsWithTime = jobs.map((job) => ({
+        const totalAw = jobs.reduce((sum, job) => sum + parseFloat(job.aw.toString()), 0);
+        const totalHours = Math.round((totalAw * 5 / 60) * 100) / 100;
+
+        const jobsWithHours = jobs.map((job) => ({
           ...job,
-          ...convertAwToTime(job.aw),
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
         }));
 
-        app.logger.info({ jobCount: jobs.length }, 'Range jobs fetched successfully');
-        return jobsWithTime;
+        app.logger.info({ count: jobs.length }, 'Month jobs fetched');
+        return {
+          jobs: jobsWithHours,
+          totals: {
+            jobCount: jobs.length,
+            totalAw,
+            totalTime: totalHours,
+          },
+        };
       } catch (error) {
-        app.logger.error({ err: error, start, end }, 'Failed to fetch range jobs');
+        app.logger.error({ err: error }, 'Failed to fetch month jobs');
         throw error;
       }
     }
   );
 
-  // PUT /api/jobs/:id - Update a job
-  fastify.put(
-    '/api/jobs/:id',
+  // GET /api/jobs/recent - Recent jobs list
+  fastify.get<{ Querystring: { limit?: string } }>(
+    '/api/jobs/recent',
     {
       schema: {
-        description: 'Update a job',
+        description: 'Get recent jobs',
         tags: ['jobs'],
-        params: {
+        querystring: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
+            limit: { type: 'string' },
           },
-          required: ['id'],
-        },
-        body: {
-          type: 'object',
-          properties: {
-            wipNumber: { type: 'string' },
-            vehicleReg: { type: 'string' },
-            aw: { type: 'number' },
-            notes: { type: 'string' },
-          },
-        },
-        response: {
-          200: { type: 'object' },
-          400: { type: 'object' },
-          404: { type: 'object' },
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { id } = request.params as { id: string };
-      const { wipNumber, vehicleReg, aw, notes } = request.body as {
-        wipNumber?: string;
-        vehicleReg?: string;
-        aw?: number;
-        notes?: string;
-      };
-
-      app.logger.info({ jobId: id }, 'Updating job');
-
-      // Validate provided fields
-      if (wipNumber !== undefined && !validateWipNumber(wipNumber)) {
-        app.logger.warn({ wipNumber }, 'Invalid WIP number format');
-        return reply.status(400).send({
-          error: 'WIP number must be exactly 5 digits',
-        });
-      }
-
-      if (vehicleReg !== undefined && !vehicleReg) {
-        app.logger.warn({}, 'Invalid vehicle registration');
-        return reply.status(400).send({
-          error: 'Vehicle registration is required',
-        });
-      }
-
-      if (aw !== undefined && !validateAwValue(aw)) {
-        app.logger.warn({ aw }, 'Invalid AW value');
-        return reply.status(400).send({
-          error: 'AW value must be between 0 and 100',
-        });
-      }
+      const limit = request.query.limit ? parseInt(request.query.limit) : 10;
+      app.logger.info({ limit }, 'Fetching recent jobs');
 
       try {
-        const updateData: Record<string, any> = {};
-        if (wipNumber !== undefined) updateData.wipNumber = wipNumber;
-        if (vehicleReg !== undefined) updateData.vehicleReg = vehicleReg.toUpperCase();
-        if (aw !== undefined) updateData.aw = aw;
-        if (notes !== undefined) updateData.notes = notes || null;
+        const jobs = await app.db
+          .select()
+          .from(schema.jobs)
+          .orderBy(desc(schema.jobs.createdAt))
+          .limit(limit);
 
-        const [job] = await app.db
-          .update(schema.jobs)
-          .set(updateData)
-          .where(eq(schema.jobs.id, id))
-          .returning();
-
-        if (!job) {
-          app.logger.warn({ jobId: id }, 'Job not found for update');
-          return reply.status(404).send({
-            error: 'Job not found',
-          });
-        }
-
-        const time = convertAwToTime(job.aw);
-        const jobWithTime: JobWithTime = {
+        const jobsWithHours = jobs.map((job) => ({
           ...job,
-          ...time,
-        };
+          aw: parseFloat(job.aw.toString()),
+          hours: convertAwToHours(job.aw),
+        }));
 
-        app.logger.info({ jobId: id }, 'Job updated successfully');
-        return jobWithTime;
+        app.logger.info({ count: jobs.length }, 'Recent jobs fetched');
+        return jobsWithHours;
       } catch (error) {
-        app.logger.error({ err: error, jobId: id }, 'Failed to update job');
+        app.logger.error({ err: error }, 'Failed to fetch recent jobs');
         throw error;
       }
     }

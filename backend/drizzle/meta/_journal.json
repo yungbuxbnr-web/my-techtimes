@@ -15,6 +15,13 @@
       "when": 1768867347124,
       "tag": "20260120000227_free_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768868638470,
+      "tag": "20260120002358_magenta_prima",
+      "breakpoints": true
     }
   ]
 }
