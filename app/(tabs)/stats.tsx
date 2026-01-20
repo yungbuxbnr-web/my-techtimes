@@ -29,6 +29,9 @@ export default function StatsScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedWeekStart, setSelectedWeekStart] = useState(new Date());
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [selectedDayStats, setSelectedDayStats] = useState<any>(null);
+  const [selectedWeekStats, setSelectedWeekStats] = useState<any>(null);
+  const [selectedMonthStats, setSelectedMonthStats] = useState<any>(null);
 
   const loadStats = useCallback(async () => {
     try {
@@ -55,10 +58,75 @@ export default function StatsScreen() {
     }
   }, []);
 
+  const loadDayStats = useCallback(async (date: Date) => {
+    try {
+      console.log('StatsScreen: Loading stats for day:', date.toLocaleDateString());
+      const dateStr = date.toISOString().split('T')[0];
+      const jobs = await api.getJobsInRange(dateStr, dateStr);
+      
+      const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+      const totalMinutes = totalAw * 5;
+      
+      setSelectedDayStats({
+        jobCount: jobs.length,
+        totalAw,
+        totalMinutes,
+        totalHours: totalMinutes / 60,
+      });
+    } catch (error) {
+      console.error('StatsScreen: Error loading day stats:', error);
+    }
+  }, []);
+
+  const loadWeekStats = useCallback(async (weekStart: Date) => {
+    try {
+      console.log('StatsScreen: Loading stats for week starting:', weekStart.toLocaleDateString());
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      
+      const startStr = weekStart.toISOString().split('T')[0];
+      const endStr = weekEnd.toISOString().split('T')[0];
+      const jobs = await api.getJobsInRange(startStr, endStr);
+      
+      const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+      const totalMinutes = totalAw * 5;
+      
+      setSelectedWeekStats({
+        jobCount: jobs.length,
+        totalAw,
+        totalMinutes,
+        totalHours: totalMinutes / 60,
+      });
+    } catch (error) {
+      console.error('StatsScreen: Error loading week stats:', error);
+    }
+  }, []);
+
+  const loadMonthStats = useCallback(async (month: Date) => {
+    try {
+      console.log('StatsScreen: Loading stats for month:', month.toLocaleDateString());
+      const monthStr = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+      const jobs = await api.getJobsForMonth(monthStr);
+      
+      const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+      const totalMinutes = totalAw * 5;
+      
+      setSelectedMonthStats({
+        jobCount: jobs.length,
+        totalAw,
+        totalMinutes,
+        totalHours: totalMinutes / 60,
+      });
+    } catch (error) {
+      console.error('StatsScreen: Error loading month stats:', error);
+    }
+  }, []);
+
   const navigateDay = (direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
     setSelectedDate(newDate);
+    loadDayStats(newDate);
     console.log('StatsScreen: Navigating to day:', newDate.toLocaleDateString());
   };
 
@@ -66,6 +134,7 @@ export default function StatsScreen() {
     const newDate = new Date(selectedWeekStart);
     newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7));
     setSelectedWeekStart(newDate);
+    loadWeekStats(newDate);
     console.log('StatsScreen: Navigating to week starting:', newDate.toLocaleDateString());
   };
 
@@ -73,20 +142,35 @@ export default function StatsScreen() {
     const newDate = new Date(selectedMonth);
     newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1));
     setSelectedMonth(newDate);
+    loadMonthStats(newDate);
     console.log('StatsScreen: Navigating to month:', newDate.toLocaleDateString());
   };
 
   useEffect(() => {
     console.log('StatsScreen: Loading statistics');
     loadStats();
+    loadDayStats(selectedDate);
+    loadWeekStats(selectedWeekStart);
+    loadMonthStats(selectedMonth);
     
-    // Update time every second for live timers
+    // Update time every second for live timers and reload stats every 30 seconds for live updates
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     
-    return () => clearInterval(timer);
-  }, [loadStats]);
+    const statsRefresh = setInterval(() => {
+      console.log('StatsScreen: Auto-refreshing stats for live updates');
+      loadStats();
+      loadDayStats(selectedDate);
+      loadWeekStats(selectedWeekStart);
+      loadMonthStats(selectedMonth);
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => {
+      clearInterval(timer);
+      clearInterval(statsRefresh);
+    };
+  }, [loadStats, loadDayStats, loadWeekStats, loadMonthStats, selectedDate, selectedWeekStart, selectedMonth]);
 
   const getCurrentMonth = () => {
     const now = new Date();
@@ -354,22 +438,24 @@ export default function StatsScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <View style={styles.periodStats}>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>{todayStats.jobCount}</Text>
+            {selectedDayStats && (
+              <View style={styles.periodStats}>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>{selectedDayStats.jobCount}</Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>AWs</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>{selectedDayStats.totalAw}</Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>
+                    {selectedDayStats.totalHours.toFixed(2)}h
+                  </Text>
+                </View>
               </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>AWs</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>{todayStats.totalAw}</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>
-                  {(todayStats.totalMinutes / 60).toFixed(2)}h
-                </Text>
-              </View>
-            </View>
+            )}
           </View>
 
           <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
@@ -396,22 +482,24 @@ export default function StatsScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <View style={styles.periodStats}>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>{weekStats.jobCount}</Text>
+            {selectedWeekStats && (
+              <View style={styles.periodStats}>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>{selectedWeekStats.jobCount}</Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>AWs</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>{selectedWeekStats.totalAw}</Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>
+                    {selectedWeekStats.totalHours.toFixed(2)}h
+                  </Text>
+                </View>
               </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>AWs</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>{weekStats.totalAw}</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>
-                  {(weekStats.totalMinutes / 60).toFixed(2)}h
-                </Text>
-              </View>
-            </View>
+            )}
           </View>
 
           <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
@@ -438,22 +526,24 @@ export default function StatsScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <View style={styles.periodStats}>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>{monthlyStats.totalJobs}</Text>
+            {selectedMonthStats && (
+              <View style={styles.periodStats}>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>{selectedMonthStats.jobCount}</Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>AWs</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>{selectedMonthStats.totalAw}</Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
+                  <Text style={[styles.periodStatValue, { color: theme.primary }]}>
+                    {selectedMonthStats.totalHours.toFixed(2)}h
+                  </Text>
+                </View>
               </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>AWs</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>{monthlyStats.totalAw}</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
-                <Text style={[styles.periodStatValue, { color: theme.primary }]}>
-                  {monthlyStats.soldHours.toFixed(2)}h
-                </Text>
-              </View>
-            </View>
+            )}
           </View>
 
           {/* All Time Stats */}

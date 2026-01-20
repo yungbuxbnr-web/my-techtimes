@@ -40,6 +40,7 @@ export default function DashboardScreen() {
   const [dailyHours, setDailyHours] = useState(8.5);
   const [showDayModal, setShowDayModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<any>(null);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -338,116 +339,22 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Calendar Section */}
-        <View style={[styles.calendarSection, { backgroundColor: theme.card }]}>
-          <View style={styles.calendarHeader}>
-            <TouchableOpacity onPress={handlePreviousMonth} style={styles.monthArrow}>
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={24}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-            <View style={styles.monthInfo}>
-              <Text style={[styles.monthText, { color: theme.text }]}>
-                {selectedMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={handleNextMonth} style={styles.monthArrow}>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="arrow-forward"
-                size={24}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.weekdayHeader}>
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <Text key={index} style={[styles.weekdayText, { color: theme.textSecondary }]}>
-                {day}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.calendarGrid}>
-            {/* Add empty cells for days before the first of the month */}
-            {Array.from({ length: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).getDay() }).map((_, index) => (
-              <View key={`empty-${index}`} style={styles.dayCell} />
-            ))}
-            
-            {calendarDays.map((dayInfo) => {
-              const isToday = dayInfo.dateString === new Date().toISOString().split('T')[0];
-              const efficiencyColor = getEfficiencyColor(dayInfo.efficiency);
-              
-              return (
-                <TouchableOpacity
-                  key={dayInfo.dateString}
-                  style={[
-                    styles.dayCell,
-                    !dayInfo.isWorkingDay && !dayInfo.isOvertime && !dayInfo.isCompensation && styles.nonWorkingDay,
-                    isToday && { borderWidth: 2, borderColor: theme.primary },
-                    (dayInfo.isOvertime || dayInfo.isCompensation) && { backgroundColor: theme.accent },
-                  ]}
-                  onPress={() => handleDayPress(dayInfo)}
-                >
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      { color: theme.text },
-                      !dayInfo.isWorkingDay && !dayInfo.isOvertime && !dayInfo.isCompensation && { color: theme.textSecondary, opacity: 0.3 },
-                    ]}
-                  >
-                    {dayInfo.date.getDate()}
-                  </Text>
-                  
-                  {(dayInfo.isWorkingDay || dayInfo.isOvertime || dayInfo.isCompensation) && (
-                    <View style={styles.dayCircles}>
-                      {/* Efficiency circle (outer) */}
-                      <View style={[styles.miniCircle, { borderColor: efficiencyColor }]}>
-                        <View style={[styles.miniCircleFill, { 
-                          backgroundColor: efficiencyColor,
-                          height: `${dayInfo.efficiency}%`,
-                        }]} />
-                      </View>
-                      
-                      {/* Jobs count */}
-                      {dayInfo.jobs.length > 0 && (
-                        <Text style={[styles.jobCount, { color: theme.primary }]}>
-                          {dayInfo.jobs.length}
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                  
-                  {dayInfo.isOvertime && (
-                    <Text style={styles.overtimeLabel}>OT</Text>
-                  )}
-                  {dayInfo.isCompensation && (
-                    <Text style={styles.overtimeLabel}>C</Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          
-          <View style={styles.calendarLegend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendCircle, { backgroundColor: theme.chartGreen }]} />
-              <Text style={[styles.legendText, { color: theme.textSecondary }]}>≥65% Efficiency</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendCircle, { backgroundColor: theme.chartYellow }]} />
-              <Text style={[styles.legendText, { color: theme.textSecondary }]}>31-64%</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendCircle, { backgroundColor: theme.chartRed }]} />
-              <Text style={[styles.legendText, { color: theme.textSecondary }]}>&lt;31%</Text>
-            </View>
-          </View>
-        </View>
+        {/* Calendar Button */}
+        <TouchableOpacity
+          style={[styles.calendarButton, { backgroundColor: theme.card }]}
+          onPress={() => {
+            console.log('DashboardScreen: User tapped Calendar button');
+            setShowCalendarModal(true);
+          }}
+        >
+          <IconSymbol
+            ios_icon_name="calendar"
+            android_material_icon_name="calendar-today"
+            size={24}
+            color={theme.primary}
+          />
+          <Text style={[styles.calendarButtonText, { color: theme.text }]}>View Calendar</Text>
+        </TouchableOpacity>
 
         {/* Monthly Breakdown */}
         <View style={[styles.card, { backgroundColor: theme.card }]}>
@@ -641,6 +548,141 @@ export default function DashboardScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Calendar Modal */}
+      <Modal
+        visible={showCalendarModal}
+        animationType="slide"
+        onRequestClose={() => setShowCalendarModal(false)}
+      >
+        <AppBackground>
+          <View style={[styles.calendarModalContainer, { backgroundColor: 'transparent' }]}>
+            <View style={[styles.calendarModalHeader, { backgroundColor: theme.card }]}>
+              <Text style={[styles.calendarModalTitle, { color: theme.text }]}>Calendar</Text>
+              <TouchableOpacity onPress={() => setShowCalendarModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="close"
+                  size={32}
+                  color={theme.text}
+                />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.calendarModalContent}>
+              <View style={[styles.calendarSection, { backgroundColor: theme.card }]}>
+                <View style={styles.calendarHeader}>
+                  <TouchableOpacity onPress={handlePreviousMonth} style={styles.monthArrow}>
+                    <IconSymbol
+                      ios_icon_name="chevron.left"
+                      android_material_icon_name="arrow-back"
+                      size={24}
+                      color={theme.text}
+                    />
+                  </TouchableOpacity>
+                  <View style={styles.monthInfo}>
+                    <Text style={[styles.monthText, { color: theme.text }]}>
+                      {selectedMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={handleNextMonth} style={styles.monthArrow}>
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="arrow-forward"
+                      size={24}
+                      color={theme.text}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.weekdayHeader}>
+                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                    <Text key={index} style={[styles.weekdayText, { color: theme.textSecondary }]}>
+                      {day}
+                    </Text>
+                  ))}
+                </View>
+
+                <View style={styles.calendarGrid}>
+                  {/* Add empty cells for days before the first of the month */}
+                  {Array.from({ length: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).getDay() }).map((_, index) => (
+                    <View key={`empty-${index}`} style={styles.dayCell} />
+                  ))}
+                  
+                  {calendarDays.map((dayInfo) => {
+                    const isToday = dayInfo.dateString === new Date().toISOString().split('T')[0];
+                    const efficiencyColor = getEfficiencyColor(dayInfo.efficiency);
+                    
+                    return (
+                      <TouchableOpacity
+                        key={dayInfo.dateString}
+                        style={[
+                          styles.dayCell,
+                          !dayInfo.isWorkingDay && !dayInfo.isOvertime && !dayInfo.isCompensation && styles.nonWorkingDay,
+                          isToday && { borderWidth: 2, borderColor: theme.primary },
+                          (dayInfo.isOvertime || dayInfo.isCompensation) && { backgroundColor: theme.accent },
+                        ]}
+                        onPress={() => handleDayPress(dayInfo)}
+                      >
+                        <Text
+                          style={[
+                            styles.dayNumber,
+                            { color: theme.text },
+                            !dayInfo.isWorkingDay && !dayInfo.isOvertime && !dayInfo.isCompensation && { color: theme.textSecondary, opacity: 0.3 },
+                          ]}
+                        >
+                          {dayInfo.date.getDate()}
+                        </Text>
+                        
+                        {(dayInfo.isWorkingDay || dayInfo.isOvertime || dayInfo.isCompensation) && (
+                          <View style={styles.dayCircles}>
+                            {/* Efficiency circle (outer) */}
+                            <View style={[styles.miniCircle, { borderColor: efficiencyColor }]}>
+                              <View style={[styles.miniCircleFill, { 
+                                backgroundColor: efficiencyColor,
+                                height: `${dayInfo.efficiency}%`,
+                              }]} />
+                            </View>
+                            
+                            {/* Jobs count */}
+                            {dayInfo.jobs.length > 0 && (
+                              <Text style={[styles.jobCount, { color: theme.primary }]}>
+                                {dayInfo.jobs.length}
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                        
+                        {dayInfo.isOvertime && (
+                          <Text style={styles.overtimeLabel}>OT</Text>
+                        )}
+                        {dayInfo.isCompensation && (
+                          <Text style={styles.overtimeLabel}>C</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                
+                <View style={styles.calendarLegend}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendCircle, { backgroundColor: theme.chartGreen }]} />
+                    <Text style={[styles.legendText, { color: theme.textSecondary }]}>≥65% Efficiency</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendCircle, { backgroundColor: theme.chartYellow }]} />
+                    <Text style={[styles.legendText, { color: theme.textSecondary }]}>31-64%</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendCircle, { backgroundColor: theme.chartRed }]} />
+                    <Text style={[styles.legendText, { color: theme.textSecondary }]}>&lt;31%</Text>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </AppBackground>
+      </Modal>
     </AppBackground>
   );
 }
@@ -723,6 +765,44 @@ const styles = StyleSheet.create({
   ringSubLabel: {
     fontSize: 11,
     marginTop: 2,
+  },
+  calendarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  calendarButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  calendarModalContainer: {
+    flex: 1,
+  },
+  calendarModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: Platform.OS === 'android' ? 48 : 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  calendarModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  calendarModalContent: {
+    flex: 1,
+    padding: 16,
   },
   calendarSection: {
     padding: 16,
