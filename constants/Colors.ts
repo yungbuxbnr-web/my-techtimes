@@ -20,32 +20,38 @@ export function borderColor(isDark: boolean) {
   return isDark ? zincColors[800] : zincColors[200];
 }
 
-// TechTimes Workshop Themes
+// TechTimes Workshop Themes - Premium Blue Corporate Palette
 export const workshopThemes = {
   dark: {
-    background: '#0a0a0a',
-    card: '#1a1a1a',
+    background: '#0a0e1a', // Deep blue-black
+    card: '#1a2332', // Dark blue-grey card
     text: '#ffffff',
-    textSecondary: '#a1a1aa',
-    primary: '#ff6b35', // Orange - automotive/workshop accent
-    secondary: '#ffa500',
-    accent: '#ffcc00',
-    border: '#27272a',
+    textSecondary: '#94a3b8',
+    primary: '#3b82f6', // Bright corporate blue
+    secondary: '#2563eb', // Deeper blue
+    accent: '#60a5fa', // Light blue accent
+    border: '#1e293b',
     success: '#10b981',
     error: '#ef4444',
     warning: '#f59e0b',
+    chartGreen: '#22c55e',
+    chartYellow: '#eab308',
+    chartRed: '#ef4444',
   },
   light: {
-    background: '#f5f5f5',
+    background: '#f1f5f9', // Light blue-grey
     card: '#ffffff',
-    text: '#18181b',
-    textSecondary: '#52525b',
-    primary: '#ff6b35',
-    secondary: '#ff8c42',
-    accent: '#ffa500',
-    border: '#e4e4e7',
+    text: '#0f172a',
+    textSecondary: '#64748b',
+    primary: '#3b82f6', // Bright corporate blue
+    secondary: '#2563eb', // Deeper blue
+    accent: '#60a5fa', // Light blue accent
+    border: '#e2e8f0',
     success: '#10b981',
     error: '#ef4444',
     warning: '#f59e0b',
+    chartGreen: '#22c55e',
+    chartYellow: '#eab308',
+    chartRed: '#ef4444',
   },
 };

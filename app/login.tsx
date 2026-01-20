@@ -1,212 +1,275 @@
-
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
+  ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { useAuth } from '@/contexts/AuthContext';
-import { useThemeContext } from '@/contexts/ThemeContext';
-import { router } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { StatusBar } from 'expo-status-bar';
+  KeyboardAvoidingView,
+  ScrollView,
+} from "react-native";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "expo-router";
 
-export default function LoginScreen() {
-  const [pin, setPin] = useState('');
-  const { login, loginWithBiometrics, biometricsAvailable, biometricsEnabled } = useAuth();
-  const { theme, overlayStrength } = useThemeContext();
+type Mode = "signin" | "signup";
 
-  const handleLogin = async () => {
-    console.log('LoginScreen: User attempting PIN login');
-    if (pin.length !== 4) {
-      Alert.alert('Invalid PIN', 'PIN must be 4 digits');
+export default function AuthScreen() {
+  const router = useRouter();
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
+    useAuth();
+
+  const [mode, setMode] = useState<Mode>("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  const handleEmailAuth = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please enter email and password");
       return;
     }
 
-    const success = await login(pin);
-    if (success) {
-      console.log('LoginScreen: Login successful, navigating to dashboard');
-      router.replace('/(tabs)');
-    } else {
-      Alert.alert('Incorrect PIN', 'Please try again');
-      setPin('');
+    setLoading(true);
+    try {
+      if (mode === "signin") {
+        await signInWithEmail(email, password);
+        router.replace("/");
+      } else {
+        await signUpWithEmail(email, password, name);
+        Alert.alert(
+          "Success",
+          "Account created! Please check your email to verify your account."
+        );
+        router.replace("/");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Authentication failed");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleBiometricLogin = async () => {
-    console.log('LoginScreen: User attempting biometric login');
-    const success = await loginWithBiometrics();
-    if (success) {
-      console.log('LoginScreen: Biometric login successful, navigating to dashboard');
-      router.replace('/(tabs)');
+  const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
+    setLoading(true);
+    try {
+      if (provider === "google") {
+        await signInWithGoogle();
+      } else if (provider === "apple") {
+        await signInWithApple();
+      } else if (provider === "github") {
+        await signInWithGitHub();
+      }
+      router.replace("/");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Authentication failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=1200' }}
-      style={styles.background}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <StatusBar style="light" />
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.container}
-        >
-          <View style={styles.content}>
-            <View style={[styles.logoContainer, { backgroundColor: theme.primary }]}>
-              <IconSymbol
-                ios_icon_name="wrench.and.screwdriver.fill"
-                android_material_icon_name="build"
-                size={48}
-                color="#ffffff"
-              />
-            </View>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.content}>
+          <Text style={styles.title}>
+            {mode === "signin" ? "Sign In" : "Sign Up"}
+          </Text>
 
-            <Text style={[styles.title, { color: '#ffffff' }]}>TechTimes</Text>
-            <Text style={[styles.subtitle, { color: '#cccccc' }]}>
-              Vehicle Technician Job Tracker
+          {mode === "signup" && (
+            <TextInput
+              style={styles.input}
+              placeholder="Name (optional)"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+            />
+          )}
+
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+
+          <TouchableOpacity
+            style={[styles.primaryButton, loading && styles.buttonDisabled]}
+            onPress={handleEmailAuth}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {mode === "signin" ? "Sign In" : "Sign Up"}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.switchModeButton}
+            onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
+          >
+            <Text style={styles.switchModeText}>
+              {mode === "signin"
+                ? "Don't have an account? Sign Up"
+                : "Already have an account? Sign In"}
             </Text>
+          </TouchableOpacity>
 
-            <View style={[styles.card, { backgroundColor: theme.card }]}>
-              <Text style={[styles.label, { color: theme.text }]}>Enter PIN</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                placeholder="••••"
-                placeholderTextColor={theme.textSecondary}
-                onSubmitEditing={handleLogin}
-              />
-
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: theme.primary }]}
-                onPress={handleLogin}
-              >
-                <Text style={styles.buttonText}>Unlock</Text>
-              </TouchableOpacity>
-
-              {biometricsAvailable && biometricsEnabled && (
-                <TouchableOpacity
-                  style={[styles.biometricButton, { borderColor: theme.primary }]}
-                  onPress={handleBiometricLogin}
-                >
-                  <IconSymbol
-                    ios_icon_name="faceid"
-                    android_material_icon_name="fingerprint"
-                    size={24}
-                    color={theme.primary}
-                  />
-                  <Text style={[styles.biometricText, { color: theme.primary }]}>
-                    Use Biometrics
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <Text style={[styles.hint, { color: '#999999' }]}>
-              Default PIN: 3101
-            </Text>
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or continue with</Text>
+            <View style={styles.dividerLine} />
           </View>
-        </KeyboardAvoidingView>
-      </View>
-    </ImageBackground>
+
+          <TouchableOpacity
+            style={styles.socialButton}
+            onPress={() => handleSocialAuth("google")}
+            disabled={loading}
+          >
+            <Text style={styles.socialButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {Platform.OS === "ios" && (
+            <TouchableOpacity
+              style={[styles.socialButton, styles.appleButton]}
+              onPress={() => handleSocialAuth("apple")}
+              disabled={loading}
+            >
+              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                Continue with Apple
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-  },
   container: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
+    backgroundColor: "#fff",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   content: {
-    alignItems: 'center',
-  },
-  logoContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
+    flex: 1,
+    padding: 24,
+    justifyContent: "center",
   },
   title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    marginBottom: 48,
-  },
-  card: {
-    width: '100%',
-    padding: 24,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 32,
+    fontWeight: "bold",
+    marginBottom: 32,
+    textAlign: "center",
+    color: "#000",
   },
   input: {
-    height: 56,
+    height: 50,
     borderWidth: 1,
-    borderRadius: 12,
+    borderColor: "#ddd",
+    borderRadius: 8,
     paddingHorizontal: 16,
-    fontSize: 24,
-    letterSpacing: 8,
-    textAlign: 'center',
     marginBottom: 16,
-  },
-  button: {
-    height: 56,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  biometricButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 56,
-    borderWidth: 2,
-    borderRadius: 12,
-    marginTop: 12,
-    gap: 8,
-  },
-  biometricText: {
     fontSize: 16,
-    fontWeight: '600',
+    backgroundColor: "#fff",
   },
-  hint: {
-    marginTop: 24,
+  primaryButton: {
+    height: 50,
+    backgroundColor: "#007AFF",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  primaryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  switchModeButton: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  switchModeText: {
+    color: "#007AFF",
     fontSize: 14,
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#ddd",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: "#666",
+    fontSize: 14,
+  },
+  socialButton: {
+    height: 50,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+    backgroundColor: "#fff",
+  },
+  socialButtonText: {
+    fontSize: 16,
+    color: "#000",
+    fontWeight: "500",
+  },
+  appleButton: {
+    backgroundColor: "#000",
+    borderColor: "#000",
+  },
+  appleButtonText: {
+    color: "#fff",
   },
 });

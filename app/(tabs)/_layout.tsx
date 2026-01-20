@@ -69,6 +69,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="stats"
+        options={{
+          title: 'Stats',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="chart.pie.fill"
+              android_material_icon_name="pie-chart"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
@@ -80,6 +94,25 @@ export default function TabLayout() {
               color={color}
             />
           ),
+        }}
+      />
+      {/* Hide these from tabs */}
+      <Tabs.Screen
+        name="(home)"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="profile.ios"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

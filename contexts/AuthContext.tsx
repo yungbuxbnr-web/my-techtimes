@@ -6,165 +6,128 @@ import { AppState, AppStateStatus } from 'react-native';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  pin: string;
   biometricsEnabled: boolean;
   lockOnResume: boolean;
   biometricsAvailable: boolean;
-  login: (enteredPin: string) => Promise<boolean>;
-  loginWithBiometrics: () => Promise<boolean>;
+  login: (pin: string) => Promise<boolean>;
   logout: () => void;
+  setBiometricsEnabled: (enabled: boolean) => void;
+  setLockOnResume: (enabled: boolean) => void;
   changePin: (currentPin: string, newPin: string) => Promise<boolean>;
-  setBiometricsEnabled: (enabled: boolean) => Promise<void>;
-  setLockOnResume: (enabled: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEFAULT_PIN = '3101';
+const PIN_KEY = 'user_pin';
+const BIOMETRICS_KEY = 'biometrics_enabled';
+const LOCK_ON_RESUME_KEY = 'lock_on_resume';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [pin, setPin] = useState(DEFAULT_PIN);
   const [biometricsEnabled, setBiometricsEnabledState] = useState(false);
   const [lockOnResume, setLockOnResumeState] = useState(true);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+  const [appState, setAppState] = useState(AppState.currentState);
 
   useEffect(() => {
-    console.log('AuthProvider: Initializing authentication settings');
-    loadAuthSettings();
-    checkBiometrics();
-    
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => subscription.remove();
+    checkBiometricsAvailability();
+    loadSettings();
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [lockOnResume, isAuthenticated]);
+
+  const checkBiometricsAvailability = async () => {
+    const compatible = await LocalAuthentication.hasHardwareAsync();
+    const enrolled = await LocalAuthentication.isEnrolledAsync();
+    setBiometricsAvailable(compatible && enrolled);
+  };
+
+  const loadSettings = async () => {
+    try {
+      const biometrics = await SecureStore.getItemAsync(BIOMETRICS_KEY);
+      const lockResume = await SecureStore.getItemAsync(LOCK_ON_RESUME_KEY);
+      
+      setBiometricsEnabledState(biometrics === 'true');
+      setLockOnResumeState(lockResume !== 'false'); // Default to true
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
+
   const handleAppStateChange = (nextAppState: AppStateStatus) => {
-    console.log('AuthProvider: App state changed to:', nextAppState);
-    if (nextAppState === 'background' && lockOnResume && isAuthenticated) {
-      console.log('AuthProvider: App going to background, locking app');
-      setIsAuthenticated(false);
-    }
-  };
-
-  const loadAuthSettings = async () => {
-    try {
-      const savedPin = await SecureStore.getItemAsync('userPin');
-      const savedBiometrics = await SecureStore.getItemAsync('biometricsEnabled');
-      const savedLockOnResume = await SecureStore.getItemAsync('lockOnResume');
-
-      if (savedPin) {
-        console.log('AuthProvider: Loaded custom PIN');
-        setPin(savedPin);
+    if (appState.match(/inactive|background/) && nextAppState === 'active') {
+      if (lockOnResume && isAuthenticated) {
+        console.log('App resumed, locking...');
+        setIsAuthenticated(false);
       }
-      if (savedBiometrics) {
-        console.log('AuthProvider: Biometrics enabled:', savedBiometrics);
-        setBiometricsEnabledState(savedBiometrics === 'true');
-      }
-      if (savedLockOnResume !== null) {
-        console.log('AuthProvider: Lock on resume:', savedLockOnResume);
-        setLockOnResumeState(savedLockOnResume === 'true');
-      }
-    } catch (error) {
-      console.error('AuthProvider: Error loading auth settings:', error);
     }
+    setAppState(nextAppState);
   };
 
-  const checkBiometrics = async () => {
+  const login = async (pin: string): Promise<boolean> => {
     try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      const available = hasHardware && isEnrolled;
-      console.log('AuthProvider: Biometrics available:', available);
-      setBiometricsAvailable(available);
-    } catch (error) {
-      console.error('AuthProvider: Error checking biometrics:', error);
-      setBiometricsAvailable(false);
-    }
-  };
-
-  const login = async (enteredPin: string): Promise<boolean> => {
-    console.log('AuthProvider: Attempting PIN login');
-    if (enteredPin === pin) {
-      console.log('AuthProvider: PIN login successful');
-      setIsAuthenticated(true);
-      return true;
-    }
-    console.log('AuthProvider: PIN login failed');
-    return false;
-  };
-
-  const loginWithBiometrics = async (): Promise<boolean> => {
-    if (!biometricsAvailable || !biometricsEnabled) {
-      console.log('AuthProvider: Biometrics not available or not enabled');
-      return false;
-    }
-
-    try {
-      console.log('AuthProvider: Attempting biometric authentication');
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Authenticate to access TechTimes',
-        fallbackLabel: 'Use PIN',
-        cancelLabel: 'Cancel',
-      });
-
-      if (result.success) {
-        console.log('AuthProvider: Biometric authentication successful');
+      const storedPin = await SecureStore.getItemAsync(PIN_KEY);
+      
+      // If no PIN is set, set this as the new PIN
+      if (!storedPin) {
+        await SecureStore.setItemAsync(PIN_KEY, pin);
         setIsAuthenticated(true);
         return true;
       }
-      console.log('AuthProvider: Biometric authentication failed');
+      
+      // Verify PIN
+      if (storedPin === pin) {
+        setIsAuthenticated(true);
+        return true;
+      }
+      
       return false;
     } catch (error) {
-      console.error('AuthProvider: Biometric authentication error:', error);
+      console.error('Login failed:', error);
       return false;
     }
   };
 
   const logout = () => {
-    console.log('AuthProvider: User logged out');
     setIsAuthenticated(false);
   };
 
-  const changePin = async (currentPin: string, newPin: string): Promise<boolean> => {
-    console.log('AuthProvider: Attempting to change PIN');
-    if (currentPin !== pin) {
-      console.log('AuthProvider: Current PIN incorrect');
-      return false;
-    }
-
-    if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
-      console.log('AuthProvider: New PIN invalid format');
-      return false;
-    }
-
-    try {
-      await SecureStore.setItemAsync('userPin', newPin);
-      setPin(newPin);
-      console.log('AuthProvider: PIN changed successfully');
-      return true;
-    } catch (error) {
-      console.error('AuthProvider: Error changing PIN:', error);
-      return false;
-    }
-  };
-
   const setBiometricsEnabled = async (enabled: boolean) => {
-    console.log('AuthProvider: Setting biometrics enabled to:', enabled);
-    setBiometricsEnabledState(enabled);
     try {
-      await SecureStore.setItemAsync('biometricsEnabled', enabled.toString());
+      await SecureStore.setItemAsync(BIOMETRICS_KEY, enabled.toString());
+      setBiometricsEnabledState(enabled);
     } catch (error) {
-      console.error('AuthProvider: Error saving biometrics setting:', error);
+      console.error('Failed to save biometrics setting:', error);
     }
   };
 
   const setLockOnResume = async (enabled: boolean) => {
-    console.log('AuthProvider: Setting lock on resume to:', enabled);
-    setLockOnResumeState(enabled);
     try {
-      await SecureStore.setItemAsync('lockOnResume', enabled.toString());
+      await SecureStore.setItemAsync(LOCK_ON_RESUME_KEY, enabled.toString());
+      setLockOnResumeState(enabled);
     } catch (error) {
-      console.error('AuthProvider: Error saving lock on resume setting:', error);
+      console.error('Failed to save lock on resume setting:', error);
+    }
+  };
+
+  const changePin = async (currentPin: string, newPin: string): Promise<boolean> => {
+    try {
+      const storedPin = await SecureStore.getItemAsync(PIN_KEY);
+      
+      if (storedPin !== currentPin) {
+        return false;
+      }
+      
+      await SecureStore.setItemAsync(PIN_KEY, newPin);
+      return true;
+    } catch (error) {
+      console.error('Failed to change PIN:', error);
+      return false;
     }
   };
 
@@ -172,16 +135,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         isAuthenticated,
-        pin,
         biometricsEnabled,
         lockOnResume,
         biometricsAvailable,
         login,
-        loginWithBiometrics,
         logout,
-        changePin,
         setBiometricsEnabled,
         setLockOnResume,
+        changePin,
       }}
     >
       {children}
@@ -191,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within AuthProvider');
   }
   return context;

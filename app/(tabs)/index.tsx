@@ -226,6 +226,22 @@ export default function DashboardScreen() {
               <Text style={styles.actionButtonText}>View Jobs</Text>
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={[styles.statsButton, { backgroundColor: theme.accent }]}
+            onPress={() => {
+              console.log('DashboardScreen: User tapped Performance Stats button');
+              router.push('/(tabs)/stats');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="chart.pie.fill"
+              android_material_icon_name="pie-chart"
+              size={24}
+              color="#ffffff"
+            />
+            <Text style={styles.statsButtonText}>View Performance Stats</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
     </ImageBackground>
@@ -328,6 +344,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 8,
+  },
+  statsButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',

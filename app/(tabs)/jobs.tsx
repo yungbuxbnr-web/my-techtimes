@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { awToMinutes, formatTime } from '@/utils/jobCalculations';
+import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculations';
 import { router } from 'expo-router';
 import { api, Job } from '@/utils/api';
 
@@ -25,6 +25,7 @@ export default function JobsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [searchField, setSearchField] = useState<'all' | 'wip' | 'reg'>('all');
 
   useEffect(() => {
     console.log('JobsScreen: Loading jobs');
@@ -33,7 +34,7 @@ export default function JobsScreen() {
 
   useEffect(() => {
     filterJobs();
-  }, [searchQuery, jobs]);
+  }, [searchQuery, jobs, searchField]);
 
   const loadJobs = async () => {
     try {
@@ -70,11 +71,18 @@ export default function JobsScreen() {
     }
 
     const query = searchQuery.toLowerCase();
-    const filtered = jobs.filter(
-      (job) =>
-        job.wipNumber.toLowerCase().includes(query) ||
-        job.vehicleReg.toLowerCase().includes(query)
-    );
+    const filtered = jobs.filter((job) => {
+      if (searchField === 'wip') {
+        return job.wipNumber.toLowerCase().includes(query);
+      } else if (searchField === 'reg') {
+        return job.vehicleReg.toLowerCase().includes(query);
+      } else {
+        return (
+          job.wipNumber.toLowerCase().includes(query) ||
+          job.vehicleReg.toLowerCase().includes(query)
+        );
+      }
+    });
     setFilteredJobs(filtered);
   };
 
@@ -108,6 +116,18 @@ export default function JobsScreen() {
       ]
     );
   };
+
+  const calculateSummary = () => {
+    const totalAw = filteredJobs.reduce((sum, job) => sum + job.aw, 0);
+    const totalMinutes = totalAw * 5;
+    return {
+      count: filteredJobs.length,
+      totalAw,
+      totalHours: formatDecimalHours(totalMinutes),
+    };
+  };
+
+  const summary = calculateSummary();
 
   const renderJob = ({ item }: { item: Job }) => {
     const minutes = awToMinutes(item.aw);
@@ -203,35 +223,79 @@ export default function JobsScreen() {
               style={[styles.searchInput, { color: theme.text }]}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search by WIP or Reg..."
+              placeholder="Search..."
               placeholderTextColor={theme.textSecondary}
             />
           </View>
 
-          <View style={styles.filterContainer}>
-            {(['all', 'today', 'week', 'month'] as const).map((filterOption) => (
+          <View style={styles.filterRow}>
+            <View style={styles.filterContainer}>
+              {(['all', 'today', 'week', 'month'] as const).map((filterOption) => (
+                <TouchableOpacity
+                  key={filterOption}
+                  style={[
+                    styles.filterButton,
+                    { backgroundColor: filter === filterOption ? theme.primary : theme.card },
+                  ]}
+                  onPress={() => {
+                    console.log('JobsScreen: User selected filter:', filterOption);
+                    setFilter(filterOption);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.filterText,
+                      { color: filter === filterOption ? '#ffffff' : theme.text },
+                    ]}
+                  >
+                    {filterOption.charAt(0).toUpperCase() + filterOption.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.searchFieldRow}>
+            {(['all', 'wip', 'reg'] as const).map((field) => (
               <TouchableOpacity
-                key={filterOption}
+                key={field}
                 style={[
-                  styles.filterButton,
-                  { backgroundColor: filter === filterOption ? theme.primary : theme.card },
+                  styles.searchFieldButton,
+                  { backgroundColor: searchField === field ? theme.secondary : theme.card },
                 ]}
                 onPress={() => {
-                  console.log('JobsScreen: User selected filter:', filterOption);
-                  setFilter(filterOption);
+                  console.log('JobsScreen: User selected search field:', field);
+                  setSearchField(field);
                 }}
               >
                 <Text
                   style={[
-                    styles.filterText,
-                    { color: filter === filterOption ? '#ffffff' : theme.text },
+                    styles.searchFieldText,
+                    { color: searchField === field ? '#ffffff' : theme.text },
                   ]}
                 >
-                  {filterOption.charAt(0).toUpperCase() + filterOption.slice(1)}
+                  {field === 'all' ? 'All' : field === 'wip' ? 'WIP' : 'Reg'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {filteredJobs.length > 0 && (
+            <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{summary.count}</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Jobs</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{summary.totalAw}</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total AW</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{summary.totalHours}h</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Hours</Text>
+              </View>
+            </View>
+          )}
 
           <FlatList
             data={filteredJobs}
@@ -306,10 +370,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
   },
+  filterRow: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
   filterContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 12,
     gap: 8,
   },
   filterButton: {
@@ -320,6 +386,40 @@ const styles = StyleSheet.create({
   filterText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  searchFieldRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  searchFieldButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  searchFieldText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  summaryCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+  },
+  summaryItem: {
+    alignItems: 'center',
+  },
+  summaryValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontSize: 12,
   },
   listContent: {
     padding: 16,

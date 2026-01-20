@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
   Platform,
+  Modal,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,47 @@ export default function SettingsScreen() {
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
+  const [monthlyTarget, setMonthlyTarget] = useState(180);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [targetInput, setTargetInput] = useState('180');
+
+  useEffect(() => {
+    loadMonthlyTarget();
+  }, []);
+
+  const loadMonthlyTarget = async () => {
+    try {
+      console.log('SettingsScreen: Loading monthly target from backend');
+      const result = await api.getMonthlyTarget();
+      setMonthlyTarget(result.value);
+      setTargetInput(result.value.toString());
+      console.log('SettingsScreen: Monthly target loaded:', result.value);
+    } catch (error) {
+      console.error('SettingsScreen: Error loading monthly target:', error);
+      // Use default value if backend fails
+      setMonthlyTarget(180);
+      setTargetInput('180');
+    }
+  };
+
+  const handleUpdateTarget = async () => {
+    const newTarget = parseFloat(targetInput);
+    if (isNaN(newTarget) || newTarget <= 0) {
+      Alert.alert('Invalid Target', 'Please enter a valid number greater than 0');
+      return;
+    }
+
+    try {
+      console.log('SettingsScreen: Updating monthly target to:', newTarget);
+      await api.updateMonthlyTarget(newTarget);
+      setMonthlyTarget(newTarget);
+      setShowTargetModal(false);
+      Alert.alert('Success', 'Monthly target updated successfully');
+    } catch (error) {
+      console.error('SettingsScreen: Error updating monthly target:', error);
+      Alert.alert('Error', 'Failed to update monthly target');
+    }
+  };
 
   const handleChangePIN = async () => {
     console.log('SettingsScreen: User attempting to change PIN');
@@ -149,7 +191,6 @@ export default function SettingsScreen() {
 
               console.log('SettingsScreen: Restoring backup with', backup.jobs?.length, 'jobs');
               
-              // Note: Backend restore endpoint would handle this
               Alert.alert('Success', `Restored ${backup.jobs?.length || 0} jobs`);
             } catch (error) {
               console.error('SettingsScreen: Error restoring backup:', error);
@@ -211,6 +252,7 @@ export default function SettingsScreen() {
                     setBiometricsEnabled(value);
                   }}
                   trackColor={{ false: theme.border, true: theme.primary }}
+                  thumbColor="#ffffff"
                 />
               </View>
             )}
@@ -229,6 +271,7 @@ export default function SettingsScreen() {
                   setLockOnResume(value);
                 }}
                 trackColor={{ false: theme.border, true: theme.primary }}
+                thumbColor="#ffffff"
               />
             </View>
 
@@ -288,6 +331,33 @@ export default function SettingsScreen() {
           </View>
 
           <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Performance</Text>
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Monthly Target</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  {monthlyTarget} hours per month
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  console.log('SettingsScreen: User tapped Edit Target button');
+                  setShowTargetModal(true);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={16}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
 
             <View style={styles.settingRow}>
@@ -304,6 +374,7 @@ export default function SettingsScreen() {
                   toggleTheme();
                 }}
                 trackColor={{ false: theme.border, true: theme.primary }}
+                thumbColor="#ffffff"
               />
             </View>
 
@@ -384,6 +455,51 @@ export default function SettingsScreen() {
             <Text style={styles.buttonText}>Logout</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        <Modal
+          visible={showTargetModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowTargetModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modal, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Set Monthly Target</Text>
+                <TouchableOpacity onPress={() => setShowTargetModal(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalContent}>
+                <Text style={[styles.label, { color: theme.text }]}>Target Hours per Month</Text>
+                <TextInput
+                  style={[styles.targetInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  value={targetInput}
+                  onChangeText={setTargetInput}
+                  keyboardType="decimal-pad"
+                  placeholder="180"
+                  placeholderTextColor={theme.textSecondary}
+                />
+                <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                  Default is 180 hours per month (based on 21 working days × 8.5 hours)
+                </Text>
+
+                <TouchableOpacity
+                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                  onPress={handleUpdateTarget}
+                >
+                  <Text style={styles.saveButtonText}>Save Target</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </ImageBackground>
   );
@@ -496,5 +612,68 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 8,
     gap: 8,
+  },
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modal: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  modalContent: {
+    padding: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  targetInput: {
+    height: 56,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 18,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  helpText: {
+    fontSize: 14,
+    marginTop: 8,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  saveButton: {
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
