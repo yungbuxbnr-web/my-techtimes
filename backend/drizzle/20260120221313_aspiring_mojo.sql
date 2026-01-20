@@ -1,0 +1,1 @@
+ALTER TABLE "jobs" ALTER COLUMN "vhc_status" SET DEFAULT 'NONE';

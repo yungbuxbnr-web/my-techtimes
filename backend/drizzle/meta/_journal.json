@@ -22,6 +22,13 @@
       "when": 1768868638470,
       "tag": "20260120002358_magenta_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1768947193240,
+      "tag": "20260120221313_aspiring_mojo",
+      "breakpoints": true
     }
   ]
 }

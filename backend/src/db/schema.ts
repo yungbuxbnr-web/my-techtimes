@@ -6,7 +6,7 @@ export const jobs = pgTable('jobs', {
   vehicleReg: text('vehicle_reg').notNull(),
   aw: numeric('aw').notNull(),
   notes: text('notes'),
-  vhcStatus: text('vhc_status', { enum: ['GREEN', 'AMBER', 'RED', 'N/A'] }).default('N/A').notNull(),
+  vhcStatus: text('vhc_status', { enum: ['NONE', 'GREEN', 'ORANGE', 'RED'] }).default('NONE').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
 });

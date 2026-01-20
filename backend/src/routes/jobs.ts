@@ -58,7 +58,16 @@ export function registerJobRoutes(app: App) {
         createdAt?: string;
       };
 
-      const vhcStatus = (vhcStatusInput || 'N/A') as 'GREEN' | 'AMBER' | 'RED' | 'N/A';
+      // Validate vhcStatus if provided
+      const validVhcStatuses: readonly string[] = ['NONE', 'GREEN', 'ORANGE', 'RED'];
+      if (vhcStatusInput && !validVhcStatuses.includes(vhcStatusInput)) {
+        app.logger.warn({ vhcStatus: vhcStatusInput }, 'Invalid VHC status provided');
+        return reply.status(400).send({
+          error: 'VHC status must be one of: NONE, GREEN, ORANGE, RED',
+        });
+      }
+
+      const vhcStatus = (vhcStatusInput || 'NONE') as 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
 
       app.logger.info({ wipNumber, vehicleReg, aw }, 'Creating job');
 
@@ -247,9 +256,16 @@ export function registerJobRoutes(app: App) {
         createdAt?: string;
       };
 
-      const vhcStatus = vhcStatusInput as 'GREEN' | 'AMBER' | 'RED' | 'N/A' | undefined;
-
       app.logger.info({ jobId: id }, 'Updating job');
+
+      // Validate vhcStatus if provided
+      const validVhcStatuses: readonly string[] = ['NONE', 'GREEN', 'ORANGE', 'RED'];
+      if (vhcStatusInput && !validVhcStatuses.includes(vhcStatusInput)) {
+        app.logger.warn({ vhcStatus: vhcStatusInput }, 'Invalid VHC status provided');
+        return reply.status(400).send({
+          error: 'VHC status must be one of: NONE, GREEN, ORANGE, RED',
+        });
+      }
 
       try {
         const updateData: Record<string, any> = {};
@@ -257,7 +273,7 @@ export function registerJobRoutes(app: App) {
         if (vehicleReg !== undefined) updateData.vehicleReg = vehicleReg.toUpperCase();
         if (aw !== undefined) updateData.aw = aw.toString();
         if (notes !== undefined) updateData.notes = notes || null;
-        if (vhcStatus !== undefined && vhcStatus) updateData.vhcStatus = vhcStatus;
+        if (vhcStatusInput !== undefined) updateData.vhcStatus = vhcStatusInput as 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
         if (createdAt !== undefined) updateData.createdAt = new Date(createdAt);
 
         const [job] = await app.db
@@ -534,6 +550,181 @@ export function registerJobRoutes(app: App) {
         return jobsWithHours;
       } catch (error) {
         app.logger.error({ err: error }, 'Failed to fetch recent jobs');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/jobs/backup - Export all jobs as JSON
+  fastify.get(
+    '/api/jobs/backup',
+    {
+      schema: {
+        description: 'Backup all jobs to JSON file',
+        tags: ['jobs'],
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      app.logger.info({}, 'Creating jobs backup');
+
+      try {
+        const jobs = await app.db.select().from(schema.jobs);
+
+        const backup = {
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          jobCount: jobs.length,
+          jobs: jobs.map((job) => ({
+            id: job.id,
+            wipNumber: job.wipNumber,
+            vehicleReg: job.vehicleReg,
+            aw: parseFloat(job.aw.toString()),
+            notes: job.notes,
+            vhcStatus: job.vhcStatus,
+            createdAt: job.createdAt,
+            updatedAt: job.updatedAt,
+          })),
+        };
+
+        reply.header('Content-Type', 'application/json');
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="jobs_backup_${new Date().toISOString().split('T')[0]}.json"`
+        );
+
+        app.logger.info({ jobCount: jobs.length }, 'Jobs backup created successfully');
+        return backup;
+      } catch (error) {
+        app.logger.error({ err: error }, 'Failed to create jobs backup');
+        throw error;
+      }
+    }
+  );
+
+  // POST /api/jobs/restore - Import jobs from backup JSON
+  fastify.post<{ Body: any; Querystring: { confirm?: string } }>(
+    '/api/jobs/restore',
+    {
+      schema: {
+        description: 'Restore jobs from backup (requires ?confirm=true)',
+        tags: ['jobs'],
+        querystring: {
+          type: 'object',
+          properties: {
+            confirm: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            version: { type: 'string' },
+            exportedAt: { type: 'string' },
+            jobCount: { type: 'number' },
+            jobs: { type: 'array' },
+          },
+          required: ['jobs'],
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { confirm } = request.query as { confirm?: string };
+      const { jobs: backupJobs } = request.body as {
+        version?: string;
+        exportedAt?: string;
+        jobCount?: number;
+        jobs: any[];
+      };
+
+      app.logger.info({ jobCount: backupJobs?.length, confirmed: confirm === 'true' }, 'Processing restore request');
+
+      if (!backupJobs || !Array.isArray(backupJobs)) {
+        app.logger.warn({}, 'Invalid backup format - jobs array missing');
+        return reply.status(400).send({
+          error: 'Invalid backup format - jobs array required',
+        });
+      }
+
+      if (confirm !== 'true') {
+        app.logger.info({ jobCount: backupJobs.length }, 'Restore not confirmed');
+        return reply.status(400).send({
+          error: 'Restore must be confirmed with ?confirm=true',
+          preview: {
+            jobsToRestore: backupJobs.length,
+            willOverwrite: true,
+          },
+        });
+      }
+
+      try {
+        // Validate all jobs first
+        const validVhcStatuses = ['NONE', 'GREEN', 'ORANGE', 'RED'];
+
+        for (const job of backupJobs) {
+          if (!job.wipNumber || !job.vehicleReg || job.aw === undefined) {
+            app.logger.warn({ job }, 'Invalid job in backup - missing required fields');
+            return reply.status(400).send({
+              error: `Invalid job in backup - missing required fields: ${JSON.stringify(job)}`,
+            });
+          }
+
+          if (!/^\d{5}$/.test(job.wipNumber)) {
+            app.logger.warn({ wipNumber: job.wipNumber }, 'Invalid WIP number format in backup');
+            return reply.status(400).send({
+              error: `Invalid WIP number format: ${job.wipNumber}`,
+            });
+          }
+
+          if (typeof job.aw !== 'number' || job.aw < 0 || job.aw > 999) {
+            app.logger.warn({ aw: job.aw }, 'Invalid AW value in backup');
+            return reply.status(400).send({
+              error: `Invalid AW value: ${job.aw}`,
+            });
+          }
+
+          // Validate VHC status
+          if (job.vhcStatus && !validVhcStatuses.includes(job.vhcStatus)) {
+            app.logger.warn({ vhcStatus: job.vhcStatus }, 'Invalid VHC status in backup');
+            return reply.status(400).send({
+              error: `Invalid VHC status: ${job.vhcStatus}. Must be one of: NONE, GREEN, ORANGE, RED`,
+            });
+          }
+        }
+
+        // Delete existing jobs and insert backup jobs
+        await app.db.transaction(async (tx) => {
+          // Delete all existing jobs
+          await tx.delete(schema.jobs);
+
+          // Insert backup jobs with their original IDs and timestamps
+          if (backupJobs.length > 0) {
+            await tx.insert(schema.jobs).values(
+              backupJobs.map((job) => ({
+                id: job.id,
+                wipNumber: job.wipNumber,
+                vehicleReg: job.vehicleReg.toUpperCase(),
+                aw: job.aw.toString(),
+                notes: job.notes || null,
+                vhcStatus: (job.vhcStatus || 'NONE') as 'NONE' | 'GREEN' | 'ORANGE' | 'RED',
+                createdAt: new Date(job.createdAt),
+                updatedAt: new Date(job.updatedAt),
+              }))
+            );
+          }
+        });
+
+        app.logger.info({ jobCount: backupJobs.length }, 'Restore completed successfully');
+        return {
+          success: true,
+          jobsRestored: backupJobs.length,
+        };
+      } catch (error) {
+        app.logger.error({ err: error, jobCount: backupJobs.length }, 'Failed to restore backup');
         throw error;
       }
     }
