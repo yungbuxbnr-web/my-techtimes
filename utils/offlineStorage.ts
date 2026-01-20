@@ -30,6 +30,8 @@ export interface Schedule {
   workingDays?: number[]; // Array of day numbers: 0=Sunday, 1=Monday, etc.
   startTime?: string; // HH:MM format
   endTime?: string; // HH:MM format
+  lunchStartTime?: string; // HH:MM format
+  lunchEndTime?: string; // HH:MM format
   lunchBreakMinutes?: number;
   saturdayFrequency?: 'none' | 'every' | '1-in-2' | '1-in-3' | '1-in-4' | 'custom'; // Saturday frequency
   nextWorkingSaturday?: string; // ISO date string for next working Saturday
@@ -205,6 +207,8 @@ export const offlineStorage = {
       workingDays: [1, 2, 3, 4, 5], // Monday to Friday
       startTime: '07:00',
       endTime: '18:00',
+      lunchStartTime: '12:00',
+      lunchEndTime: '12:30',
       lunchBreakMinutes: 30,
       saturdayFrequency: 'none',
       nextWorkingSaturday: undefined,

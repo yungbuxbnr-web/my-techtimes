@@ -45,10 +45,13 @@ export default function EditWorkScheduleScreen() {
   const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [startTime, setStartTime] = useState('07:00');
   const [endTime, setEndTime] = useState('18:00');
+  const [lunchStartTime, setLunchStartTime] = useState('12:00');
+  const [lunchEndTime, setLunchEndTime] = useState('12:30');
   const [lunchBreakMinutes, setLunchBreakMinutes] = useState('30');
   const [saturdayFrequency, setSaturdayFrequency] = useState<string>('none');
   const [nextWorkingSaturday, setNextWorkingSaturday] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showSaturdayPicker, setShowSaturdayPicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -73,6 +76,14 @@ export default function EditWorkScheduleScreen() {
       
       if (schedule.lunchBreakMinutes !== undefined) {
         setLunchBreakMinutes(schedule.lunchBreakMinutes.toString());
+      }
+      
+      if (schedule.lunchStartTime) {
+        setLunchStartTime(schedule.lunchStartTime);
+      }
+      
+      if (schedule.lunchEndTime) {
+        setLunchEndTime(schedule.lunchEndTime);
       }
       
       if (schedule.saturdayFrequency) {
@@ -196,6 +207,8 @@ export default function EditWorkScheduleScreen() {
         workingDays: finalWorkingDays,
         startTime,
         endTime,
+        lunchStartTime,
+        lunchEndTime,
         lunchBreakMinutes: lunchMinutes,
         dailyWorkingHours: dailyHours,
         saturdayWorking: finalWorkingDays.includes(6),
@@ -232,7 +245,7 @@ export default function EditWorkScheduleScreen() {
     console.log('EditWorkScheduleScreen: Resetting to defaults');
     Alert.alert(
       'Reset to Defaults',
-      'Reset to Monday-Friday, 7:00 AM - 6:00 PM with 30 min lunch break and no Saturdays?',
+      'Reset to Monday-Friday, 7:00 AM - 6:00 PM with 30 min lunch break (12:00-12:30) and no Saturdays?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -242,6 +255,8 @@ export default function EditWorkScheduleScreen() {
             setWorkingDays([1, 2, 3, 4, 5]);
             setStartTime('07:00');
             setEndTime('18:00');
+            setLunchStartTime('12:00');
+            setLunchEndTime('12:30');
             setLunchBreakMinutes('30');
             setSaturdayFrequency('none');
             setNextWorkingSaturday(null);
@@ -249,6 +264,25 @@ export default function EditWorkScheduleScreen() {
         },
       ]
     );
+  };
+
+  const getSaturdaysInMonth = (): Date[] => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const saturdays: Date[] = [];
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+      const date = new Date(year, month, day);
+      if (date.getDay() === 6) {
+        saturdays.push(date);
+      }
+    }
+    
+    return saturdays;
   };
 
   const dailyHours = calculateDailyHours();
@@ -393,7 +427,7 @@ export default function EditWorkScheduleScreen() {
                 style={[styles.datePickerButton, { backgroundColor: theme.background }]}
                 onPress={() => {
                   console.log('EditWorkScheduleScreen: User tapped Next Working Saturday picker');
-                  setShowDatePicker(true);
+                  setShowSaturdayPicker(true);
                 }}
               >
                 <IconSymbol
@@ -414,7 +448,7 @@ export default function EditWorkScheduleScreen() {
                 </Text>
               </TouchableOpacity>
               <Text style={[styles.hint, { color: theme.textSecondary }]}>
-                The app will track your Saturday schedule based on this date and frequency
+                Select from Saturdays in the current month
               </Text>
             </View>
           )}
@@ -471,7 +505,7 @@ export default function EditWorkScheduleScreen() {
           </View>
           
           <View style={styles.lunchBreakInput}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Break (minutes)</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Break Duration (minutes)</Text>
             <TextInput
               style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
               value={lunchBreakMinutes}
@@ -483,6 +517,34 @@ export default function EditWorkScheduleScreen() {
             <Text style={[styles.hint, { color: theme.textSecondary }]}>
               Unpaid break time deducted from daily hours
             </Text>
+          </View>
+          
+          <View style={styles.timeRow}>
+            <View style={styles.timeInput}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Start</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                value={lunchStartTime}
+                onChangeText={setLunchStartTime}
+                placeholder="12:00"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="numbers-and-punctuation"
+              />
+              <Text style={[styles.hint, { color: theme.textSecondary }]}>24-hour format</Text>
+            </View>
+            
+            <View style={styles.timeInput}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch End</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                value={lunchEndTime}
+                onChangeText={setLunchEndTime}
+                placeholder="12:30"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="numbers-and-punctuation"
+              />
+              <Text style={[styles.hint, { color: theme.textSecondary }]}>24-hour format</Text>
+            </View>
           </View>
         </View>
 
@@ -584,37 +646,54 @@ export default function EditWorkScheduleScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
       
-      {showDatePicker && (
+      {showSaturdayPicker && (
         <Modal
-          visible={showDatePicker}
+          visible={showSaturdayPicker}
           transparent={true}
           animationType="slide"
-          onRequestClose={() => setShowDatePicker(false)}
+          onRequestClose={() => setShowSaturdayPicker(false)}
         >
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Next Working Saturday</Text>
-              <DateTimePicker
-                value={nextWorkingSaturday || getNextSaturday()}
-                mode="date"
-                display="spinner"
-                onChange={(event, selectedDate) => {
-                  if (selectedDate) {
-                    if (selectedDate.getDay() !== 6) {
-                      Alert.alert('Invalid Date', 'Please select a Saturday');
-                      return;
-                    }
-                    setNextWorkingSaturday(selectedDate);
-                    console.log('EditWorkScheduleScreen: User selected next working Saturday:', selectedDate.toLocaleDateString('en-GB'));
-                  }
-                }}
-              />
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                onPress={() => setShowDatePicker(false)}
-              >
-                <Text style={styles.modalButtonText}>Done</Text>
-              </TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Select Next Working Saturday</Text>
+                <TouchableOpacity onPress={() => setShowSaturdayPicker(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.saturdayList}>
+                {getSaturdaysInMonth().map((saturday, index) => {
+                  const isSelected = nextWorkingSaturday?.toDateString() === saturday.toDateString();
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.saturdayOption,
+                        { backgroundColor: isSelected ? theme.primary : theme.background },
+                      ]}
+                      onPress={() => {
+                        setNextWorkingSaturday(saturday);
+                        setShowSaturdayPicker(false);
+                        console.log('EditWorkScheduleScreen: User selected Saturday:', saturday.toLocaleDateString('en-GB'));
+                      }}
+                    >
+                      <Text style={[styles.saturdayOptionText, { color: isSelected ? '#ffffff' : theme.text }]}>
+                        {saturday.toLocaleDateString('en-GB', { 
+                          weekday: 'long', 
+                          day: 'numeric', 
+                          month: 'long', 
+                          year: 'numeric' 
+                        })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -845,14 +924,20 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
+    maxHeight: '70%',
     padding: 20,
     borderRadius: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
+    flex: 1,
   },
   modalButton: {
     padding: 14,
@@ -864,5 +949,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  saturdayList: {
+    maxHeight: 400,
+  },
+  saturdayOption: {
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  saturdayOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

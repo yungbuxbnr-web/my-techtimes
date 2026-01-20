@@ -424,24 +424,6 @@ export default function AddJobModal() {
                 />
               </View>
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.secondary, flex: 1 }]}
-                  onPress={() => handleSave(true)}
-                  disabled={saving}
-                >
-                  <IconSymbol
-                    ios_icon_name="plus.circle.fill"
-                    android_material_icon_name="add-circle"
-                    size={24}
-                    color="#ffffff"
-                  />
-                  <Text style={styles.saveButtonText}>
-                    {saving ? 'Saving...' : 'Save & Add Another'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              
               <TouchableOpacity
                 style={[styles.saveButton, { backgroundColor: theme.primary }]}
                 onPress={() => handleSave(false)}
@@ -454,7 +436,7 @@ export default function AddJobModal() {
                   color="#ffffff"
                 />
                 <Text style={styles.saveButtonText}>
-                  {saving ? 'Saving...' : 'Save & Close'}
+                  {saving ? 'Saving...' : 'Save Job'}
                 </Text>
               </TouchableOpacity>
             </View>

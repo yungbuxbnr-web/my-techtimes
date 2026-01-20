@@ -26,6 +26,9 @@ export default function StatsScreen() {
   const [recentJobs, setRecentJobs] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [schedule, setSchedule] = useState<any>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedWeekStart, setSelectedWeekStart] = useState(new Date());
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
 
   const loadStats = useCallback(async () => {
     try {
@@ -51,6 +54,27 @@ export default function StatsScreen() {
       console.error('StatsScreen: Error loading stats:', error);
     }
   }, []);
+
+  const navigateDay = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
+    setSelectedDate(newDate);
+    console.log('StatsScreen: Navigating to day:', newDate.toLocaleDateString());
+  };
+
+  const navigateWeek = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedWeekStart);
+    newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7));
+    setSelectedWeekStart(newDate);
+    console.log('StatsScreen: Navigating to week starting:', newDate.toLocaleDateString());
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedMonth);
+    newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1));
+    setSelectedMonth(newDate);
+    console.log('StatsScreen: Navigating to month:', newDate.toLocaleDateString());
+  };
 
   useEffect(() => {
     console.log('StatsScreen: Loading statistics');
@@ -86,6 +110,12 @@ export default function StatsScreen() {
     if (efficiency >= 65) return 'Excellent';
     if (efficiency >= 31) return 'Good';
     return 'Poor';
+  };
+
+  const getWeekNumber = (date: Date): number => {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
   };
 
   // Calculate time elapsed today (from start time to now)
@@ -301,7 +331,29 @@ export default function StatsScreen() {
           <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Period Statistics</Text>
 
           <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.periodTitle, { color: theme.text }]}>Today</Text>
+            <View style={styles.periodHeader}>
+              <TouchableOpacity onPress={() => navigateDay('prev')} style={styles.navButton}>
+                <IconSymbol
+                  ios_icon_name="chevron.left"
+                  android_material_icon_name="arrow-back"
+                  size={24}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+              <View style={styles.periodTitleContainer}>
+                <Text style={[styles.periodTitle, { color: theme.text }]}>
+                  {selectedDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => navigateDay('next')} style={styles.navButton}>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={24}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+            </View>
             <View style={styles.periodStats}>
               <View style={styles.periodStat}>
                 <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
@@ -321,7 +373,29 @@ export default function StatsScreen() {
           </View>
 
           <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.periodTitle, { color: theme.text }]}>This Week</Text>
+            <View style={styles.periodHeader}>
+              <TouchableOpacity onPress={() => navigateWeek('prev')} style={styles.navButton}>
+                <IconSymbol
+                  ios_icon_name="chevron.left"
+                  android_material_icon_name="arrow-back"
+                  size={24}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+              <View style={styles.periodTitleContainer}>
+                <Text style={[styles.periodTitle, { color: theme.text }]}>
+                  Week {getWeekNumber(selectedWeekStart)}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => navigateWeek('next')} style={styles.navButton}>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={24}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+            </View>
             <View style={styles.periodStats}>
               <View style={styles.periodStat}>
                 <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
@@ -341,7 +415,29 @@ export default function StatsScreen() {
           </View>
 
           <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.periodTitle, { color: theme.text }]}>This Month</Text>
+            <View style={styles.periodHeader}>
+              <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.navButton}>
+                <IconSymbol
+                  ios_icon_name="chevron.left"
+                  android_material_icon_name="arrow-back"
+                  size={24}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+              <View style={styles.periodTitleContainer}>
+                <Text style={[styles.periodTitle, { color: theme.text }]}>
+                  {selectedMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={24}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+            </View>
             <View style={styles.periodStats}>
               <View style={styles.periodStat}>
                 <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Jobs</Text>
@@ -555,10 +651,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  periodHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  periodTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
   periodTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+  },
+  navButton: {
+    padding: 8,
   },
   periodStats: {
     flexDirection: 'row',
