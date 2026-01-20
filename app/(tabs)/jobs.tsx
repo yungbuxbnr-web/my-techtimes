@@ -19,16 +19,19 @@ import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculat
 import { router } from 'expo-router';
 import { api, Job } from '@/utils/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { exportToPdf } from '@/utils/exportUtils';
 
-export default function JobsScreen() {
+export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [technicianName, setTechnicianName] = useState('Technician');
   
-  // Edit form state
   const [editWip, setEditWip] = useState('');
   const [editReg, setEditReg] = useState('');
   const [editAw, setEditAw] = useState('');
@@ -45,23 +48,33 @@ export default function JobsScreen() {
 
   const loadJobs = useCallback(async () => {
     try {
-      console.log('JobsScreen: Fetching jobs for month:', selectedMonth);
+      console.log('JobRecordsScreen: Fetching jobs for month:', selectedMonth);
       const fetchedJobs = await api.getJobsForMonth(selectedMonth);
       setJobs(fetchedJobs);
-      console.log('JobsScreen: Loaded', fetchedJobs.length, 'jobs');
+      console.log('JobRecordsScreen: Loaded', fetchedJobs.length, 'jobs');
     } catch (error) {
-      console.error('JobsScreen: Error loading jobs:', error);
+      console.error('JobRecordsScreen: Error loading jobs:', error);
       Alert.alert('Error', 'Failed to load jobs');
     }
   }, [selectedMonth]);
 
+  const loadProfile = useCallback(async () => {
+    try {
+      const profile = await api.getTechnicianProfile();
+      setTechnicianName(profile.name);
+    } catch (error) {
+      console.error('JobRecordsScreen: Error loading profile:', error);
+    }
+  }, []);
+
   useEffect(() => {
-    console.log('JobsScreen: Loading jobs for month:', selectedMonth);
+    console.log('JobRecordsScreen: Loading jobs for month:', selectedMonth);
     loadJobs();
-  }, [selectedMonth, loadJobs]);
+    loadProfile();
+  }, [selectedMonth, loadJobs, loadProfile]);
 
   const onRefresh = async () => {
-    console.log('JobsScreen: User refreshing jobs list');
+    console.log('JobRecordsScreen: User refreshing jobs list');
     setRefreshing(true);
     await loadJobs();
     setRefreshing(false);
@@ -81,8 +94,19 @@ export default function JobsScreen() {
     setSelectedMonth(`${nextYear}-${String(nextMonth).padStart(2, '0')}`);
   };
 
+  const toggleJobSelection = (jobId: string) => {
+    const newSelection = new Set(selectedJobs);
+    if (newSelection.has(jobId)) {
+      newSelection.delete(jobId);
+    } else {
+      newSelection.add(jobId);
+    }
+    setSelectedJobs(newSelection);
+    console.log('JobRecordsScreen: Selected jobs count:', newSelection.size);
+  };
+
   const handleEditJob = (job: Job) => {
-    console.log('JobsScreen: User editing job:', job.id);
+    console.log('JobRecordsScreen: User editing job:', job.id);
     setEditingJob(job);
     setEditWip(job.wipNumber);
     setEditReg(job.vehicleReg);
@@ -108,7 +132,7 @@ export default function JobsScreen() {
     }
 
     try {
-      console.log('JobsScreen: Saving job edit');
+      console.log('JobRecordsScreen: Saving job edit');
       await api.updateJob(editingJob.id, {
         wipNumber: editWip,
         vehicleReg: editReg.toUpperCase(),
@@ -121,7 +145,7 @@ export default function JobsScreen() {
       await loadJobs();
       Alert.alert('Success', 'Job updated successfully');
     } catch (error) {
-      console.error('JobsScreen: Error updating job:', error);
+      console.error('JobRecordsScreen: Error updating job:', error);
       Alert.alert('Error', 'Failed to update job');
     }
   };
@@ -136,18 +160,36 @@ export default function JobsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            console.log('JobsScreen: User confirmed delete job:', jobId);
+            console.log('JobRecordsScreen: User confirmed delete job:', jobId);
             try {
               await api.deleteJob(jobId);
               await loadJobs();
             } catch (error) {
-              console.error('JobsScreen: Error deleting job:', error);
+              console.error('JobRecordsScreen: Error deleting job:', error);
               Alert.alert('Error', 'Failed to delete job');
             }
           },
         },
       ]
     );
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedJobs.size === 0) {
+      Alert.alert('No Jobs Selected', 'Please select jobs to export');
+      return;
+    }
+
+    const selectedJobsArray = jobs.filter(job => selectedJobs.has(job.id));
+    console.log('JobRecordsScreen: Exporting', selectedJobsArray.length, 'selected jobs to PDF');
+
+    try {
+      await exportToPdf(selectedJobsArray, technicianName, { type: 'all' });
+      Alert.alert('Success', `Exported ${selectedJobsArray.length} jobs to PDF`);
+    } catch (error) {
+      console.error('JobRecordsScreen: Error exporting to PDF:', error);
+      Alert.alert('Error', 'Failed to export jobs to PDF');
+    }
   };
 
   const getVhcColor = (vhc: string) => {
@@ -166,20 +208,51 @@ export default function JobsScreen() {
       count: jobs.length,
       totalAw,
       totalTime: formatTime(totalMinutes),
+      totalHours: totalMinutes / 60,
+    };
+  };
+
+  const calculateSelectedTotals = () => {
+    const selectedJobsArray = jobs.filter(job => selectedJobs.has(job.id));
+    const totalAw = selectedJobsArray.reduce((sum, job) => sum + job.aw, 0);
+    const totalMinutes = totalAw * 5;
+    return {
+      count: selectedJobsArray.length,
+      totalAw,
+      totalTime: formatTime(totalMinutes),
+      totalHours: totalMinutes / 60,
     };
   };
 
   const totals = calculateTotals();
+  const selectedTotals = calculateSelectedTotals();
   const monthName = new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const renderJob = ({ item }: { item: Job }) => {
     const minutes = awToMinutes(item.aw);
     const date = new Date(item.createdAt);
     const vhcColor = getVhcColor(item.vhcStatus || 'N/A');
+    const isSelected = selectedJobs.has(item.id);
 
     return (
-      <View style={[styles.jobCard, { backgroundColor: theme.card }]}>
-        {/* VHC Color Strip */}
+      <TouchableOpacity
+        style={[
+          styles.jobCard,
+          { backgroundColor: theme.card },
+          isSelected && { borderWidth: 3, borderColor: theme.primary },
+        ]}
+        onPress={() => {
+          if (selectionMode) {
+            toggleJobSelection(item.id);
+          }
+        }}
+        onLongPress={() => {
+          if (!selectionMode) {
+            setSelectionMode(true);
+            toggleJobSelection(item.id);
+          }
+        }}
+      >
         {item.vhcStatus && item.vhcStatus !== 'N/A' && (
           <View style={[styles.vhcStrip, { backgroundColor: vhcColor }]} />
         )}
@@ -187,6 +260,18 @@ export default function JobsScreen() {
         <View style={styles.jobContent}>
           <View style={styles.jobHeader}>
             <View style={styles.jobInfo}>
+              {selectionMode && (
+                <View style={[styles.checkbox, isSelected && { backgroundColor: theme.primary }]}>
+                  {isSelected && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={16}
+                      color="#ffffff"
+                    />
+                  )}
+                </View>
+              )}
               <Text style={[styles.wipNumber, { color: theme.primary }]}>
                 WIP: {item.wipNumber}
               </Text>
@@ -196,25 +281,27 @@ export default function JobsScreen() {
                 </View>
               )}
             </View>
-            <View style={styles.jobActions}>
-              <TouchableOpacity
-                onPress={() => handleEditJob(item)}
-                style={[styles.actionButton, { backgroundColor: theme.primary }]}
-              >
-                <Text style={styles.actionButtonText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleDeleteJob(item.id)}
-                style={[styles.actionButton, { backgroundColor: theme.error }]}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={16}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
+            {!selectionMode && (
+              <View style={styles.jobActions}>
+                <TouchableOpacity
+                  onPress={() => handleEditJob(item)}
+                  style={[styles.actionButton, { backgroundColor: theme.primary }]}
+                >
+                  <Text style={styles.actionButtonText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDeleteJob(item.id)}
+                  style={[styles.actionButton, { backgroundColor: theme.error }]}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={16}
+                    color="#ffffff"
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <View style={styles.jobDetails}>
@@ -245,7 +332,7 @@ export default function JobsScreen() {
             </View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -257,25 +344,26 @@ export default function JobsScreen() {
       <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
         <View style={styles.container}>
           <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-            <Text style={[styles.title, { color: '#ffffff' }]}>Jobs</Text>
-            <TouchableOpacity
-              style={[styles.addButton, { backgroundColor: theme.primary }]}
-              onPress={() => {
-                console.log('JobsScreen: User tapped Add Job button');
-                router.push('/(tabs)/add-job');
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="plus"
-                android_material_icon_name="add"
-                size={20}
-                color="#ffffff"
-              />
-              <Text style={styles.addButtonText}>Add Job</Text>
-            </TouchableOpacity>
+            <Text style={[styles.title, { color: '#ffffff' }]}>Job Records</Text>
+            {!selectionMode && (
+              <TouchableOpacity
+                style={[styles.addButton, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  console.log('JobRecordsScreen: User tapped Add Job button');
+                  router.push('/add-job-modal');
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={20}
+                  color="#ffffff"
+                />
+                <Text style={styles.addButtonText}>Add Job</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          {/* Month Selector */}
           <View style={[styles.monthSelector, { backgroundColor: theme.card }]}>
             <TouchableOpacity onPress={handlePreviousMonth} style={styles.monthArrow}>
               <IconSymbol
@@ -301,21 +389,76 @@ export default function JobsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Totals Row */}
-          <View style={[styles.totalsRow, { backgroundColor: theme.card }]}>
-            <View style={styles.totalItem}>
-              <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.count}</Text>
-              <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Jobs</Text>
+          {selectionMode ? (
+            <View style={[styles.selectionBar, { backgroundColor: theme.primary }]}>
+              <View style={styles.selectionInfo}>
+                <Text style={styles.selectionText}>
+                  {selectedJobs.size} selected
+                </Text>
+                <Text style={styles.selectionSubtext}>
+                  {selectedTotals.totalAw} AW • {selectedTotals.totalHours.toFixed(2)}h
+                </Text>
+              </View>
+              <View style={styles.selectionActions}>
+                <TouchableOpacity
+                  style={styles.selectionButton}
+                  onPress={handleExportSelected}
+                >
+                  <IconSymbol
+                    ios_icon_name="square.and.arrow.up"
+                    android_material_icon_name="share"
+                    size={20}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.selectionButtonText}>Export PDF</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.selectionButton}
+                  onPress={() => {
+                    setSelectionMode(false);
+                    setSelectedJobs(new Set());
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={20}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.selectionButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.totalItem}>
-              <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalAw}</Text>
-              <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>AWs</Text>
+          ) : (
+            <View style={[styles.totalsRow, { backgroundColor: theme.card }]}>
+              <View style={styles.totalItem}>
+                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.count}</Text>
+                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Jobs</Text>
+              </View>
+              <View style={styles.totalItem}>
+                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalAw}</Text>
+                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>AWs</Text>
+              </View>
+              <View style={styles.totalItem}>
+                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalTime}</Text>
+                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Time</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.selectButton, { backgroundColor: theme.secondary }]}
+                onPress={() => {
+                  console.log('JobRecordsScreen: User enabled selection mode');
+                  setSelectionMode(true);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="checkmark.circle"
+                  android_material_icon_name="check-circle"
+                  size={20}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
             </View>
-            <View style={styles.totalItem}>
-              <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalTime}</Text>
-              <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Time</Text>
-            </View>
-          </View>
+          )}
 
           <FlatList
             data={jobs}
@@ -341,7 +484,6 @@ export default function JobsScreen() {
           />
         </View>
 
-        {/* Edit Modal */}
         <Modal
           visible={showEditModal}
           transparent
@@ -543,6 +685,7 @@ const styles = StyleSheet.create({
   totalsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    alignItems: 'center',
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 16,
@@ -563,6 +706,58 @@ const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: 12,
+  },
+  selectButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  selectionInfo: {
+    flex: 1,
+  },
+  selectionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  selectionSubtext: {
+    color: '#ffffff',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  selectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    gap: 4,
+  },
+  selectionButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   listContent: {
     padding: 16,
@@ -598,18 +793,28 @@ const styles = StyleSheet.create({
   },
   jobInfo: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   wipNumber: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 4,
   },
   vhcBadge: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
-    marginTop: 4,
   },
   vhcText: {
     color: '#ffffff',

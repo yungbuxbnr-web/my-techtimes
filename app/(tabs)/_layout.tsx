@@ -41,23 +41,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="add-job"
-        options={{
-          title: 'Add Job',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="plus.circle.fill"
-              android_material_icon_name="add-circle"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="jobs"
         options={{
-          title: 'Jobs',
+          title: 'Job Records',
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               ios_icon_name="list.bullet"
@@ -97,6 +83,12 @@ export default function TabLayout() {
         }}
       />
       {/* Hide these from tabs */}
+      <Tabs.Screen
+        name="add-job"
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen
         name="(home)"
         options={{

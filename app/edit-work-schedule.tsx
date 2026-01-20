@@ -42,7 +42,7 @@ export default function EditWorkScheduleScreen() {
   const { theme } = useThemeContext();
   const router = useRouter();
   
-  const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri by default
+  const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [startTime, setStartTime] = useState('07:00');
   const [endTime, setEndTime] = useState('18:00');
   const [lunchBreakMinutes, setLunchBreakMinutes] = useState('30');
@@ -60,12 +60,10 @@ export default function EditWorkScheduleScreen() {
     try {
       const schedule = await api.getSchedule();
       
-      // Load working days
       if (schedule.workingDays && schedule.workingDays.length > 0) {
         setWorkingDays(schedule.workingDays);
       }
       
-      // Load start/end times
       if (schedule.startTime) {
         setStartTime(schedule.startTime);
       }
@@ -73,17 +71,14 @@ export default function EditWorkScheduleScreen() {
         setEndTime(schedule.endTime);
       }
       
-      // Load lunch break
       if (schedule.lunchBreakMinutes !== undefined) {
         setLunchBreakMinutes(schedule.lunchBreakMinutes.toString());
       }
       
-      // Load Saturday frequency
       if (schedule.saturdayFrequency) {
         setSaturdayFrequency(schedule.saturdayFrequency);
       }
       
-      // Load next working Saturday
       if (schedule.nextWorkingSaturday) {
         setNextWorkingSaturday(new Date(schedule.nextWorkingSaturday));
       }
@@ -99,14 +94,12 @@ export default function EditWorkScheduleScreen() {
   const toggleWorkingDay = (dayId: number) => {
     console.log('EditWorkScheduleScreen: Toggling working day', dayId);
     
-    // Don't allow toggling Saturday if frequency is set
     if (dayId === 6 && saturdayFrequency !== 'none') {
       Alert.alert('Saturday Schedule', 'Saturday is managed by the Saturday Frequency setting below');
       return;
     }
     
     if (workingDays.includes(dayId)) {
-      // Remove day
       const newDays = workingDays.filter(d => d !== dayId);
       if (newDays.length === 0) {
         Alert.alert('Error', 'You must have at least one working day selected');
@@ -114,7 +107,6 @@ export default function EditWorkScheduleScreen() {
       }
       setWorkingDays(newDays);
     } else {
-      // Add day
       setWorkingDays([...workingDays, dayId].sort());
     }
   };
@@ -151,15 +143,12 @@ export default function EditWorkScheduleScreen() {
   const handleSave = async () => {
     console.log('EditWorkScheduleScreen: Saving work schedule');
     
-    // Validate inputs
     let finalWorkingDays = [...workingDays];
     
-    // Remove Saturday from working days if frequency is none
     if (saturdayFrequency === 'none') {
       finalWorkingDays = finalWorkingDays.filter(d => d !== 6);
     }
     
-    // Add Saturday to working days if frequency is 'every'
     if (saturdayFrequency === 'every' && !finalWorkingDays.includes(6)) {
       finalWorkingDays.push(6);
       finalWorkingDays.sort();
@@ -197,7 +186,6 @@ export default function EditWorkScheduleScreen() {
       return;
     }
     
-    // Validate Saturday settings
     if (saturdayFrequency !== 'none' && saturdayFrequency !== 'every' && !nextWorkingSaturday) {
       Alert.alert('Error', 'Please set the date of your next working Saturday');
       return;
@@ -226,7 +214,7 @@ export default function EditWorkScheduleScreen() {
       
       Alert.alert(
         'Success',
-        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.length}\nDaily Hours: ${dailyHours.toFixed(2)}h${saturdayInfo}\n\nAll efficiency calculations will now use this schedule.`,
+        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.length}\nDaily Hours: ${dailyHours.toFixed(2)}h${saturdayInfo}\n\nThe work calendar has been updated to reflect these changes.`,
         [
           {
             text: 'OK',
@@ -305,11 +293,10 @@ export default function EditWorkScheduleScreen() {
             color={theme.primary}
           />
           <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-            Customize your work schedule to accurately track efficiency. Select your working days and set your daily hours.
+            Customize your work schedule. Changes will automatically update the work calendar for the entire year.
           </Text>
         </View>
 
-        {/* Working Days Section */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Working Days</Text>
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
@@ -357,7 +344,6 @@ export default function EditWorkScheduleScreen() {
           </View>
         </View>
 
-        {/* Saturday Frequency Section */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Saturday Schedule</Text>
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
@@ -405,7 +391,10 @@ export default function EditWorkScheduleScreen() {
               <Text style={[styles.label, { color: theme.textSecondary }]}>Next Working Saturday</Text>
               <TouchableOpacity
                 style={[styles.datePickerButton, { backgroundColor: theme.background }]}
-                onPress={() => setShowDatePicker(true)}
+                onPress={() => {
+                  console.log('EditWorkScheduleScreen: User tapped Next Working Saturday picker');
+                  setShowDatePicker(true);
+                }}
               >
                 <IconSymbol
                   ios_icon_name="calendar"
@@ -447,7 +436,6 @@ export default function EditWorkScheduleScreen() {
           )}
         </View>
 
-        {/* Working Hours Section */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Working Hours</Text>
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
@@ -498,7 +486,6 @@ export default function EditWorkScheduleScreen() {
           </View>
         </View>
 
-        {/* Calculation Summary */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Calculation Summary</Text>
           
@@ -550,7 +537,6 @@ export default function EditWorkScheduleScreen() {
           </View>
         </View>
 
-        {/* Action Buttons */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.saveButton, { backgroundColor: theme.primary }]}
@@ -598,7 +584,6 @@ export default function EditWorkScheduleScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
       
-      {/* Date Picker Modal */}
       {showDatePicker && (
         <Modal
           visible={showDatePicker}
@@ -615,12 +600,12 @@ export default function EditWorkScheduleScreen() {
                 display="spinner"
                 onChange={(event, selectedDate) => {
                   if (selectedDate) {
-                    // Ensure it's a Saturday
                     if (selectedDate.getDay() !== 6) {
                       Alert.alert('Invalid Date', 'Please select a Saturday');
                       return;
                     }
                     setNextWorkingSaturday(selectedDate);
+                    console.log('EditWorkScheduleScreen: User selected next working Saturday:', selectedDate.toLocaleDateString('en-GB'));
                   }
                 }}
               />
