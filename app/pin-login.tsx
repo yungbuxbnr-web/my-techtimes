@@ -12,13 +12,22 @@ import {
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { api } from '@/utils/api';
-import { IconSymbol } from '@/components/IconSymbol';
 import AppBackground from '@/components/AppBackground';
 
 const PIN_KEY = 'user_pin';
 const BIOMETRICS_KEY = 'biometrics_enabled';
+
+// Helper functions for cross-platform storage
+async function getSecureItem(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  } else {
+    return await SecureStore.getItemAsync(key);
+  }
+}
 
 export default function PinLoginScreen() {
   const router = useRouter();
@@ -28,7 +37,6 @@ export default function PinLoginScreen() {
   const [technicianName, setTechnicianName] = useState('');
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadTechnicianName();
@@ -39,40 +47,43 @@ export default function PinLoginScreen() {
     try {
       console.log('PinLogin: Loading technician name');
       const profile = await api.getTechnicianProfile();
-      setTechnicianName(profile.name);
+      if (profile && profile.name) {
+        setTechnicianName(profile.name);
+        console.log('PinLogin: Technician name loaded:', profile.name);
+      }
     } catch (error) {
       console.error('PinLogin: Error loading technician name:', error);
-      setTechnicianName('Technician');
-    } finally {
-      setLoading(false);
     }
   };
 
   const checkBiometrics = async () => {
     try {
-      console.log('PinLogin: Checking biometrics availability');
+      // Biometrics only available on native platforms
+      if (Platform.OS === 'web') {
+        console.log('PinLogin: Biometrics not available on web');
+        setBiometricsAvailable(false);
+        return;
+      }
+      
+      const enabled = await getSecureItem(BIOMETRICS_KEY);
       const compatible = await LocalAuthentication.hasHardwareAsync();
       const enrolled = await LocalAuthentication.isEnrolledAsync();
+      
       const available = compatible && enrolled;
       setBiometricsAvailable(available);
-
-      if (available) {
-        const enabled = await SecureStore.getItemAsync(BIOMETRICS_KEY);
-        setBiometricsEnabled(enabled === 'true');
-        console.log('PinLogin: Biometrics available:', available, 'enabled:', enabled === 'true');
-      } else {
-        console.log('PinLogin: Biometrics not available on this device');
-      }
+      setBiometricsEnabled(enabled === 'true' && available);
+      
+      console.log('PinLogin: Biometrics - enabled:', enabled === 'true', 'available:', available);
     } catch (error) {
       console.error('PinLogin: Error checking biometrics:', error);
     }
   };
 
   const handleNumberPress = (num: string) => {
-    console.log('PinLogin: Number pressed:', num);
     if (pin.length < 6) {
       const newPin = pin + num;
       setPin(newPin);
+      console.log('PinLogin: PIN length:', newPin.length);
       
       // Auto-verify when PIN reaches 4-6 digits
       if (newPin.length >= 4) {
@@ -82,41 +93,44 @@ export default function PinLoginScreen() {
   };
 
   const handleBackspace = () => {
-    console.log('PinLogin: Backspace pressed');
     setPin(pin.slice(0, -1));
   };
 
   const verifyPin = async (enteredPin: string) => {
     try {
-      console.log('PinLogin: Verifying PIN, length:', enteredPin.length);
-      const storedPin = await SecureStore.getItemAsync(PIN_KEY);
+      console.log('PinLogin: Verifying PIN');
+      const storedPin = await getSecureItem(PIN_KEY);
       
       if (!storedPin) {
-        console.error('PinLogin: No stored PIN found, redirecting to setup');
-        Alert.alert('Error', 'No PIN found. Please complete setup.');
-        router.replace('/setup');
+        console.error('PinLogin: No stored PIN found');
+        Alert.alert('Error', 'No PIN found. Please reset the app.');
         return;
       }
-
-      if (enteredPin === storedPin) {
-        console.log('PinLogin: PIN verified successfully, navigating to home');
+      
+      if (storedPin === enteredPin) {
+        console.log('PinLogin: PIN correct, navigating to app');
         router.replace('/(tabs)');
-      } else if (enteredPin.length >= storedPin.length) {
-        console.log('PinLogin: Incorrect PIN entered');
+      } else {
+        console.log('PinLogin: Incorrect PIN');
         Vibration.vibrate(500);
-        Alert.alert('Incorrect PIN', 'Please try again');
         setPin('');
+        Alert.alert('Incorrect PIN', 'Please try again');
       }
     } catch (error) {
       console.error('PinLogin: Error verifying PIN:', error);
       Alert.alert('Error', 'Failed to verify PIN');
-      setPin('');
     }
   };
 
   const handleBiometricAuth = async () => {
     try {
       console.log('PinLogin: Attempting biometric authentication');
+      
+      if (!biometricsAvailable) {
+        console.log('PinLogin: Biometrics not available');
+        return;
+      }
+      
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Authenticate to access TechTimes',
         fallbackLabel: 'Use PIN',
@@ -127,124 +141,115 @@ export default function PinLoginScreen() {
         console.log('PinLogin: Biometric authentication successful');
         router.replace('/(tabs)');
       } else {
-        console.log('PinLogin: Biometric authentication failed or cancelled');
-        Alert.alert('Authentication Failed', 'Please use your PIN to login');
+        console.log('PinLogin: Biometric authentication failed');
       }
     } catch (error) {
       console.error('PinLogin: Error with biometric authentication:', error);
-      Alert.alert('Error', 'Biometric authentication failed. Please use your PIN.');
     }
   };
-
-  if (loading) {
-    return (
-      <AppBackground>
-        <View style={styles.container}>
-          <Text style={[styles.loadingText, isDarkMode ? styles.textLight : styles.textDark]}>
-            Loading...
-          </Text>
-        </View>
-      </AppBackground>
-    );
-  }
 
   return (
     <AppBackground>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={[styles.welcomeText, isDarkMode ? styles.textLight : styles.textDark]}>
-            Welcome back,
+          <Text style={[styles.appName, isDarkMode ? styles.textLight : styles.textDark]}>
+            TechTimes
           </Text>
-          <Text style={[styles.nameText, isDarkMode ? styles.textLight : styles.textDark]}>
-            {technicianName}
-          </Text>
+          {technicianName ? (
+            <Text style={[styles.welcomeText, isDarkMode ? styles.textLight : styles.textDark]}>
+              Welcome back, {technicianName}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.pinDisplay}>
-          {[0, 1, 2, 3, 4, 5].map((index) => (
-            <View
-              key={index}
-              style={[
-                styles.pinDot,
-                index < pin.length && styles.pinDotFilled,
-                isDarkMode ? styles.pinDotDark : styles.pinDotLight,
-              ]}
-            />
-          ))}
+          <View style={styles.pinDots}>
+            {[0, 1, 2, 3, 4, 5].map((index) => (
+              <View
+                key={index}
+                style={[
+                  styles.pinDot,
+                  index < pin.length && styles.pinDotFilled,
+                  isDarkMode ? styles.pinDotDark : styles.pinDotLight,
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={[styles.pinLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+            Enter your PIN
+          </Text>
         </View>
 
         <View style={styles.keypad}>
-          {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']].map((row, rowIndex) => (
+          {[
+            ['1', '2', '3'],
+            ['4', '5', '6'],
+            ['7', '8', '9'],
+            ['', '0', 'backspace'],
+          ].map((row, rowIndex) => (
             <View key={rowIndex} style={styles.keypadRow}>
-              {row.map((num) => (
-                <TouchableOpacity
-                  key={num}
-                  style={[
-                    styles.keypadButton,
-                    isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
-                  ]}
-                  onPress={() => handleNumberPress(num)}
-                >
-                  <Text style={[styles.keypadText, isDarkMode ? styles.textLight : styles.textDark]}>
-                    {num}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {row.map((key, keyIndex) => {
+                if (key === '') {
+                  return <View key={keyIndex} style={styles.keypadButton} />;
+                }
+                
+                if (key === 'backspace') {
+                  return (
+                    <TouchableOpacity
+                      key={keyIndex}
+                      style={styles.keypadButton}
+                      onPress={handleBackspace}
+                    >
+                      <IconSymbol
+                        ios_icon_name="delete.left"
+                        android_material_icon_name="backspace"
+                        size={28}
+                        color={isDarkMode ? '#fff' : '#000'}
+                      />
+                    </TouchableOpacity>
+                  );
+                }
+                
+                return (
+                  <TouchableOpacity
+                    key={keyIndex}
+                    style={[
+                      styles.keypadButton,
+                      isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
+                    ]}
+                    onPress={() => handleNumberPress(key)}
+                  >
+                    <Text
+                      style={[
+                        styles.keypadButtonText,
+                        isDarkMode ? styles.textLight : styles.textDark,
+                      ]}
+                    >
+                      {key}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))}
-          
-          <View style={styles.keypadRow}>
-            {biometricsEnabled && biometricsAvailable ? (
-              <TouchableOpacity
-                style={[
-                  styles.keypadButton,
-                  isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
-                ]}
-                onPress={handleBiometricAuth}
-              >
-                <IconSymbol
-                  ios_icon_name="faceid"
-                  android_material_icon_name="fingerprint"
-                  size={32}
-                  color={isDarkMode ? '#fff' : '#000'}
-                />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.keypadButton} />
-            )}
-            
-            <TouchableOpacity
-              style={[
-                styles.keypadButton,
-                isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
-              ]}
-              onPress={() => handleNumberPress('0')}
-            >
-              <Text style={[styles.keypadText, isDarkMode ? styles.textLight : styles.textDark]}>
-                0
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.keypadButton,
-                isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
-              ]}
-              onPress={handleBackspace}
-            >
-              <IconSymbol
-                ios_icon_name="delete.left"
-                android_material_icon_name="backspace"
-                size={28}
-                color={isDarkMode ? '#fff' : '#000'}
-              />
-            </TouchableOpacity>
-          </View>
         </View>
 
-        <Text style={[styles.hintText, isDarkMode ? styles.textLight : styles.textDark]}>
-          Enter your PIN to continue
-        </Text>
+        {biometricsEnabled && biometricsAvailable && (
+          <TouchableOpacity
+            style={styles.biometricButton}
+            onPress={handleBiometricAuth}
+          >
+            <IconSymbol
+              ios_icon_name="faceid"
+              android_material_icon_name="fingerprint"
+              size={32}
+              color="#2196F3"
+            />
+            <Text style={[styles.biometricText, isDarkMode ? styles.textLight : styles.textDark]}>
+              Use Biometrics
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </AppBackground>
   );
@@ -257,28 +262,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
-  loadingText: {
-    fontSize: 18,
-  },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 60,
+  },
+  appName: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    marginBottom: 8,
   },
   welcomeText: {
     fontSize: 18,
     opacity: 0.8,
-    marginBottom: 8,
-  },
-  nameText: {
-    fontSize: 28,
-    fontWeight: 'bold',
   },
   pinDisplay: {
-    flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 60,
+  },
+  pinDots: {
+    flexDirection: 'row',
     gap: 16,
+    marginBottom: 16,
   },
   pinDot: {
     width: 16,
@@ -288,18 +292,20 @@ const styles = StyleSheet.create({
   },
   pinDotLight: {
     borderColor: '#2196F3',
-    backgroundColor: 'transparent',
   },
   pinDotDark: {
     borderColor: '#2196F3',
-    backgroundColor: 'transparent',
   },
   pinDotFilled: {
     backgroundColor: '#2196F3',
   },
+  pinLabel: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
   keypad: {
     width: '100%',
-    maxWidth: 320,
+    maxWidth: 300,
   },
   keypadRow: {
     flexDirection: 'row',
@@ -312,24 +318,26 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
   },
   keypadButtonLight: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderColor: '#2196F3',
   },
   keypadButtonDark: {
     backgroundColor: 'rgba(30, 30, 30, 0.9)',
-    borderColor: '#2196F3',
   },
-  keypadText: {
+  keypadButtonText: {
     fontSize: 28,
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  hintText: {
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginTop: 32,
-    fontSize: 14,
-    opacity: 0.7,
+    padding: 16,
+  },
+  biometricText: {
+    fontSize: 16,
   },
   textLight: {
     color: '#fff',

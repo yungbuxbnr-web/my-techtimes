@@ -20,6 +20,25 @@ import AppBackground from '@/components/AppBackground';
 const PIN_KEY = 'user_pin';
 const SETUP_COMPLETE_KEY = 'setup_complete';
 
+// Helper functions for cross-platform storage
+async function setSecureItem(key: string, value: string) {
+  if (Platform.OS === 'web') {
+    // Use localStorage for web
+    localStorage.setItem(key, value);
+  } else {
+    // Use SecureStore for native
+    await SecureStore.setItemAsync(key, value);
+  }
+}
+
+async function getSecureItem(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  } else {
+    return await SecureStore.getItemAsync(key);
+  }
+}
+
 export default function SetupScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
@@ -69,12 +88,12 @@ export default function SetupScreen() {
       await api.updateTechnicianProfile({ name: technicianName.trim() });
       
       console.log('Setup: Saving PIN to secure storage');
-      // Save PIN to secure storage
-      await SecureStore.setItemAsync(PIN_KEY, pin);
+      // Save PIN to secure storage (cross-platform)
+      await setSecureItem(PIN_KEY, pin);
       
       console.log('Setup: Marking setup as complete');
       // Mark setup as complete
-      await SecureStore.setItemAsync(SETUP_COMPLETE_KEY, 'true');
+      await setSecureItem(SETUP_COMPLETE_KEY, 'true');
       
       console.log('Setup: Setup complete, navigating to login');
       // Navigate to login screen

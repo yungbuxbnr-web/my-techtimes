@@ -2,8 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { AppState, AppStateStatus } from 'react-native';
-import { useRouter } from 'expo-router';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -27,6 +26,23 @@ const PIN_KEY = 'user_pin';
 const BIOMETRICS_KEY = 'biometrics_enabled';
 const LOCK_ON_RESUME_KEY = 'lock_on_resume';
 const SETUP_COMPLETE_KEY = 'setup_complete';
+
+// Helper functions for cross-platform storage
+async function setSecureItem(key: string, value: string) {
+  if (Platform.OS === 'web') {
+    localStorage.setItem(key, value);
+  } else {
+    await SecureStore.setItemAsync(key, value);
+  }
+}
+
+async function getSecureItem(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  } else {
+    return await SecureStore.getItemAsync(key);
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -64,12 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkSetupStatus = async (): Promise<boolean> => {
     try {
       console.log('AuthContext: Checking setup status');
-      const setupDone = await SecureStore.getItemAsync(SETUP_COMPLETE_KEY);
-      const storedPin = await SecureStore.getItemAsync(PIN_KEY);
+      const setupDone = await getSecureItem(SETUP_COMPLETE_KEY);
+      const storedPin = await getSecureItem(PIN_KEY);
       
       // Setup is complete if both the flag is set AND a PIN exists
       const isComplete = setupDone === 'true' && !!storedPin;
-      console.log('AuthContext: Setup complete:', isComplete);
+      console.log('AuthContext: Setup complete:', isComplete, 'setupDone:', setupDone, 'hasPin:', !!storedPin);
       setSetupComplete(isComplete);
       return isComplete;
     } catch (error) {
@@ -82,6 +98,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkBiometricsAvailability = async () => {
     try {
       console.log('AuthContext: Checking biometrics availability');
+      
+      // Biometrics only available on native platforms
+      if (Platform.OS === 'web') {
+        console.log('AuthContext: Biometrics not available on web');
+        setBiometricsAvailable(false);
+        return;
+      }
+      
       const compatible = await LocalAuthentication.hasHardwareAsync();
       const enrolled = await LocalAuthentication.isEnrolledAsync();
       const available = compatible && enrolled;
@@ -102,8 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadSettings = async () => {
     try {
       console.log('AuthContext: Loading settings');
-      const biometrics = await SecureStore.getItemAsync(BIOMETRICS_KEY);
-      const lockResume = await SecureStore.getItemAsync(LOCK_ON_RESUME_KEY);
+      const biometrics = await getSecureItem(BIOMETRICS_KEY);
+      const lockResume = await getSecureItem(LOCK_ON_RESUME_KEY);
       
       setBiometricsEnabledState(biometrics === 'true');
       setLockOnResumeState(lockResume !== 'false'); // Default to true
@@ -126,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (pin: string): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting login with PIN');
-      const storedPin = await SecureStore.getItemAsync(PIN_KEY);
+      const storedPin = await getSecureItem(PIN_KEY);
       
       if (!storedPin) {
         console.error('AuthContext: No stored PIN found');
@@ -162,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
       
-      await SecureStore.setItemAsync(BIOMETRICS_KEY, enabled.toString());
+      await setSecureItem(BIOMETRICS_KEY, enabled.toString());
       setBiometricsEnabledState(enabled);
       console.log('AuthContext: Biometrics setting saved');
       return true;
@@ -175,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setLockOnResume = async (enabled: boolean) => {
     try {
       console.log('AuthContext: Setting lock on resume:', enabled);
-      await SecureStore.setItemAsync(LOCK_ON_RESUME_KEY, enabled.toString());
+      await setSecureItem(LOCK_ON_RESUME_KEY, enabled.toString());
       setLockOnResumeState(enabled);
     } catch (error) {
       console.error('AuthContext: Failed to save lock on resume setting:', error);
@@ -185,14 +209,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const changePin = async (currentPin: string, newPin: string): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting to change PIN');
-      const storedPin = await SecureStore.getItemAsync(PIN_KEY);
+      const storedPin = await getSecureItem(PIN_KEY);
       
       if (storedPin !== currentPin) {
         console.log('AuthContext: Current PIN incorrect');
         return false;
       }
       
-      await SecureStore.setItemAsync(PIN_KEY, newPin);
+      await setSecureItem(PIN_KEY, newPin);
       console.log('AuthContext: PIN changed successfully');
       return true;
     } catch (error) {
