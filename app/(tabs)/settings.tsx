@@ -12,6 +12,9 @@ import { requestAllPermissions, checkPermissions, showPermissionsInfo } from '@/
 import Slider from '@react-native-community/slider';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
+import { toastManager } from '@/utils/toastManager';
+import { ProcessNotification } from '@/components/ProcessNotification';
+import * as Haptics from 'expo-haptics';
 import {
   View,
   Text,
@@ -23,7 +26,6 @@ import {
   TextInput,
   Platform,
   Modal,
-  ActivityIndicator,
 } from 'react-native';
 import * as Sharing from 'expo-sharing';
 
@@ -49,8 +51,9 @@ export default function SettingsScreen() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedWeek, setSelectedWeek] = useState(1);
   
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0, job: null as any });
+  const [showImportNotification, setShowImportNotification] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+  const [importNotificationType, setImportNotificationType] = useState<'loading' | 'success' | 'error'>('loading');
   const [importing, setImporting] = useState(false);
   
   const [permissions, setPermissions] = useState({
@@ -73,7 +76,6 @@ export default function SettingsScreen() {
       setTechnicianName(profile.name);
       setMonthlyTarget(settings.monthlyTarget.toString());
       
-      // Format schedule info
       const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const workingDayNames = workingDays.map(d => dayNames[d]).join(', ');
@@ -81,6 +83,7 @@ export default function SettingsScreen() {
       setScheduleInfo(scheduleText);
     } catch (error) {
       console.error('SettingsScreen: Error loading settings:', error);
+      toastManager.error('Failed to load settings');
     }
   };
 
@@ -92,74 +95,84 @@ export default function SettingsScreen() {
 
   const handleRequestPermissions = async () => {
     console.log('SettingsScreen: Requesting permissions');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await requestAllPermissions();
     await checkAppPermissions();
+    toastManager.success('Permissions updated');
   };
 
   const handleUpdateTarget = async () => {
     console.log('SettingsScreen: Updating monthly target to', monthlyTarget);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     try {
       const value = parseFloat(monthlyTarget);
       if (isNaN(value) || value <= 0) {
-        Alert.alert('Invalid Target', 'Please enter a valid target hours value');
+        toastManager.error('Please enter a valid target hours value');
         return;
       }
       await api.updateMonthlyTarget(value);
-      Alert.alert('Success', 'Monthly target updated');
+      toastManager.success('Monthly target updated');
     } catch (error) {
       console.error('SettingsScreen: Error updating target:', error);
-      Alert.alert('Error', 'Failed to update monthly target');
+      toastManager.error('Failed to update monthly target');
     }
   };
 
   const handleUpdateName = async () => {
     console.log('SettingsScreen: Updating technician name to', technicianName);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     try {
       if (!technicianName.trim()) {
-        Alert.alert('Invalid Name', 'Please enter a valid name');
+        toastManager.error('Please enter a valid name');
         return;
       }
       await api.updateTechnicianProfile({ name: technicianName });
-      Alert.alert('Success', 'Name updated');
+      toastManager.success('Name updated');
     } catch (error) {
       console.error('SettingsScreen: Error updating name:', error);
-      Alert.alert('Error', 'Failed to update name');
+      toastManager.error('Failed to update name');
     }
   };
 
   const handleChangePIN = () => {
     console.log('SettingsScreen: Opening PIN change modal');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowPinChange(true);
   };
 
   const handleSubmitPinChange = async () => {
     console.log('SettingsScreen: Submitting PIN change');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
     if (newPin !== confirmPin) {
-      Alert.alert('Error', 'New PINs do not match');
+      toastManager.error('New PINs do not match');
       return;
     }
     if (newPin.length < 4) {
-      Alert.alert('Error', 'PIN must be at least 4 digits');
+      toastManager.error('PIN must be at least 4 digits');
       return;
     }
     
-    // This would normally verify the current PIN and update
-    // For now, just close the modal
     setShowPinChange(false);
     setCurrentPin('');
     setNewPin('');
     setConfirmPin('');
-    Alert.alert('Success', 'PIN changed successfully');
+    toastManager.success('PIN changed successfully');
   };
 
   const handleToggleBiometrics = async (value: boolean) => {
     console.log('SettingsScreen: Toggling biometrics to', value);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setBiometricsEnabled(value);
-    // This would normally enable/disable biometric authentication
+    toastManager.info(value ? 'Biometrics enabled' : 'Biometrics disabled');
   };
 
   const handleExportCSV = async () => {
     console.log('SettingsScreen: Exporting to CSV');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     try {
       const jobs = await api.getAllJobs();
       
@@ -182,20 +195,23 @@ export default function SettingsScreen() {
         });
       }
       
-      Alert.alert('Success', 'Data exported successfully');
+      toastManager.success('Data exported successfully');
     } catch (error) {
       console.error('SettingsScreen: Error exporting CSV:', error);
-      Alert.alert('Error', 'Failed to export data');
+      toastManager.error('Failed to export data');
     }
   };
 
   const handleOpenExportModal = () => {
     console.log('SettingsScreen: Opening export modal');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowExportModal(true);
   };
 
   const handleExport = async (format: 'pdf' | 'json') => {
     console.log('SettingsScreen: Exporting as', format, 'with type', exportType);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
     try {
       let jobs = [];
       const options: ExportOptions = { type: exportType };
@@ -233,15 +249,17 @@ export default function SettingsScreen() {
       }
       
       setShowExportModal(false);
-      Alert.alert('Success', `Exported ${jobs.length} jobs as ${format.toUpperCase()}`);
+      toastManager.success(`Exported ${jobs.length} jobs as ${format.toUpperCase()}`);
     } catch (error) {
       console.error('SettingsScreen: Error exporting:', error);
-      Alert.alert('Error', `Failed to export as ${format.toUpperCase()}`);
+      toastManager.error(`Failed to export as ${format.toUpperCase()}`);
     }
   };
 
   const handleOpenImportModal = async () => {
     console.log('SettingsScreen: Opening import modal - selecting file');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
@@ -254,22 +272,21 @@ export default function SettingsScreen() {
       }
       
       console.log('SettingsScreen: File selected:', result.assets[0].uri);
-      setShowImportModal(true);
+      setShowImportNotification(true);
       setImporting(true);
-      setImportProgress({ current: 0, total: 0, job: null });
+      setImportNotificationType('loading');
+      setImportProgress({ current: 0, total: 0 });
       
-      // Parse the JSON file
       const importResult = await importFromJson(
         result.assets[0].uri,
         (current, total, job) => {
           console.log('SettingsScreen: Import progress', current, '/', total, '- Job:', job.wipNumber);
-          setImportProgress({ current, total, job });
+          setImportProgress({ current, total });
         }
       );
       
       console.log('SettingsScreen: Parsed', importResult.jobs.length, 'jobs, now importing to API');
       
-      // Import each job via the API
       let successCount = 0;
       let failCount = 0;
       
@@ -279,6 +296,7 @@ export default function SettingsScreen() {
           console.log('SettingsScreen: Importing job', i + 1, '/', importResult.jobs.length, ':', job);
           await api.createJob(job);
           successCount++;
+          setImportProgress({ current: i + 1, total: importResult.jobs.length });
         } catch (error) {
           console.error('SettingsScreen: Failed to import job', i + 1, error);
           failCount++;
@@ -286,24 +304,37 @@ export default function SettingsScreen() {
       }
       
       setImporting(false);
+      setImportNotificationType('success');
       
       console.log('SettingsScreen: Import complete - Success:', successCount, 'Failed:', failCount);
       
-      Alert.alert(
-        'Import Complete',
-        `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped (invalid): ${importResult.skipped}`,
-        [{ text: 'OK', onPress: () => setShowImportModal(false) }]
-      );
+      setTimeout(() => {
+        setShowImportNotification(false);
+        toastManager.success(`Imported ${successCount} jobs successfully`);
+        
+        if (failCount > 0 || importResult.skipped > 0) {
+          Alert.alert(
+            'Import Complete',
+            `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped (invalid): ${importResult.skipped}`
+          );
+        }
+      }, 1500);
     } catch (error) {
       console.error('SettingsScreen: Error importing:', error);
       setImporting(false);
-      setShowImportModal(false);
-      Alert.alert('Error', `Failed to import jobs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setImportNotificationType('error');
+      
+      setTimeout(() => {
+        setShowImportNotification(false);
+        toastManager.error(`Failed to import jobs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }, 2000);
     }
   };
 
   const handleBackup = async () => {
     console.log('SettingsScreen: Creating backup');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     try {
       const backupData = await offlineStorage.exportAllData();
       const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
@@ -318,15 +349,17 @@ export default function SettingsScreen() {
         });
       }
       
-      Alert.alert('Success', 'Backup created successfully');
+      toastManager.success('Backup created successfully');
     } catch (error) {
       console.error('SettingsScreen: Error creating backup:', error);
-      Alert.alert('Error', 'Failed to create backup');
+      toastManager.error('Failed to create backup');
     }
   };
 
   const handleRestore = async () => {
     console.log('SettingsScreen: Opening restore dialog');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     Alert.alert(
       'Restore Backup',
       'This will replace all current data. Are you sure?',
@@ -339,6 +372,8 @@ export default function SettingsScreen() {
 
   const performRestore = async () => {
     console.log('SettingsScreen: Performing restore');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
@@ -353,15 +388,18 @@ export default function SettingsScreen() {
       const backupData = await FileSystem.readAsStringAsync(result.assets[0].uri);
       await offlineStorage.importAllData(backupData);
       
+      toastManager.success('Data restored successfully');
       Alert.alert('Success', 'Data restored successfully. Please restart the app.');
     } catch (error) {
       console.error('SettingsScreen: Error restoring backup:', error);
-      Alert.alert('Error', 'Failed to restore backup');
+      toastManager.error('Failed to restore backup');
     }
   };
 
   const handleLogout = () => {
     console.log('SettingsScreen: Logging out');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
@@ -377,7 +415,6 @@ export default function SettingsScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
         
-        {/* Technician Profile */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Technician Profile</Text>
           <View style={styles.inputGroup}>
@@ -398,7 +435,6 @@ export default function SettingsScreen() {
           </View>
         </View>
         
-        {/* Monthly Target */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Monthly Target</Text>
           <View style={styles.inputGroup}>
@@ -420,7 +456,6 @@ export default function SettingsScreen() {
           </View>
         </View>
         
-        {/* Work Schedule */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Schedule</Text>
           <View style={[styles.scheduleInfoBox, { backgroundColor: theme.background }]}>
@@ -436,6 +471,7 @@ export default function SettingsScreen() {
             style={[styles.button, { backgroundColor: theme.primary, marginTop: 12 }]}
             onPress={() => {
               console.log('SettingsScreen: User tapped Edit Work Schedule button');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/edit-work-schedule');
             }}
           >
@@ -452,14 +488,16 @@ export default function SettingsScreen() {
           </Text>
         </View>
         
-        {/* Appearance */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
           <View style={styles.switchRow}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Dark Mode</Text>
             <Switch
               value={isDarkMode}
-              onValueChange={toggleTheme}
+              onValueChange={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                toggleTheme();
+              }}
               trackColor={{ false: theme.border, true: theme.primary }}
             />
           </View>
@@ -479,7 +517,6 @@ export default function SettingsScreen() {
           </View>
         </View>
         
-        {/* Security */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
           <TouchableOpacity
@@ -500,13 +537,15 @@ export default function SettingsScreen() {
             <Text style={[styles.label, { color: theme.textSecondary }]}>Lock on Resume</Text>
             <Switch
               value={lockOnResume}
-              onValueChange={setLockOnResume}
+              onValueChange={(value) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setLockOnResume(value);
+              }}
               trackColor={{ false: theme.border, true: theme.primary }}
             />
           </View>
         </View>
         
-        {/* Export & Import */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Export & Import</Text>
           <TouchableOpacity
@@ -541,13 +580,13 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         
-        {/* Calendar */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Calendar</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
             onPress={() => {
               console.log('SettingsScreen: User tapped View Calendar button');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/calendar');
             }}
           >
@@ -561,13 +600,13 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         
-        {/* Notifications */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Notifications</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
             onPress={() => {
               console.log('SettingsScreen: User tapped Notification Settings button');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/notification-settings');
             }}
           >
@@ -584,13 +623,13 @@ export default function SettingsScreen() {
           </Text>
         </View>
         
-        {/* About */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
             onPress={() => {
               console.log('SettingsScreen: User tapped About TechTimes button');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/about');
             }}
           >
@@ -607,7 +646,6 @@ export default function SettingsScreen() {
           </Text>
         </View>
         
-        {/* Backup & Restore */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Backup & Restore</Text>
           <TouchableOpacity
@@ -624,7 +662,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         
-        {/* Permissions */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Permissions</Text>
           <View style={styles.permissionRow}>
@@ -647,7 +684,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         
-        {/* Logout */}
         <TouchableOpacity
           style={[styles.button, { backgroundColor: theme.error, marginTop: 20 }]}
           onPress={handleLogout}
@@ -657,6 +693,21 @@ export default function SettingsScreen() {
         
         <View style={{ height: 40 }} />
       </ScrollView>
+      
+      {/* Import Process Notification */}
+      <ProcessNotification
+        visible={showImportNotification}
+        title={
+          importNotificationType === 'loading'
+            ? 'Importing Jobs...'
+            : importNotificationType === 'success'
+            ? 'Import Complete!'
+            : 'Import Failed'
+        }
+        progress={importProgress.current}
+        total={importProgress.total}
+        type={importNotificationType}
+      />
       
       {/* Export Modal */}
       <Modal
@@ -677,7 +728,10 @@ export default function SettingsScreen() {
                     styles.exportTypeButton,
                     exportType === type && { backgroundColor: theme.primary },
                   ]}
-                  onPress={() => setExportType(type)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setExportType(type);
+                  }}
                 >
                   <Text
                     style={[
@@ -701,6 +755,7 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
                     onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const newDate = new Date(selectedDate);
                       newDate.setDate(newDate.getDate() - 1);
                       setSelectedDate(newDate);
@@ -710,13 +765,17 @@ export default function SettingsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => setSelectedDate(new Date())}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedDate(new Date());
+                    }}
                   >
                     <Text style={styles.buttonText}>Today</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
                     onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const newDate = new Date(selectedDate);
                       newDate.setDate(newDate.getDate() + 1);
                       setSelectedDate(newDate);
@@ -738,6 +797,7 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
                     onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const newDate = new Date(selectedDate);
                       newDate.setDate(newDate.getDate() - 7);
                       setSelectedDate(newDate);
@@ -747,13 +807,17 @@ export default function SettingsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => setSelectedDate(new Date())}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedDate(new Date());
+                    }}
                   >
                     <Text style={styles.buttonText}>This Week</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
                     onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const newDate = new Date(selectedDate);
                       newDate.setDate(newDate.getDate() + 7);
                       setSelectedDate(newDate);
@@ -775,6 +839,7 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
                     onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const newDate = new Date(selectedMonth);
                       newDate.setMonth(newDate.getMonth() - 1);
                       setSelectedMonth(newDate);
@@ -784,13 +849,17 @@ export default function SettingsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => setSelectedMonth(new Date())}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedMonth(new Date());
+                    }}
                   >
                     <Text style={styles.buttonText}>This Month</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: theme.primary }]}
                     onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const newDate = new Date(selectedMonth);
                       newDate.setMonth(newDate.getMonth() + 1);
                       setSelectedMonth(newDate);
@@ -819,45 +888,13 @@ export default function SettingsScreen() {
             
             <TouchableOpacity
               style={[styles.button, { backgroundColor: theme.textSecondary, marginTop: 16 }]}
-              onPress={() => setShowExportModal(false)}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowExportModal(false);
+              }}
             >
               <Text style={styles.buttonText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      
-      {/* Import Progress Modal */}
-      <Modal
-        visible={showImportModal}
-        animationType="fade"
-        transparent={true}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Importing Jobs</Text>
-            
-            {importing && (
-              <>
-                <ActivityIndicator size="large" color={theme.primary} style={{ marginVertical: 20 }} />
-                <Text style={[styles.progressText, { color: theme.text }]}>
-                  {importProgress.current} / {importProgress.total}
-                </Text>
-                {importProgress.job && (
-                  <View style={styles.jobInfoBox}>
-                    <Text style={[styles.jobText, { color: theme.textSecondary }]}>
-                      WIP: {importProgress.job.wipNumber}
-                    </Text>
-                    <Text style={[styles.jobText, { color: theme.textSecondary }]}>
-                      Reg: {importProgress.job.vehicleReg}
-                    </Text>
-                    <Text style={[styles.jobText, { color: theme.textSecondary }]}>
-                      AW: {importProgress.job.aws || importProgress.job.aw}
-                    </Text>
-                  </View>
-                )}
-              </>
-            )}
           </View>
         </View>
       </Modal>
@@ -909,7 +946,10 @@ export default function SettingsScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, { backgroundColor: theme.textSecondary, marginTop: 12 }]}
-              onPress={() => setShowPinChange(false)}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowPinChange(false);
+              }}
             >
               <Text style={styles.buttonText}>Cancel</Text>
             </TouchableOpacity>
@@ -1071,21 +1111,5 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
-  },
-  progressText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  jobText: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  jobInfoBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.1)',
   },
 });

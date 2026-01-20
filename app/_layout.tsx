@@ -4,90 +4,96 @@ import { useEffect } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
+import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import * as SplashScreen from 'expo-splash-screen';
+import 'react-native-reanimated';
 
-// Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   useEffect(() => {
-    // Hide splash screen after a short delay
-    setTimeout(() => {
-      SplashScreen.hideAsync();
-    }, 1000);
+    console.log('RootLayout: App initialized');
+    SplashScreen.hideAsync();
   }, []);
 
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <ThemeProvider>
           <WidgetProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="setup" />
-              <Stack.Screen name="pin-login" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen 
-                name="add-job-modal" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: true,
-                  title: 'Add Job',
-                }} 
-              />
-              <Stack.Screen 
-                name="target-details" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: true,
-                  title: 'Target Details',
-                }} 
-              />
-              <Stack.Screen 
-                name="efficiency-details" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: true,
-                  title: 'Efficiency Details',
-                }} 
-              />
-              <Stack.Screen 
-                name="calendar" 
-                options={{ 
-                  headerShown: true,
-                  title: 'Calendar',
-                }} 
-              />
-              <Stack.Screen 
-                name="edit-work-schedule" 
-                options={{ 
-                  headerShown: true,
-                  title: 'Edit Work Schedule',
-                }} 
-              />
-              <Stack.Screen 
-                name="notification-settings" 
-                options={{ 
-                  headerShown: true,
-                  title: 'Notification Settings',
-                }} 
-              />
-              <Stack.Screen 
-                name="about" 
-                options={{ 
-                  headerShown: true,
-                  title: 'About TechTimes',
-                }} 
-              />
-            </Stack>
+            <ToastProvider>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: 'fade',
+                }}
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="pin-login" />
+                <Stack.Screen name="setup" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen
+                  name="add-job-modal"
+                  options={{
+                    presentation: 'modal',
+                    animation: 'slide_from_bottom',
+                  }}
+                />
+                <Stack.Screen
+                  name="edit-work-schedule"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="work-calendar"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="calendar"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="notification-settings"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="about"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="efficiency-details"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="target-details"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+                />
+              </Stack>
+            </ToastProvider>
           </WidgetProvider>
-        </AuthProvider>
-      </ThemeProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

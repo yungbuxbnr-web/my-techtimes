@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
-  Animated,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -20,6 +19,9 @@ import { api, OCRRegResult, OCRJobCardResult } from '@/utils/api';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { toastManager } from '@/utils/toastManager';
+import { ProcessNotification } from '@/components/ProcessNotification';
+import * as Haptics from 'expo-haptics';
 
 export default function AddJobModal() {
   const { theme, overlayStrength, isDarkMode } = useThemeContext();
@@ -32,8 +34,8 @@ export default function AddJobModal() {
   const [saving, setSaving] = useState(false);
   const [showAwPicker, setShowAwPicker] = useState(false);
   const [showVhcPicker, setShowVhcPicker] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [confirmationOpacity] = useState(new Animated.Value(0));
+  const [showSaveNotification, setShowSaveNotification] = useState(false);
+  const [saveNotificationType, setSaveNotificationType] = useState<'loading' | 'success' | 'error'>('loading');
   const [jobDateTime, setJobDateTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -45,21 +47,27 @@ export default function AddJobModal() {
     console.log('AddJobModal: User tapped Save button, saveAnother:', saveAnother);
     
     if (!validateWipNumber(wipNumber)) {
-      Alert.alert('Invalid WIP', 'WIP number must be exactly 5 digits');
+      toastManager.error('WIP number must be exactly 5 digits');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (!vehicleReg.trim()) {
-      Alert.alert('Invalid Registration', 'Vehicle registration is required');
+      toastManager.error('Vehicle registration is required');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (!validateAW(aw)) {
-      Alert.alert('Invalid AW', 'AW must be between 0 and 100');
+      toastManager.error('AW must be between 0 and 100');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     setSaving(true);
+    setShowSaveNotification(true);
+    setSaveNotificationType('loading');
+    
     try {
       const jobData = {
         wipNumber,
@@ -73,39 +81,34 @@ export default function AddJobModal() {
       console.log('AddJobModal: Saving job:', jobData);
       await api.createJob(jobData);
       
-      // Show animated confirmation
-      setShowConfirmation(true);
-      Animated.sequence([
-        Animated.timing(confirmationOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.delay(1500),
-        Animated.timing(confirmationOpacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setShowConfirmation(false);
-      });
-
-      if (saveAnother) {
-        console.log('AddJobModal: Clearing form for next job');
-        setWipNumber('');
-        setVehicleReg('');
-        setAw(0);
-        setNotes('');
-        setVhcStatus('NONE');
-        setJobDateTime(new Date());
-      } else {
-        // Close modal and go back
-        router.back();
-      }
+      // Show success notification
+      setSaveNotificationType('success');
+      toastManager.success('Job saved successfully!');
+      
+      // Wait a moment before hiding notification
+      setTimeout(() => {
+        setShowSaveNotification(false);
+        
+        if (saveAnother) {
+          console.log('AddJobModal: Clearing form for next job');
+          setWipNumber('');
+          setVehicleReg('');
+          setAw(0);
+          setNotes('');
+          setVhcStatus('NONE');
+          setJobDateTime(new Date());
+        } else {
+          router.back();
+        }
+      }, 1500);
     } catch (error) {
       console.error('AddJobModal: Error saving job:', error);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save job. Please try again.');
+      setSaveNotificationType('error');
+      toastManager.error(error instanceof Error ? error.message : 'Failed to save job');
+      
+      setTimeout(() => {
+        setShowSaveNotification(false);
+      }, 2000);
     } finally {
       setSaving(false);
     }
@@ -113,6 +116,7 @@ export default function AddJobModal() {
 
   const handleScanReg = async (source: 'camera' | 'gallery') => {
     console.log('AddJobModal: User scanning registration from', source);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
       const result = source === 'camera'
@@ -129,7 +133,11 @@ export default function AddJobModal() {
 
       if (!result.canceled && result.assets[0]) {
         console.log('AddJobModal: Image selected, scanning...');
+        toastManager.info('Scanning registration...');
+        
         const ocrResult: OCRRegResult = await api.scanRegistration(result.assets[0].uri);
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
         Alert.alert(
           'Confirm Registration',
@@ -141,6 +149,7 @@ export default function AddJobModal() {
               onPress: () => {
                 console.log('AddJobModal: User confirmed registration:', ocrResult.registration);
                 setVehicleReg(ocrResult.registration);
+                toastManager.success('Registration scanned!');
               },
             },
           ]
@@ -148,12 +157,13 @@ export default function AddJobModal() {
       }
     } catch (error) {
       console.error('AddJobModal: Error scanning registration:', error);
-      Alert.alert('Error', 'Failed to scan registration. Please try again.');
+      toastManager.error('Failed to scan registration');
     }
   };
 
   const handleScanJobCard = async (source: 'camera' | 'gallery') => {
     console.log('AddJobModal: User scanning job card from', source);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
       const result = source === 'camera'
@@ -170,7 +180,11 @@ export default function AddJobModal() {
 
       if (!result.canceled && result.assets[0]) {
         console.log('AddJobModal: Image selected, scanning job card...');
+        toastManager.info('Scanning job card...');
+        
         const ocrResult: OCRJobCardResult = await api.scanJobCard(result.assets[0].uri);
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
         Alert.alert(
           'Confirm Job Card Details',
@@ -183,6 +197,7 @@ export default function AddJobModal() {
                 console.log('AddJobModal: User confirmed job card data');
                 setWipNumber(ocrResult.wipNumber);
                 setVehicleReg(ocrResult.registration);
+                toastManager.success('Job card scanned!');
               },
             },
           ]
@@ -190,7 +205,7 @@ export default function AddJobModal() {
       }
     } catch (error) {
       console.error('AddJobModal: Error scanning job card:', error);
-      Alert.alert('Error', 'Failed to scan job card. Please try again.');
+      toastManager.error('Failed to scan job card');
     }
   };
 
@@ -242,6 +257,7 @@ export default function AddJobModal() {
                     style={[styles.scanButton, { backgroundColor: theme.secondary }]}
                     onPress={() => {
                       console.log('AddJobModal: User tapped Scan Job Card button');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       Alert.alert('Scan Job Card', 'Choose source:', [
                         { text: 'Cancel', style: 'cancel' },
                         { text: 'Camera', onPress: () => handleScanJobCard('camera') },
@@ -280,6 +296,7 @@ export default function AddJobModal() {
                     style={[styles.scanButton, { backgroundColor: theme.secondary }]}
                     onPress={() => {
                       console.log('AddJobModal: User tapped Scan Reg button');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       Alert.alert('Scan Registration', 'Choose source:', [
                         { text: 'Cancel', style: 'cancel' },
                         { text: 'Camera', onPress: () => handleScanReg('camera') },
@@ -317,7 +334,10 @@ export default function AddJobModal() {
                     backgroundColor: isDarkMode ? '#000' : '#fff',
                     borderColor: theme.primary
                   }]}
-                  onPress={() => setShowAwPicker(true)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowAwPicker(true);
+                  }}
                 >
                   <Text style={[styles.pickerButtonText, { color: isDarkMode ? '#fff' : '#000' }]}>
                     {aw} AW
@@ -338,7 +358,10 @@ export default function AddJobModal() {
                     backgroundColor: isDarkMode ? '#000' : '#fff',
                     borderColor: getVhcColor(vhcStatus)
                   }]}
-                  onPress={() => setShowVhcPicker(true)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowVhcPicker(true);
+                  }}
                 >
                   <Text style={[styles.pickerButtonText, { color: getVhcColor(vhcStatus) }]}>
                     VHC: {vhcStatus}
@@ -375,7 +398,10 @@ export default function AddJobModal() {
                       backgroundColor: isDarkMode ? '#000' : '#fff',
                       borderColor: theme.primary
                     }]}
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setShowDatePicker(true);
+                    }}
                   >
                     <IconSymbol
                       ios_icon_name="calendar"
@@ -392,7 +418,10 @@ export default function AddJobModal() {
                       backgroundColor: isDarkMode ? '#000' : '#fff',
                       borderColor: theme.primary
                     }]}
-                    onPress={() => setShowTimePicker(true)}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setShowTimePicker(true);
+                    }}
                   >
                     <IconSymbol
                       ios_icon_name="clock"
@@ -426,7 +455,10 @@ export default function AddJobModal() {
 
               <TouchableOpacity
                 style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                onPress={() => handleSave(false)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  handleSave(false);
+                }}
                 disabled={saving}
               >
                 <IconSymbol
@@ -443,25 +475,18 @@ export default function AddJobModal() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* Success Confirmation Overlay */}
-        {showConfirmation && (
-          <Animated.View
-            style={[
-              styles.confirmationOverlay,
-              { opacity: confirmationOpacity },
-            ]}
-          >
-            <View style={[styles.confirmationCard, { backgroundColor: theme.chartGreen }]}>
-              <IconSymbol
-                ios_icon_name="checkmark.circle.fill"
-                android_material_icon_name="check-circle"
-                size={48}
-                color="#ffffff"
-              />
-              <Text style={styles.confirmationText}>Record Saved!</Text>
-            </View>
-          </Animated.View>
-        )}
+        {/* Save Process Notification */}
+        <ProcessNotification
+          visible={showSaveNotification}
+          title={
+            saveNotificationType === 'loading'
+              ? 'Saving Job...'
+              : saveNotificationType === 'success'
+              ? 'Job Saved!'
+              : 'Save Failed'
+          }
+          type={saveNotificationType}
+        />
 
         <Modal
           visible={showAwPicker}
@@ -492,6 +517,7 @@ export default function AddJobModal() {
                     ]}
                     onPress={() => {
                       console.log('AddJobModal: User selected AW value:', value);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setAw(value);
                       setShowAwPicker(false);
                     }}
@@ -540,6 +566,7 @@ export default function AddJobModal() {
                     ]}
                     onPress={() => {
                       console.log('AddJobModal: User selected VHC status:', value);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setVhcStatus(value);
                       setShowVhcPicker(false);
                     }}
@@ -559,7 +586,6 @@ export default function AddJobModal() {
           </View>
         </Modal>
 
-        {/* Date Picker */}
         {showDatePicker && (
           <DateTimePicker
             value={jobDateTime}
@@ -573,12 +599,12 @@ export default function AddJobModal() {
                 newDateTime.setMonth(selectedDate.getMonth());
                 newDateTime.setDate(selectedDate.getDate());
                 setJobDateTime(newDateTime);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               }
             }}
           />
         )}
 
-        {/* Time Picker */}
         {showTimePicker && (
           <DateTimePicker
             value={jobDateTime}
@@ -591,6 +617,7 @@ export default function AddJobModal() {
                 newDateTime.setHours(selectedDate.getHours());
                 newDateTime.setMinutes(selectedDate.getMinutes());
                 setJobDateTime(newDateTime);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               }
             }}
           />
@@ -696,11 +723,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -713,27 +735,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '600',
-  },
-  confirmationOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  confirmationCard: {
-    padding: 32,
-    borderRadius: 20,
-    alignItems: 'center',
-    gap: 16,
-  },
-  confirmationText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
