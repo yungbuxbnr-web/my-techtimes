@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -5,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ImageBackground,
   RefreshControl,
   Platform,
 } from 'react-native';
@@ -15,9 +15,10 @@ import { router } from 'expo-router';
 import { api, DashboardData } from '@/utils/api';
 import { formatTime } from '@/utils/jobCalculations';
 import CircularProgress from '@/components/CircularProgress';
+import AppBackground from '@/components/AppBackground';
 
 export default function HomeScreen() {
-  const { theme, overlayStrength } = useThemeContext();
+  const { theme } = useThemeContext();
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [technicianName, setTechnicianName] = useState('Technician');
@@ -83,16 +84,11 @@ export default function HomeScreen() {
 
   if (!dashboardData) {
     return (
-      <ImageBackground
-        source={{ uri: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=1200' }}
-        style={styles.background}
-      >
-        <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
-          <View style={styles.loadingContainer}>
-            <Text style={[styles.loadingText, { color: theme.text }]}>Loading dashboard...</Text>
-          </View>
+      <AppBackground>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: theme.text }]}>Loading dashboard...</Text>
         </View>
-      </ImageBackground>
+      </AppBackground>
     );
   }
 
@@ -101,231 +97,220 @@ export default function HomeScreen() {
   const targetPercent = (dashboardData.soldHours / dashboardData.targetAdjusted) * 100;
 
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=1200' }}
-      style={styles.background}
-    >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={styles.contentContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-          }
-        >
-          {/* Header */}
-          <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-            <View>
-              <Text style={[styles.title, { color: '#ffffff' }]}>Technician Records</Text>
-              <Text style={[styles.subtitle, { color: '#cccccc' }]}>{technicianName}</Text>
-            </View>
+    <AppBackground>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        }
+      >
+        {/* Header */}
+        <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
+          <View>
+            <Text style={[styles.title, { color: '#ffffff' }]}>Technician Records</Text>
+            <Text style={[styles.subtitle, { color: '#cccccc' }]}>{technicianName}</Text>
           </View>
+        </View>
 
-          {/* Live Timer Card */}
-          <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Current Time</Text>
-            <Text style={[styles.timerValue, { color: theme.primary }]}>
-              {currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </Text>
-            <Text style={[styles.dateValue, { color: theme.textSecondary }]}>
-              {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </Text>
-          </View>
+        {/* Live Timer Card */}
+        <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Current Time</Text>
+          <Text style={[styles.timerValue, { color: theme.primary }]}>
+            {currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </Text>
+          <Text style={[styles.dateValue, { color: theme.textSecondary }]}>
+            {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </Text>
+        </View>
 
-          {/* Progress Rings */}
-          <View style={styles.ringsContainer}>
-            <View style={[styles.ringCard, { backgroundColor: theme.card }]}>
-              <CircularProgress
-                size={140}
-                strokeWidth={12}
-                progress={Math.min(targetPercent, 100)}
-                color={theme.primary}
-                backgroundColor={theme.background}
-                title="Monthly Target"
-                value={`${targetPercent.toFixed(0)}%`}
-                subtitle={`${dashboardData.soldHours.toFixed(1)} / ${dashboardData.targetAdjusted.toFixed(1)}h`}
-                onPress={() => router.push({ pathname: '/target-details', params: { month: getCurrentMonth() } })}
-              />
-            </View>
-
-            <View style={[styles.ringCard, { backgroundColor: theme.card }]}>
-              <CircularProgress
-                size={140}
-                strokeWidth={12}
-                progress={Math.min(dashboardData.efficiency, 100)}
-                color={efficiencyColor}
-                backgroundColor={theme.background}
-                title="Efficiency"
-                value={`${dashboardData.efficiency.toFixed(0)}%`}
-                subtitle={`${efficiencyLabel} • ${dashboardData.availableHours.toFixed(1)}h`}
-                onPress={() => router.push({ pathname: '/efficiency-details', params: { month: getCurrentMonth() } })}
-              />
-            </View>
-          </View>
-
-          {/* Monthly Breakdown */}
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Monthly Breakdown</Text>
-            <View style={styles.breakdownRow}>
-              <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Total AW:</Text>
-              <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.totalAw}</Text>
-            </View>
-            <View style={styles.breakdownRow}>
-              <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Total Sold Hours:</Text>
-              <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.soldHours.toFixed(2)}h</Text>
-            </View>
-            <View style={styles.breakdownRow}>
-              <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Monthly Target Hours:</Text>
-              <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.targetHours.toFixed(0)}h</Text>
-            </View>
-            <View style={styles.breakdownRow}>
-              <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Total Available Hours:</Text>
-              <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.availableHours.toFixed(2)}h</Text>
-            </View>
-            <View style={styles.breakdownRow}>
-              <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Efficiency %:</Text>
-              <Text style={[styles.breakdownValue, { color: efficiencyColor }]}>{dashboardData.efficiency.toFixed(1)}%</Text>
-            </View>
-          </View>
-
-          {/* Stat Tiles */}
-          <View style={styles.statsGrid}>
-            <View style={[styles.statTile, { backgroundColor: theme.card }]}>
-              <IconSymbol
-                ios_icon_name="doc.text.fill"
-                android_material_icon_name="description"
-                size={32}
-                color={theme.primary}
-              />
-              <Text style={[styles.statValue, { color: theme.text }]}>{dashboardData.totalJobs}</Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total AWs</Text>
-              <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>this month</Text>
-            </View>
-
-            <View style={[styles.statTile, { backgroundColor: theme.card }]}>
-              <IconSymbol
-                ios_icon_name="clock.fill"
-                android_material_icon_name="access-time"
-                size={32}
-                color={theme.secondary}
-              />
-              <Text style={[styles.statValue, { color: theme.text }]}>
-                {formatTime(dashboardData.totalAw * 5)}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Time Logged</Text>
-              <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>this month</Text>
-            </View>
-
-            <View style={[styles.statTile, { backgroundColor: theme.card }]}>
-              <IconSymbol
-                ios_icon_name="checkmark.circle.fill"
-                android_material_icon_name="check-circle"
-                size={32}
-                color={theme.chartGreen}
-              />
-              <Text style={[styles.statValue, { color: theme.text }]}>{dashboardData.totalJobs}</Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Jobs Done</Text>
-              <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>this month</Text>
-            </View>
-
-            <View style={[styles.statTile, { backgroundColor: theme.card }]}>
-              <IconSymbol
-                ios_icon_name="hourglass"
-                android_material_icon_name="hourglass-empty"
-                size={32}
-                color={theme.chartYellow}
-              />
-              <Text style={[styles.statValue, { color: theme.text }]}>
-                {dashboardData.remainingHours.toFixed(1)}h
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Hours Remaining</Text>
-              <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>to target</Text>
-            </View>
-          </View>
-
-          {/* Today Card */}
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Today</Text>
-            <View style={styles.periodStats}>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.today.jobs}</Text>
-                <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Jobs</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.today.aw}</Text>
-                <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>AWs</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodValue, { color: theme.primary }]}>
-                  {formatTime(dashboardData.today.aw * 5)}
-                </Text>
-                <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Time</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* This Week Card */}
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>This Week</Text>
-            <View style={styles.periodStats}>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.week.jobs}</Text>
-                <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Jobs</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.week.aw}</Text>
-                <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>AWs</Text>
-              </View>
-              <View style={styles.periodStat}>
-                <Text style={[styles.periodValue, { color: theme.primary }]}>
-                  {formatTime(dashboardData.week.aw * 5)}
-                </Text>
-                <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Time</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Action Buttons */}
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: theme.primary }]}
-            onPress={() => router.push('/(tabs)/add-job')}
-          >
-            <IconSymbol
-              ios_icon_name="plus.circle.fill"
-              android_material_icon_name="add-circle"
-              size={24}
-              color="#ffffff"
+        {/* Progress Rings */}
+        <View style={styles.ringsContainer}>
+          <View style={[styles.ringCard, { backgroundColor: theme.card }]}>
+            <CircularProgress
+              size={140}
+              strokeWidth={12}
+              progress={Math.min(targetPercent, 100)}
+              color={theme.primary}
+              backgroundColor={theme.background}
+              title="Monthly Target"
+              value={`${targetPercent.toFixed(0)}%`}
+              subtitle={`${dashboardData.soldHours.toFixed(1)} / ${dashboardData.targetAdjusted.toFixed(1)}h`}
+              onPress={() => router.push({ pathname: '/target-details', params: { month: getCurrentMonth() } })}
             />
-            <Text style={styles.addButtonText}>Add New Job</Text>
-          </TouchableOpacity>
-
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.secondaryButton, { backgroundColor: theme.secondary }]}
-              onPress={() => router.push('/(tabs)/jobs')}
-            >
-              <Text style={styles.secondaryButtonText}>Job Records</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.secondaryButton, { backgroundColor: theme.accent }]}
-              onPress={() => router.push('/(tabs)/stats')}
-            >
-              <Text style={styles.secondaryButtonText}>Statistics</Text>
-            </TouchableOpacity>
           </View>
-        </ScrollView>
-      </View>
-    </ImageBackground>
+
+          <View style={[styles.ringCard, { backgroundColor: theme.card }]}>
+            <CircularProgress
+              size={140}
+              strokeWidth={12}
+              progress={Math.min(dashboardData.efficiency, 100)}
+              color={efficiencyColor}
+              backgroundColor={theme.background}
+              title="Efficiency"
+              value={`${dashboardData.efficiency.toFixed(0)}%`}
+              subtitle={`${efficiencyLabel} • ${dashboardData.availableHours.toFixed(1)}h`}
+              onPress={() => router.push({ pathname: '/efficiency-details', params: { month: getCurrentMonth() } })}
+            />
+          </View>
+        </View>
+
+        {/* Monthly Breakdown */}
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Monthly Breakdown</Text>
+          <View style={styles.breakdownRow}>
+            <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Total AW:</Text>
+            <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.totalAw}</Text>
+          </View>
+          <View style={styles.breakdownRow}>
+            <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Total Sold Hours:</Text>
+            <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.soldHours.toFixed(2)}h</Text>
+          </View>
+          <View style={styles.breakdownRow}>
+            <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Monthly Target Hours:</Text>
+            <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.targetHours.toFixed(0)}h</Text>
+          </View>
+          <View style={styles.breakdownRow}>
+            <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Total Available Hours:</Text>
+            <Text style={[styles.breakdownValue, { color: theme.text }]}>{dashboardData.availableHours.toFixed(2)}h</Text>
+          </View>
+          <View style={styles.breakdownRow}>
+            <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Efficiency %:</Text>
+            <Text style={[styles.breakdownValue, { color: efficiencyColor }]}>{dashboardData.efficiency.toFixed(1)}%</Text>
+          </View>
+        </View>
+
+        {/* Stat Tiles */}
+        <View style={styles.statsGrid}>
+          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+            <IconSymbol
+              ios_icon_name="doc.text.fill"
+              android_material_icon_name="description"
+              size={32}
+              color={theme.primary}
+            />
+            <Text style={[styles.statValue, { color: theme.text }]}>{dashboardData.totalJobs}</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total AWs</Text>
+            <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>this month</Text>
+          </View>
+
+          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+            <IconSymbol
+              ios_icon_name="clock.fill"
+              android_material_icon_name="access-time"
+              size={32}
+              color={theme.secondary}
+            />
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {formatTime(dashboardData.totalAw * 5)}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Time Logged</Text>
+            <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>this month</Text>
+          </View>
+
+          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check-circle"
+              size={32}
+              color={theme.chartGreen}
+            />
+            <Text style={[styles.statValue, { color: theme.text }]}>{dashboardData.totalJobs}</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Jobs Done</Text>
+            <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>this month</Text>
+          </View>
+
+          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+            <IconSymbol
+              ios_icon_name="hourglass"
+              android_material_icon_name="hourglass-empty"
+              size={32}
+              color={theme.chartYellow}
+            />
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {dashboardData.remainingHours.toFixed(1)}h
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Hours Remaining</Text>
+            <Text style={[styles.statSubtext, { color: theme.textSecondary }]}>to target</Text>
+          </View>
+        </View>
+
+        {/* Today Card */}
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Today</Text>
+          <View style={styles.periodStats}>
+            <View style={styles.periodStat}>
+              <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.today.jobs}</Text>
+              <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Jobs</Text>
+            </View>
+            <View style={styles.periodStat}>
+              <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.today.aw}</Text>
+              <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>AWs</Text>
+            </View>
+            <View style={styles.periodStat}>
+              <Text style={[styles.periodValue, { color: theme.primary }]}>
+                {formatTime(dashboardData.today.aw * 5)}
+              </Text>
+              <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Time</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* This Week Card */}
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>This Week</Text>
+          <View style={styles.periodStats}>
+            <View style={styles.periodStat}>
+              <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.week.jobs}</Text>
+              <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Jobs</Text>
+            </View>
+            <View style={styles.periodStat}>
+              <Text style={[styles.periodValue, { color: theme.primary }]}>{dashboardData.week.aw}</Text>
+              <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>AWs</Text>
+            </View>
+            <View style={styles.periodStat}>
+              <Text style={[styles.periodValue, { color: theme.primary }]}>
+                {formatTime(dashboardData.week.aw * 5)}
+              </Text>
+              <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Time</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: theme.primary }]}
+          onPress={() => router.push('/(tabs)/add-job')}
+        >
+          <IconSymbol
+            ios_icon_name="plus.circle.fill"
+            android_material_icon_name="add-circle"
+            size={24}
+            color="#ffffff"
+          />
+          <Text style={styles.addButtonText}>Add New Job</Text>
+        </TouchableOpacity>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { backgroundColor: theme.secondary }]}
+            onPress={() => router.push('/(tabs)/jobs')}
+          >
+            <Text style={styles.secondaryButtonText}>Job Records</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { backgroundColor: theme.accent }]}
+            onPress={() => router.push('/(tabs)/stats')}
+          >
+            <Text style={styles.secondaryButtonText}>Statistics</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },

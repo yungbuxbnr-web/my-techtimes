@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ImageBackground,
   Alert,
   Vibration,
   Platform,
@@ -16,13 +15,14 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { api } from '@/utils/api';
 import { IconSymbol } from '@/components/IconSymbol';
+import AppBackground from '@/components/AppBackground';
 
 const PIN_KEY = 'user_pin';
 const BIOMETRICS_KEY = 'biometrics_enabled';
 
 export default function PinLoginScreen() {
   const router = useRouter();
-  const { isDarkMode, overlayStrength, backgroundImage } = useThemeContext();
+  const { isDarkMode } = useThemeContext();
   
   const [pin, setPin] = useState('');
   const [technicianName, setTechnicianName] = useState('');
@@ -138,28 +138,18 @@ export default function PinLoginScreen() {
 
   if (loading) {
     return (
-      <ImageBackground
-        source={backgroundImage}
-        style={styles.background}
-        resizeMode="cover"
-      >
-        <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]} />
+      <AppBackground>
         <View style={styles.container}>
           <Text style={[styles.loadingText, isDarkMode ? styles.textLight : styles.textDark]}>
             Loading...
           </Text>
         </View>
-      </ImageBackground>
+      </AppBackground>
     );
   }
 
   return (
-    <ImageBackground
-      source={backgroundImage}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]} />
+    <AppBackground>
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={[styles.welcomeText, isDarkMode ? styles.textLight : styles.textDark]}>
@@ -256,19 +246,11 @@ export default function PinLoginScreen() {
           Enter your PIN to continue
         </Text>
       </View>
-    </ImageBackground>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
   container: {
     flex: 1,
     justifyContent: 'center',

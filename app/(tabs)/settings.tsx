@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ImageBackground,
   Switch,
   Alert,
   TextInput,
@@ -21,6 +20,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
+import AppBackground from '@/components/AppBackground';
 
 export default function SettingsScreen() {
   const { isDarkMode, toggleTheme, overlayStrength, setOverlayStrength, backgroundImage } = useThemeContext();
@@ -335,12 +335,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ImageBackground
-      source={backgroundImage}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]} />
+    <AppBackground>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={[styles.header, isDarkMode ? styles.textLight : styles.textDark]}>
           Settings
@@ -663,19 +658,11 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
   container: {
     flex: 1,
   },

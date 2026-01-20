@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  ImageBackground,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -16,13 +15,14 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { api } from '@/utils/api';
+import AppBackground from '@/components/AppBackground';
 
 const PIN_KEY = 'user_pin';
 const SETUP_COMPLETE_KEY = 'setup_complete';
 
 export default function SetupScreen() {
   const router = useRouter();
-  const { isDarkMode, overlayStrength, backgroundImage } = useThemeContext();
+  const { isDarkMode } = useThemeContext();
   
   const [step, setStep] = useState<'name' | 'pin' | 'confirm'>('name');
   const [technicianName, setTechnicianName] = useState('');
@@ -250,12 +250,7 @@ export default function SetupScreen() {
   );
 
   return (
-    <ImageBackground
-      source={backgroundImage}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]} />
+    <AppBackground>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -269,19 +264,11 @@ export default function SetupScreen() {
           {step === 'confirm' && renderConfirmStep()}
         </ScrollView>
       </KeyboardAvoidingView>
-    </ImageBackground>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
   container: {
     flex: 1,
   },
