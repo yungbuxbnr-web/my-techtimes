@@ -570,11 +570,11 @@ export async function exportToPdf(
   }
 }
 
-// Export to JSON - Format matching the image
+// Export to JSON - Format matching the user's exact format
 export async function exportToJson(jobs: Job[]): Promise<void> {
   console.log('ExportUtils: Exporting', jobs.length, 'jobs to JSON');
   
-  // Format exactly as shown in the image
+  // Format exactly as shown in the user's JSON
   const exportData = {
     jobs: jobs.map(job => ({
       wipNumber: job.wipNumber,
@@ -603,15 +603,18 @@ export async function exportToJson(jobs: Job[]): Promise<void> {
   }
 }
 
-// Import from JSON - Supports both old and new format
+// Import from JSON - Parse the exact format from the user
 export async function importFromJson(
   jsonUri: string,
   onProgress: (current: number, total: number, job: any) => void
-): Promise<{ imported: number; skipped: number; errors: string[] }> {
+): Promise<{ imported: number; skipped: number; errors: string[]; jobs: any[] }> {
   console.log('ExportUtils: Importing jobs from', jsonUri);
   
   const jsonString = await FileSystem.readAsStringAsync(jsonUri);
+  console.log('ExportUtils: Read JSON string, length:', jsonString.length);
+  
   const importData = JSON.parse(jsonString);
+  console.log('ExportUtils: Parsed JSON, found', importData.jobs?.length, 'jobs');
   
   if (!importData.jobs || !Array.isArray(importData.jobs)) {
     throw new Error('Invalid JSON format: missing jobs array');
@@ -621,6 +624,7 @@ export async function importFromJson(
     imported: 0,
     skipped: 0,
     errors: [] as string[],
+    jobs: [] as any[],
   };
   
   const total = importData.jobs.length;
@@ -631,31 +635,54 @@ export async function importFromJson(
     try {
       onProgress(i + 1, total, job);
       
-      // Support both old format (aw) and new format (aws)
-      const awValue = job.aws !== undefined ? job.aws : job.aw;
-      const vhcStatus = job.vhcStatus === 'NONE' ? 'N/A' : (job.vhcStatus || 'N/A');
-      const notes = job.description || job.notes || '';
-      const createdAt = job.jobDateTime || job.createdAt;
+      // Map the JSON format to our internal format
+      // JSON format: wipNumber, vehicleReg, vhcStatus, description, aws, jobDateTime
+      // Internal format: wipNumber, vehicleReg, vhcStatus, notes, aw, createdAt
       
-      // Validate job data
-      if (!job.wipNumber || !job.vehicleReg || awValue === undefined) {
+      const awValue = job.aws !== undefined ? job.aws : job.aw;
+      const notes = job.description !== undefined ? job.description : job.notes;
+      const createdAt = job.jobDateTime !== undefined ? job.jobDateTime : job.createdAt;
+      let vhcStatus = job.vhcStatus || 'NONE';
+      
+      // Map vhcStatus from JSON format to internal format
+      if (vhcStatus === 'NONE') {
+        vhcStatus = 'N/A';
+      } else if (vhcStatus === 'ORANGE') {
+        vhcStatus = 'AMBER';
+      }
+      
+      // Validate required fields
+      if (!job.wipNumber || !job.vehicleReg || awValue === undefined || !createdAt) {
         results.skipped++;
-        results.errors.push(`Job ${i + 1}: Missing required fields`);
+        results.errors.push(`Job ${i + 1}: Missing required fields (wipNumber: ${job.wipNumber}, vehicleReg: ${job.vehicleReg}, aws: ${awValue}, jobDateTime: ${createdAt})`);
+        console.warn('ExportUtils: Skipping job', i + 1, 'due to missing fields:', job);
         continue;
       }
       
-      // Job will be imported by the calling function
+      // Create the job object in the format expected by the API
+      const jobToImport = {
+        wipNumber: job.wipNumber,
+        vehicleReg: job.vehicleReg.toUpperCase(),
+        aw: awValue,
+        notes: notes || '',
+        vhcStatus: vhcStatus as 'GREEN' | 'AMBER' | 'RED' | 'N/A',
+        createdAt: createdAt,
+      };
+      
+      results.jobs.push(jobToImport);
       results.imported++;
+      
+      console.log('ExportUtils: Prepared job', i + 1, '/', total, ':', jobToImport);
       
       // Small delay to show progress
       await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
       results.skipped++;
       results.errors.push(`Job ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.error('ExportUtils: Error importing job', i + 1, error);
+      console.error('ExportUtils: Error processing job', i + 1, error);
     }
   }
   
-  console.log('ExportUtils: Import complete -', results.imported, 'imported,', results.skipped, 'skipped');
+  console.log('ExportUtils: Import parsing complete -', results.imported, 'prepared,', results.skipped, 'skipped');
   return results;
 }

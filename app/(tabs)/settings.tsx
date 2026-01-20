@@ -241,7 +241,7 @@ export default function SettingsScreen() {
   };
 
   const handleOpenImportModal = async () => {
-    console.log('SettingsScreen: Opening import modal');
+    console.log('SettingsScreen: Opening import modal - selecting file');
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
@@ -249,56 +249,56 @@ export default function SettingsScreen() {
       });
       
       if (result.canceled) {
-        console.log('SettingsScreen: Import cancelled');
+        console.log('SettingsScreen: Import cancelled by user');
         return;
       }
       
+      console.log('SettingsScreen: File selected:', result.assets[0].uri);
       setShowImportModal(true);
       setImporting(true);
+      setImportProgress({ current: 0, total: 0, job: null });
       
+      // Parse the JSON file
       const importResult = await importFromJson(
         result.assets[0].uri,
         (current, total, job) => {
-          console.log('SettingsScreen: Import progress', current, '/', total);
+          console.log('SettingsScreen: Import progress', current, '/', total, '- Job:', job.wipNumber);
           setImportProgress({ current, total, job });
         }
       );
       
-      // Actually import the jobs
-      const jsonString = await FileSystem.readAsStringAsync(result.assets[0].uri);
-      const importData = JSON.parse(jsonString);
+      console.log('SettingsScreen: Parsed', importResult.jobs.length, 'jobs, now importing to API');
       
-      for (const job of importData.jobs) {
-        // Support both old format (aw) and new format (aws)
-        const awValue = job.aws !== undefined ? job.aws : job.aw;
-        const vhcStatus = job.vhcStatus === 'NONE' ? 'N/A' : (job.vhcStatus || 'N/A');
-        const notes = job.description || job.notes || '';
-        const createdAt = job.jobDateTime || job.createdAt;
-        
-        if (job.wipNumber && job.vehicleReg && awValue !== undefined) {
-          await api.createJob({
-            wipNumber: job.wipNumber,
-            vehicleReg: job.vehicleReg,
-            aw: awValue,
-            notes: notes,
-            vhcStatus: vhcStatus as 'GREEN' | 'AMBER' | 'RED' | 'N/A',
-            createdAt: createdAt,
-          });
+      // Import each job via the API
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (let i = 0; i < importResult.jobs.length; i++) {
+        const job = importResult.jobs[i];
+        try {
+          console.log('SettingsScreen: Importing job', i + 1, '/', importResult.jobs.length, ':', job);
+          await api.createJob(job);
+          successCount++;
+        } catch (error) {
+          console.error('SettingsScreen: Failed to import job', i + 1, error);
+          failCount++;
         }
       }
       
       setImporting(false);
       
+      console.log('SettingsScreen: Import complete - Success:', successCount, 'Failed:', failCount);
+      
       Alert.alert(
         'Import Complete',
-        `Imported: ${importResult.imported}\nSkipped: ${importResult.skipped}`,
+        `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped (invalid): ${importResult.skipped}`,
         [{ text: 'OK', onPress: () => setShowImportModal(false) }]
       );
     } catch (error) {
       console.error('SettingsScreen: Error importing:', error);
       setImporting(false);
       setShowImportModal(false);
-      Alert.alert('Error', 'Failed to import jobs');
+      Alert.alert('Error', `Failed to import jobs: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -844,9 +844,17 @@ export default function SettingsScreen() {
                   {importProgress.current} / {importProgress.total}
                 </Text>
                 {importProgress.job && (
-                  <Text style={[styles.jobText, { color: theme.textSecondary }]}>
-                    WIP: {importProgress.job.wipNumber}
-                  </Text>
+                  <View style={styles.jobInfoBox}>
+                    <Text style={[styles.jobText, { color: theme.textSecondary }]}>
+                      WIP: {importProgress.job.wipNumber}
+                    </Text>
+                    <Text style={[styles.jobText, { color: theme.textSecondary }]}>
+                      Reg: {importProgress.job.vehicleReg}
+                    </Text>
+                    <Text style={[styles.jobText, { color: theme.textSecondary }]}>
+                      AW: {importProgress.job.aws || importProgress.job.aw}
+                    </Text>
+                  </View>
                 )}
               </>
             )}
@@ -1073,5 +1081,11 @@ const styles = StyleSheet.create({
   jobText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  jobInfoBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.1)',
   },
 });
