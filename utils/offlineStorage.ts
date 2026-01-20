@@ -50,7 +50,7 @@ export interface Absence {
   isHalfDay?: boolean;
   customHours?: number;
   deductionType: 'target' | 'available';
-  absenceType?: 'holiday' | 'sickness' | 'training';
+  absenceType?: 'holiday' | 'sickness' | 'training' | 'overtime' | 'compensation';
   note?: string;
   createdAt: string;
 }

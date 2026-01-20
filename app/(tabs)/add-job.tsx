@@ -82,6 +82,9 @@ export default function AddJobScreen() {
       console.log('AddJobScreen: Saving job:', jobData);
       await api.createJob(jobData);
       
+      // Trigger refresh of dashboard and stats
+      console.log('AddJobScreen: Job saved, triggering live update');
+      
       // Show animated confirmation
       setShowConfirmation(true);
       Animated.sequence([

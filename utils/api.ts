@@ -102,7 +102,7 @@ export interface OCRJobCardResult {
   confidence: number;
 }
 
-export { Schedule, TechnicianProfile, Absence };
+export type { Schedule, TechnicianProfile, Absence };
 
 // Helper functions for calculations
 function calculateJobStats(jobs: Job[]): JobStats {

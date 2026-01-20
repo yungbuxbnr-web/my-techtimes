@@ -581,7 +581,7 @@ export default function SettingsScreen() {
         </View>
         
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Calendar</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Calendar & Absences</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
             onPress={() => {
@@ -598,6 +598,25 @@ export default function SettingsScreen() {
             />
             <Text style={styles.buttonText}>View Calendar</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: theme.accent, marginTop: 12 }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Absence Logger button');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/absence-logger');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="calendar.badge.exclamationmark"
+              android_material_icon_name="event-busy"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.buttonText}>Log Absence</Text>
+          </TouchableOpacity>
+          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
+            Log holidays, sickness, and training days to automatically adjust your available hours
+          </Text>
         </View>
         
         <View style={[styles.section, { backgroundColor: theme.card }]}>
