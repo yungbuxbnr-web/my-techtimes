@@ -1,6 +1,5 @@
 
 import Constants from 'expo-constants';
-import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev';
 
@@ -8,18 +7,12 @@ console.log('API: Backend URL configured as:', API_URL);
 
 export const BACKEND_URL = API_URL;
 
-// Helper function to make authenticated API calls
-async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  const session = await authClient.getSession();
+// Helper function to make API calls
+async function apiFetch(url: string, options: RequestInit = {}) {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
-
-  // Add authorization header if session exists
-  if (session?.session?.token) {
-    headers['Authorization'] = `Bearer ${session.session.token}`;
-  }
 
   const response = await fetch(url, {
     ...options,
@@ -148,7 +141,7 @@ export const api = {
   // Job endpoints
   async getAllJobs(): Promise<Job[]> {
     console.log('API: Fetching all jobs from', `${API_URL}/api/jobs`);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs`);
+    const response = await apiFetch(`${API_URL}/api/jobs`);
     if (!response.ok) {
       throw new Error(`Failed to fetch jobs: ${response.statusText}`);
     }
@@ -157,7 +150,7 @@ export const api = {
 
   async getTodayJobs(): Promise<Job[]> {
     console.log('API: Fetching today jobs');
-    const response = await authenticatedFetch(`${API_URL}/api/jobs/today`);
+    const response = await apiFetch(`${API_URL}/api/jobs/today`);
     if (!response.ok) {
       throw new Error(`Failed to fetch today jobs: ${response.statusText}`);
     }
@@ -166,7 +159,7 @@ export const api = {
 
   async getWeekJobs(): Promise<Job[]> {
     console.log('API: Fetching week jobs');
-    const response = await authenticatedFetch(`${API_URL}/api/jobs/week`);
+    const response = await apiFetch(`${API_URL}/api/jobs/week`);
     if (!response.ok) {
       throw new Error(`Failed to fetch week jobs: ${response.statusText}`);
     }
@@ -175,7 +168,7 @@ export const api = {
 
   async getMonthJobs(): Promise<Job[]> {
     console.log('API: Fetching month jobs');
-    const response = await authenticatedFetch(`${API_URL}/api/jobs/month`);
+    const response = await apiFetch(`${API_URL}/api/jobs/month`);
     if (!response.ok) {
       throw new Error(`Failed to fetch month jobs: ${response.statusText}`);
     }
@@ -184,7 +177,7 @@ export const api = {
 
   async getJobsForMonth(month: string): Promise<Job[]> {
     console.log('API: Fetching jobs for month:', month);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs?month=${month}`);
+    const response = await apiFetch(`${API_URL}/api/jobs?month=${month}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch jobs for month: ${response.statusText}`);
     }
@@ -193,7 +186,7 @@ export const api = {
 
   async getJobsInRange(start: string, end: string): Promise<Job[]> {
     console.log('API: Fetching jobs in range', start, 'to', end);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs?start=${start}&end=${end}`);
+    const response = await apiFetch(`${API_URL}/api/jobs?start=${start}&end=${end}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch jobs in range: ${response.statusText}`);
     }
@@ -209,7 +202,7 @@ export const api = {
     createdAt?: string;
   }): Promise<Job> {
     console.log('API: Creating job', job);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs`, {
+    const response = await apiFetch(`${API_URL}/api/jobs`, {
       method: 'POST',
       body: JSON.stringify(job),
     });
@@ -229,7 +222,7 @@ export const api = {
     createdAt: string;
   }>): Promise<Job> {
     console.log('API: Updating job', id, updates);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs/${id}`, {
+    const response = await apiFetch(`${API_URL}/api/jobs/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
@@ -242,7 +235,7 @@ export const api = {
 
   async deleteJob(id: string): Promise<{ success: boolean }> {
     console.log('API: Deleting job', id);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs/${id}`, {
+    const response = await apiFetch(`${API_URL}/api/jobs/${id}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -296,7 +289,7 @@ export const api = {
 
   async getMonthlyStats(month: string, targetHours: number = 180): Promise<MonthlyStats> {
     console.log('API: Fetching monthly stats for', month);
-    const response = await authenticatedFetch(`${API_URL}/api/stats/month?month=${month}&targetHours=${targetHours}`);
+    const response = await apiFetch(`${API_URL}/api/stats/month?month=${month}&targetHours=${targetHours}`);
     if (!response.ok) {
       throw new Error('Failed to fetch monthly stats');
     }
@@ -334,7 +327,7 @@ export const api = {
 
   async getAllTimeStats(): Promise<AllTimeStats> {
     console.log('API: Fetching all-time stats');
-    const response = await authenticatedFetch(`${API_URL}/api/stats/all-time`);
+    const response = await apiFetch(`${API_URL}/api/stats/all-time`);
     if (!response.ok) {
       throw new Error('Failed to fetch all-time stats');
     }
@@ -344,7 +337,7 @@ export const api = {
   // Absence endpoints
   async getAbsences(month: string): Promise<Absence[]> {
     console.log('API: Fetching absences for', month);
-    const response = await authenticatedFetch(`${API_URL}/api/absences/${month}`);
+    const response = await apiFetch(`${API_URL}/api/absences/${month}`);
     if (!response.ok) {
       throw new Error('Failed to fetch absences');
     }
@@ -361,7 +354,7 @@ export const api = {
     note?: string;
   }): Promise<Absence> {
     console.log('API: Creating absence', absence);
-    const response = await authenticatedFetch(`${API_URL}/api/absences`, {
+    const response = await apiFetch(`${API_URL}/api/absences`, {
       method: 'POST',
       body: JSON.stringify(absence),
     });
@@ -374,7 +367,7 @@ export const api = {
 
   async deleteAbsence(id: string): Promise<{ success: boolean }> {
     console.log('API: Deleting absence', id);
-    const response = await authenticatedFetch(`${API_URL}/api/absences/${id}`, {
+    const response = await apiFetch(`${API_URL}/api/absences/${id}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -386,7 +379,7 @@ export const api = {
   // Schedule endpoints
   async getSchedule(): Promise<Schedule> {
     console.log('API: Fetching schedule');
-    const response = await authenticatedFetch(`${API_URL}/api/schedule`);
+    const response = await apiFetch(`${API_URL}/api/schedule`);
     if (!response.ok) {
       throw new Error('Failed to fetch schedule');
     }
@@ -395,7 +388,7 @@ export const api = {
 
   async updateSchedule(schedule: Partial<Schedule>): Promise<Schedule> {
     console.log('API: Updating schedule', schedule);
-    const response = await authenticatedFetch(`${API_URL}/api/schedule`, {
+    const response = await apiFetch(`${API_URL}/api/schedule`, {
       method: 'PUT',
       body: JSON.stringify(schedule),
     });
@@ -409,7 +402,7 @@ export const api = {
   // Technician Profile endpoints
   async getTechnicianProfile(): Promise<TechnicianProfile> {
     console.log('API: Fetching technician profile');
-    const response = await authenticatedFetch(`${API_URL}/api/profile`);
+    const response = await apiFetch(`${API_URL}/api/profile`);
     if (!response.ok) {
       throw new Error('Failed to fetch technician profile');
     }
@@ -418,7 +411,7 @@ export const api = {
 
   async updateTechnicianProfile(profile: TechnicianProfile): Promise<TechnicianProfile> {
     console.log('API: Updating technician profile', profile);
-    const response = await authenticatedFetch(`${API_URL}/api/profile`, {
+    const response = await apiFetch(`${API_URL}/api/profile`, {
       method: 'PUT',
       body: JSON.stringify(profile),
     });
@@ -450,15 +443,8 @@ export const api = {
       name: 'registration.jpg',
     } as any);
 
-    const session = await authClient.getSession();
-    const headers: HeadersInit = {};
-    if (session?.session?.token) {
-      headers['Authorization'] = `Bearer ${session.session.token}`;
-    }
-
     const response = await fetch(`${API_URL}/api/ocr/scan-reg`, {
       method: 'POST',
-      headers,
       body: formData,
     });
     if (!response.ok) {
@@ -476,15 +462,8 @@ export const api = {
       name: 'jobcard.jpg',
     } as any);
 
-    const session = await authClient.getSession();
-    const headers: HeadersInit = {};
-    if (session?.session?.token) {
-      headers['Authorization'] = `Bearer ${session.session.token}`;
-    }
-
     const response = await fetch(`${API_URL}/api/ocr/scan-job-card`, {
       method: 'POST',
-      headers,
       body: formData,
     });
     if (!response.ok) {
@@ -496,7 +475,7 @@ export const api = {
   // Dashboard endpoint
   async getDashboard(month: string, targetHours: number = 180): Promise<DashboardData> {
     console.log('API: Fetching dashboard data for', month);
-    const response = await authenticatedFetch(`${API_URL}/api/dashboard?month=${month}&targetHours=${targetHours}`);
+    const response = await apiFetch(`${API_URL}/api/dashboard?month=${month}&targetHours=${targetHours}`);
     if (!response.ok) {
       throw new Error('Failed to fetch dashboard data');
     }
@@ -506,7 +485,7 @@ export const api = {
   // Recent jobs endpoint
   async getRecentJobs(limit: number = 10): Promise<Job[]> {
     console.log('API: Fetching recent jobs, limit:', limit);
-    const response = await authenticatedFetch(`${API_URL}/api/jobs/recent?limit=${limit}`);
+    const response = await apiFetch(`${API_URL}/api/jobs/recent?limit=${limit}`);
     if (!response.ok) {
       throw new Error('Failed to fetch recent jobs');
     }

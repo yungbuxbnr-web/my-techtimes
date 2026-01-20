@@ -34,8 +34,12 @@ export default function RootLayout() {
           <SystemBars style="light" />
           <StatusBar style="light" />
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="login" />
+            <Stack.Screen name="index" />
+            <Stack.Screen name="setup" />
+            <Stack.Screen name="pin-login" />
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="efficiency-details" />
+            <Stack.Screen name="target-details" />
           </Stack>
         </AuthProvider>
       </ThemeProvider>

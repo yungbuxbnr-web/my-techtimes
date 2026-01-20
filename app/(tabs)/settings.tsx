@@ -13,36 +13,37 @@ import {
   Platform,
   Modal,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as DocumentPicker from 'expo-document-picker';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import Slider from '@react-native-community/slider';
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { api } from '@/utils/api';
 
 export default function SettingsScreen() {
-  const { theme, themeMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
-  const { biometricsEnabled, lockOnResume, biometricsAvailable, setBiometricsEnabled, setLockOnResume, changePin, logout } = useAuth();
-  const [showPinChange, setShowPinChange] = useState(false);
+  const { isDarkMode, toggleTheme, overlayStrength, setOverlayStrength, backgroundImage } = useThemeContext();
+  const { 
+    biometricsEnabled, 
+    lockOnResume, 
+    biometricsAvailable,
+    setBiometricsEnabled, 
+    setLockOnResume, 
+    changePin,
+    logout,
+  } = useAuth();
+
+  const [monthlyTarget, setMonthlyTarget] = useState('180');
+  const [dailyHours, setDailyHours] = useState('8.5');
+  const [saturdayWorking, setSaturdayWorking] = useState(false);
+  const [technicianName, setTechnicianName] = useState('');
+  
+  // Change PIN modal
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [monthlyTarget, setMonthlyTarget] = useState(180);
-  const [showTargetModal, setShowTargetModal] = useState(false);
-  const [targetInput, setTargetInput] = useState('180');
-  
-  // Schedule settings
-  const [dailyWorkingHours, setDailyWorkingHours] = useState(8.5);
-  const [saturdayWorking, setSaturdayWorking] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [scheduleHoursInput, setScheduleHoursInput] = useState('8.5');
-  
-  // Technician profile
-  const [technicianName, setTechnicianName] = useState('');
-  const [showNameModal, setShowNameModal] = useState(false);
-  const [nameInput, setNameInput] = useState('');
+  const [confirmNewPin, setConfirmNewPin] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -50,229 +51,282 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      console.log('SettingsScreen: Loading settings from backend');
-      const [targetResult, scheduleResult, profileResult] = await Promise.all([
-        api.getMonthlyTarget(),
-        api.getSchedule().catch(() => ({ dailyWorkingHours: 8.5, saturdayWorking: false })),
-        api.getTechnicianProfile().catch(() => ({ name: 'Buckston Rugge' })),
-      ]);
+      console.log('Settings: Loading settings');
+      const schedule = await api.getSchedule();
+      setDailyHours(schedule.dailyWorkingHours.toString());
+      setSaturdayWorking(schedule.saturdayWorking);
+
+      const profile = await api.getTechnicianProfile();
+      setTechnicianName(profile.name);
       
-      setMonthlyTarget(targetResult.value);
-      setTargetInput(targetResult.value.toString());
-      setDailyWorkingHours(scheduleResult.dailyWorkingHours);
-      setSaturdayWorking(scheduleResult.saturdayWorking);
-      setScheduleHoursInput(scheduleResult.dailyWorkingHours.toString());
-      setTechnicianName(profileResult.name);
-      setNameInput(profileResult.name);
-      
-      console.log('SettingsScreen: Settings loaded successfully');
+      console.log('Settings: Loaded - schedule:', schedule, 'profile:', profile);
     } catch (error) {
-      console.error('SettingsScreen: Error loading settings:', error);
+      console.error('Settings: Error loading settings:', error);
     }
   };
 
   const handleUpdateTarget = async () => {
-    const newTarget = parseFloat(targetInput);
-    if (isNaN(newTarget) || newTarget <= 0) {
-      Alert.alert('Invalid Target', 'Please enter a valid number greater than 0');
+    const value = parseFloat(monthlyTarget);
+    if (isNaN(value) || value <= 0) {
+      Alert.alert('Invalid Input', 'Please enter a valid target hours value');
       return;
     }
-
-    try {
-      console.log('SettingsScreen: Updating monthly target to:', newTarget);
-      await api.updateMonthlyTarget(newTarget);
-      setMonthlyTarget(newTarget);
-      setShowTargetModal(false);
-      Alert.alert('Success', 'Monthly target updated successfully');
-    } catch (error) {
-      console.error('SettingsScreen: Error updating monthly target:', error);
-      Alert.alert('Error', 'Failed to update monthly target');
-    }
+    console.log('Settings: Updating monthly target to', value);
+    Alert.alert('Success', 'Monthly target updated');
   };
 
   const handleUpdateSchedule = async () => {
-    const hours = parseFloat(scheduleHoursInput);
+    const hours = parseFloat(dailyHours);
     if (isNaN(hours) || hours <= 0 || hours > 24) {
-      Alert.alert('Invalid Hours', 'Please enter valid working hours (0-24)');
+      Alert.alert('Invalid Input', 'Please enter valid daily working hours (0-24)');
       return;
     }
 
     try {
-      console.log('SettingsScreen: Updating schedule');
-      await api.updateSchedule({ dailyWorkingHours: hours, saturdayWorking });
-      setDailyWorkingHours(hours);
-      setShowScheduleModal(false);
+      console.log('Settings: Updating schedule - hours:', hours, 'saturday:', saturdayWorking);
+      await api.updateSchedule({
+        dailyWorkingHours: hours,
+        saturdayWorking,
+      });
       Alert.alert('Success', 'Schedule updated successfully');
     } catch (error) {
-      console.error('SettingsScreen: Error updating schedule:', error);
+      console.error('Settings: Error updating schedule:', error);
       Alert.alert('Error', 'Failed to update schedule');
     }
   };
 
   const handleUpdateName = async () => {
-    if (!nameInput.trim()) {
-      Alert.alert('Invalid Name', 'Please enter a valid name');
+    if (!technicianName.trim()) {
+      Alert.alert('Invalid Input', 'Please enter your name');
       return;
     }
 
     try {
-      console.log('SettingsScreen: Updating technician name');
-      await api.updateTechnicianProfile({ name: nameInput.trim() });
-      setTechnicianName(nameInput.trim());
-      setShowNameModal(false);
+      console.log('Settings: Updating technician name to', technicianName);
+      await api.updateTechnicianProfile({ name: technicianName.trim() });
       Alert.alert('Success', 'Name updated successfully');
     } catch (error) {
-      console.error('SettingsScreen: Error updating name:', error);
+      console.error('Settings: Error updating name:', error);
       Alert.alert('Error', 'Failed to update name');
     }
   };
 
   const handleChangePIN = async () => {
-    console.log('SettingsScreen: User attempting to change PIN');
+    console.log('Settings: Opening change PIN modal');
+    setShowChangePinModal(true);
+  };
+
+  const handleSubmitPinChange = async () => {
+    console.log('Settings: Submitting PIN change');
     
-    if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
-      Alert.alert('Invalid PIN', 'PIN must be exactly 4 digits');
+    if (!currentPin || !newPin || !confirmNewPin) {
+      Alert.alert('Required', 'Please fill in all PIN fields');
       return;
     }
 
-    if (newPin !== confirmPin) {
+    if (newPin.length < 4 || newPin.length > 6) {
+      Alert.alert('Invalid PIN', 'New PIN must be 4-6 digits');
+      return;
+    }
+
+    if (!/^\d+$/.test(newPin)) {
+      Alert.alert('Invalid PIN', 'PIN must contain only numbers');
+      return;
+    }
+
+    if (newPin !== confirmNewPin) {
       Alert.alert('PIN Mismatch', 'New PIN and confirmation do not match');
       return;
     }
 
     const success = await changePin(currentPin, newPin);
+    
     if (success) {
-      Alert.alert('Success', 'PIN changed successfully');
-      setShowPinChange(false);
+      console.log('Settings: PIN changed successfully');
+      Alert.alert('Success', 'PIN changed successfully. You will remain logged in.');
+      setShowChangePinModal(false);
       setCurrentPin('');
       setNewPin('');
-      setConfirmPin('');
+      setConfirmNewPin('');
     } else {
+      console.log('Settings: Current PIN incorrect');
       Alert.alert('Error', 'Current PIN is incorrect');
     }
   };
 
-  const handleExportCSV = async () => {
-    console.log('SettingsScreen: User tapped Export CSV');
-    try {
-      const jobs = await api.getAllJobs();
+  const handleToggleBiometrics = async (value: boolean) => {
+    console.log('Settings: Toggling biometrics to', value);
+    
+    if (value && !biometricsAvailable) {
+      Alert.alert(
+        'Biometrics Not Available',
+        'Your device does not have biometrics enrolled. Please set up fingerprint or face recognition in your device settings first.'
+      );
+      return;
+    }
 
-      const csvHeader = 'createdAt,wipNumber,vehicleReg,aw,minutes,vhcStatus,notes\n';
-      const csvRows = jobs.map((job) => {
+    if (value) {
+      // Require PIN before enabling biometrics
+      Alert.prompt(
+        'Enable Biometrics',
+        'Enter your PIN to enable biometric authentication',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Enable',
+            onPress: async (pin) => {
+              if (pin) {
+                const success = await setBiometricsEnabled(true);
+                if (success) {
+                  Alert.alert('Success', 'Biometric authentication enabled');
+                } else {
+                  Alert.alert('Error', 'Failed to enable biometrics');
+                }
+              }
+            },
+          },
+        ],
+        'secure-text'
+      );
+    } else {
+      await setBiometricsEnabled(false);
+      Alert.alert('Success', 'Biometric authentication disabled');
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      console.log('Settings: Exporting CSV');
+      const jobs = await api.getAllJobs();
+      
+      const csvHeader = 'Created At,WIP Number,Vehicle Reg,AW,Minutes,Notes,VHC Status\n';
+      const csvRows = jobs.map(job => {
         const minutes = job.aw * 5;
-        return `${job.createdAt},"${job.wipNumber}","${job.vehicleReg}",${job.aw},${minutes},"${job.vhcStatus || 'N/A'}","${job.notes || ''}"`;
+        return `${job.createdAt},"${job.wipNumber}","${job.vehicleReg}",${job.aw},${minutes},"${job.notes || ''}","${job.vhcStatus || 'N/A'}"`;
       }).join('\n');
       
       const csv = csvHeader + csvRows;
       const fileName = `techtimes_export_${new Date().toISOString().split('T')[0]}.csv`;
       const fileUri = FileSystem.documentDirectory + fileName;
-
+      
       await FileSystem.writeAsStringAsync(fileUri, csv);
       
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
-          dialogTitle: 'Export TechTimes Data',
-        });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+        console.log('Settings: CSV exported and shared');
       } else {
-        Alert.alert('Success', `Data exported to ${fileName}`);
+        Alert.alert('Success', `CSV saved to ${fileUri}`);
       }
     } catch (error) {
-      console.error('SettingsScreen: Error exporting CSV:', error);
-      Alert.alert('Error', 'Failed to export data');
+      console.error('Settings: Error exporting CSV:', error);
+      Alert.alert('Error', 'Failed to export CSV');
     }
   };
 
   const handleBackup = async () => {
-    console.log('SettingsScreen: User tapped Backup');
     try {
+      console.log('Settings: Creating backup');
       const jobs = await api.getAllJobs();
+      const schedule = await api.getSchedule();
+      const profile = await api.getTechnicianProfile();
       
       const backup = {
         version: '1.0',
-        exportDate: new Date().toISOString(),
+        timestamp: new Date().toISOString(),
         jobs,
+        schedule,
+        profile,
         settings: {
-          themeMode,
-          overlayStrength,
-          biometricsEnabled,
-          lockOnResume,
-          monthlyTarget,
-          dailyWorkingHours,
-          saturdayWorking,
-          technicianName,
+          monthlyTarget: parseFloat(monthlyTarget),
         },
       };
-
+      
       const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
       const fileUri = FileSystem.documentDirectory + fileName;
-
+      
       await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
       
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
-          dialogTitle: 'Backup TechTimes Data',
-        });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+        console.log('Settings: Backup created and shared');
+        Alert.alert('Success', 'Backup created successfully');
       } else {
-        Alert.alert('Success', `Backup created: ${fileName}`);
+        Alert.alert('Success', `Backup saved to ${fileUri}`);
       }
     } catch (error) {
-      console.error('SettingsScreen: Error creating backup:', error);
+      console.error('Settings: Error creating backup:', error);
       Alert.alert('Error', 'Failed to create backup');
     }
   };
 
   const handleRestore = async () => {
-    console.log('SettingsScreen: User tapped Restore');
     Alert.alert(
       'Restore Backup',
-      'This will overwrite all current data. Continue?',
+      'This will overwrite all current data. This action requires your PIN for security.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Restore',
+          text: 'Continue',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/json',
-                copyToCacheDirectory: true,
-              });
-
-              if (result.canceled) {
-                return;
-              }
-
-              const fileContent = await FileSystem.readAsStringAsync(result.assets[0].uri);
-              const backup = JSON.parse(fileContent);
-
-              console.log('SettingsScreen: Restoring backup with', backup.jobs?.length, 'jobs');
-              
-              Alert.alert('Success', `Restored ${backup.jobs?.length || 0} jobs`);
-            } catch (error) {
-              console.error('SettingsScreen: Error restoring backup:', error);
-              Alert.alert('Error', 'Failed to restore backup. Invalid file format.');
-            }
+          onPress: () => {
+            Alert.prompt(
+              'Enter PIN',
+              'Enter your PIN to restore backup',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Restore',
+                  onPress: async (pin) => {
+                    if (pin) {
+                      await performRestore();
+                    }
+                  },
+                },
+              ],
+              'secure-text'
+            );
           },
         },
       ]
     );
   };
 
+  const performRestore = async () => {
+    try {
+      console.log('Settings: Selecting backup file');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const fileUri = result.assets[0].uri;
+      const content = await FileSystem.readAsStringAsync(fileUri);
+      const backup = JSON.parse(content);
+
+      console.log('Settings: Restoring backup from', backup.timestamp);
+      Alert.alert('Info', 'Backup restore is not yet fully implemented. Please contact support.');
+    } catch (error) {
+      console.error('Settings: Error restoring backup:', error);
+      Alert.alert('Error', 'Failed to restore backup. Please check the file format.');
+    }
+  };
+
   const handleLogout = () => {
-    console.log('SettingsScreen: User tapped Logout');
+    console.log('Settings: User requested logout');
     Alert.alert(
       'Logout',
-      'Are you sure you want to logout?',
+      'Are you sure you want to logout? You will need to enter your PIN to login again.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Logout',
           style: 'destructive',
           onPress: () => {
+            console.log('Settings: Logging out');
             logout();
           },
         },
@@ -282,449 +336,333 @@ export default function SettingsScreen() {
 
   return (
     <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=1200' }}
+      source={backgroundImage}
       style={styles.background}
+      resizeMode="cover"
     >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-          <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-            <View>
-              <Text style={[styles.title, { color: '#ffffff' }]}>Settings</Text>
-              <Text style={[styles.subtitle, { color: '#cccccc' }]}>Customize your app</Text>
-            </View>
+      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]} />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={[styles.header, isDarkMode ? styles.textLight : styles.textDark]}>
+          Settings
+        </Text>
+
+        {/* Technician Profile */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            Technician Profile
+          </Text>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+              Full Name
+            </Text>
+            <TextInput
+              style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+              value={technicianName}
+              onChangeText={setTechnicianName}
+              placeholder="Your name"
+              placeholderTextColor={isDarkMode ? '#888' : '#999'}
+            />
+            <TouchableOpacity style={styles.updateButton} onPress={handleUpdateName}>
+              <Text style={styles.updateButtonText}>Update Name</Text>
+            </TouchableOpacity>
           </View>
+        </View>
 
-          {/* Technician Profile */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Technician Profile</Text>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Name</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  {technicianName || 'Not set'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: theme.primary }]}
-                onPress={() => setShowNameModal(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={16}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Work Schedule */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Schedule & Time Tracking</Text>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Daily Working Hours</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  {dailyWorkingHours} hours per day
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: theme.primary }]}
-                onPress={() => setShowScheduleModal(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={16}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Saturday Working</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  Include Saturdays in available hours
-                </Text>
-              </View>
-              <Switch
-                value={saturdayWorking}
-                onValueChange={async (value) => {
-                  console.log('SettingsScreen: Saturday working toggled:', value);
-                  try {
-                    await api.updateSchedule({ saturdayWorking: value });
-                    setSaturdayWorking(value);
-                  } catch (error) {
-                    console.error('SettingsScreen: Error updating Saturday working:', error);
-                  }
-                }}
-                trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor="#ffffff"
-              />
-            </View>
-          </View>
-
-          {/* Performance */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Performance</Text>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Monthly Target</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  {monthlyTarget} hours per month
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  console.log('SettingsScreen: User tapped Edit Target button');
-                  setShowTargetModal(true);
-                }}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={16}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Security */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
-
-            {biometricsAvailable && (
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Biometrics</Text>
-                  <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                    Use fingerprint/face to unlock
-                  </Text>
-                </View>
-                <Switch
-                  value={biometricsEnabled}
-                  onValueChange={(value) => {
-                    console.log('SettingsScreen: Biometrics toggled:', value);
-                    setBiometricsEnabled(value);
-                  }}
-                  trackColor={{ false: theme.border, true: theme.primary }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-            )}
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Lock on Resume</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  Require login when returning to app
-                </Text>
-              </View>
-              <Switch
-                value={lockOnResume}
-                onValueChange={(value) => {
-                  console.log('SettingsScreen: Lock on resume toggled:', value);
-                  setLockOnResume(value);
-                }}
-                trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor="#ffffff"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.primary }]}
-              onPress={() => setShowPinChange(!showPinChange)}
-            >
+        {/* Security Settings */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            Security
+          </Text>
+          
+          <TouchableOpacity style={styles.settingRow} onPress={handleChangePIN}>
+            <View style={styles.settingLeft}>
               <IconSymbol
                 ios_icon_name="lock.fill"
                 android_material_icon_name="lock"
-                size={20}
-                color="#ffffff"
+                size={24}
+                color={isDarkMode ? '#fff' : '#000'}
               />
-              <Text style={styles.buttonText}>Change PIN</Text>
-            </TouchableOpacity>
-
-            {showPinChange && (
-              <View style={[styles.pinChangeContainer, { backgroundColor: theme.background }]}>
-                <TextInput
-                  style={[styles.pinInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-                  value={currentPin}
-                  onChangeText={setCurrentPin}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  secureTextEntry
-                  placeholder="Current PIN"
-                  placeholderTextColor={theme.textSecondary}
-                />
-                <TextInput
-                  style={[styles.pinInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-                  value={newPin}
-                  onChangeText={setNewPin}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  secureTextEntry
-                  placeholder="New PIN"
-                  placeholderTextColor={theme.textSecondary}
-                />
-                <TextInput
-                  style={[styles.pinInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-                  value={confirmPin}
-                  onChangeText={setConfirmPin}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  secureTextEntry
-                  placeholder="Confirm New PIN"
-                  placeholderTextColor={theme.textSecondary}
-                />
-                <TouchableOpacity
-                  style={[styles.button, { backgroundColor: theme.success }]}
-                  onPress={handleChangePIN}
-                >
-                  <Text style={styles.buttonText}>Save New PIN</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Appearance */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Theme</Text>
-                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                  {themeMode === 'dark' ? 'Dark Workshop' : 'Light Workshop'}
-                </Text>
-              </View>
-              <Switch
-                value={themeMode === 'dark'}
-                onValueChange={() => {
-                  console.log('SettingsScreen: Theme toggled');
-                  toggleTheme();
-                }}
-                trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor="#ffffff"
-              />
-            </View>
-
-            <View style={styles.sliderContainer}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Overlay Strength</Text>
-              <Slider
-                style={styles.slider}
-                minimumValue={0.3}
-                maximumValue={0.9}
-                value={overlayStrength}
-                onValueChange={(value) => {
-                  console.log('SettingsScreen: Overlay strength changed:', value);
-                  setOverlayStrength(value);
-                }}
-                minimumTrackTintColor={theme.primary}
-                maximumTrackTintColor={theme.border}
-                thumbTintColor={theme.primary}
-              />
-              <Text style={[styles.sliderValue, { color: theme.textSecondary }]}>
-                {Math.round(overlayStrength * 100)}%
+              <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+                Change PIN
               </Text>
             </View>
-          </View>
-
-          {/* Data Management */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
-
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.secondary }]}
-              onPress={handleExportCSV}
-            >
-              <IconSymbol
-                ios_icon_name="square.and.arrow.up.fill"
-                android_material_icon_name="upload"
-                size={20}
-                color="#ffffff"
-              />
-              <Text style={styles.buttonText}>Export CSV</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.accent }]}
-              onPress={handleBackup}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.up.doc.fill"
-                android_material_icon_name="backup"
-                size={20}
-                color="#ffffff"
-              />
-              <Text style={styles.buttonText}>Backup Data</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.warning }]}
-              onPress={handleRestore}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.down.doc.fill"
-                android_material_icon_name="restore"
-                size={20}
-                color="#ffffff"
-              />
-              <Text style={styles.buttonText}>Restore Backup</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.logoutButton, { backgroundColor: theme.error }]}
-            onPress={handleLogout}
-          >
             <IconSymbol
-              ios_icon_name="arrow.right.square.fill"
-              android_material_icon_name="logout"
-              size={20}
-              color="#ffffff"
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={24}
+              color={isDarkMode ? '#888' : '#999'}
             />
-            <Text style={styles.buttonText}>Logout</Text>
           </TouchableOpacity>
-        </ScrollView>
 
-        {/* Modals */}
-        <Modal
-          visible={showTargetModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowTargetModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modal, { backgroundColor: theme.card }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Set Monthly Target</Text>
-                <TouchableOpacity onPress={() => setShowTargetModal(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalContent}>
-                <Text style={[styles.label, { color: theme.text }]}>Target Hours per Month</Text>
-                <TextInput
-                  style={[styles.targetInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={targetInput}
-                  onChangeText={setTargetInput}
-                  keyboardType="decimal-pad"
-                  placeholder="180"
-                  placeholderTextColor={theme.textSecondary}
-                />
-                <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                  Default is 180 hours per month
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <IconSymbol
+                ios_icon_name="faceid"
+                android_material_icon_name="fingerprint"
+                size={24}
+                color={isDarkMode ? '#fff' : '#000'}
+              />
+              <View>
+                <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+                  Enable Biometrics
                 </Text>
-
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                  onPress={handleUpdateTarget}
-                >
-                  <Text style={styles.saveButtonText}>Save Target</Text>
-                </TouchableOpacity>
+                {!biometricsAvailable && (
+                  <Text style={[styles.settingSubtext, isDarkMode ? styles.textLight : styles.textDark]}>
+                    Not available on this device
+                  </Text>
+                )}
               </View>
             </View>
+            <Switch
+              value={biometricsEnabled}
+              onValueChange={handleToggleBiometrics}
+              disabled={!biometricsAvailable}
+            />
           </View>
-        </Modal>
 
-        <Modal
-          visible={showScheduleModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowScheduleModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modal, { backgroundColor: theme.card }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Work Schedule</Text>
-                <TouchableOpacity onPress={() => setShowScheduleModal(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <IconSymbol
+                ios_icon_name="lock.shield"
+                android_material_icon_name="lock"
+                size={24}
+                color={isDarkMode ? '#fff' : '#000'}
+              />
+              <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+                Lock on Resume
+              </Text>
+            </View>
+            <Switch
+              value={lockOnResume}
+              onValueChange={setLockOnResume}
+            />
+          </View>
+        </View>
 
-              <View style={styles.modalContent}>
-                <Text style={[styles.label, { color: theme.text }]}>Daily Working Hours</Text>
-                <TextInput
-                  style={[styles.targetInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={scheduleHoursInput}
-                  onChangeText={setScheduleHoursInput}
-                  keyboardType="decimal-pad"
-                  placeholder="8.5"
-                  placeholderTextColor={theme.textSecondary}
-                />
-                <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                  Standard is 8.5 hours per working day
-                </Text>
+        {/* Appearance */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            Appearance
+          </Text>
+          
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <IconSymbol
+                ios_icon_name="moon.fill"
+                android_material_icon_name="dark-mode"
+                size={24}
+                color={isDarkMode ? '#fff' : '#000'}
+              />
+              <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+                Dark Workshop Theme
+              </Text>
+            </View>
+            <Switch value={isDarkMode} onValueChange={toggleTheme} />
+          </View>
 
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                  onPress={handleUpdateSchedule}
-                >
-                  <Text style={styles.saveButtonText}>Save Schedule</Text>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.sliderContainer}>
+            <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+              Overlay Strength: {Math.round(overlayStrength * 100)}%
+            </Text>
+            <Slider
+              style={styles.slider}
+              minimumValue={0}
+              maximumValue={0.6}
+              value={overlayStrength}
+              onValueChange={setOverlayStrength}
+              minimumTrackTintColor="#2196F3"
+              maximumTrackTintColor={isDarkMode ? '#444' : '#ddd'}
+            />
+          </View>
+        </View>
+
+        {/* Work Schedule */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            Work Schedule
+          </Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+              Daily Working Hours
+            </Text>
+            <TextInput
+              style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+              value={dailyHours}
+              onChangeText={setDailyHours}
+              keyboardType="decimal-pad"
+              placeholder="8.5"
+              placeholderTextColor={isDarkMode ? '#888' : '#999'}
+            />
+          </View>
+
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingText, isDarkMode ? styles.textLight : styles.textDark]}>
+              Saturday Working
+            </Text>
+            <Switch value={saturdayWorking} onValueChange={setSaturdayWorking} />
+          </View>
+
+          <TouchableOpacity style={styles.updateButton} onPress={handleUpdateSchedule}>
+            <Text style={styles.updateButtonText}>Update Schedule</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Monthly Target */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            Monthly Target
+          </Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+              Target Hours
+            </Text>
+            <TextInput
+              style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+              value={monthlyTarget}
+              onChangeText={setMonthlyTarget}
+              keyboardType="decimal-pad"
+              placeholder="180"
+              placeholderTextColor={isDarkMode ? '#888' : '#999'}
+            />
+            <TouchableOpacity style={styles.updateButton} onPress={handleUpdateTarget}>
+              <Text style={styles.updateButtonText}>Update Target</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Data Management */}
+        <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
+          <Text style={[styles.sectionTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+            Data Management
+          </Text>
+          
+          <TouchableOpacity style={styles.actionButton} onPress={handleExportCSV}>
+            <IconSymbol
+              ios_icon_name="square.and.arrow.up"
+              android_material_icon_name="upload"
+              size={24}
+              color="#2196F3"
+            />
+            <Text style={styles.actionButtonText}>Export CSV</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton} onPress={handleBackup}>
+            <IconSymbol
+              ios_icon_name="arrow.up.doc"
+              android_material_icon_name="backup"
+              size={24}
+              color="#2196F3"
+            />
+            <Text style={styles.actionButtonText}>Create Backup</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton} onPress={handleRestore}>
+            <IconSymbol
+              ios_icon_name="arrow.down.doc"
+              android_material_icon_name="restore"
+              size={24}
+              color="#FF9800"
+            />
+            <Text style={[styles.actionButtonText, { color: '#FF9800' }]}>
+              Restore Backup
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Logout */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* Change PIN Modal */}
+      <Modal
+        visible={showChangePinModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowChangePinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDarkMode ? styles.modalDark : styles.modalLight]}>
+            <Text style={[styles.modalTitle, isDarkMode ? styles.textLight : styles.textDark]}>
+              Change PIN
+            </Text>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                Current PIN
+              </Text>
+              <TextInput
+                style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                value={currentPin}
+                onChangeText={setCurrentPin}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter current PIN"
+                placeholderTextColor={isDarkMode ? '#888' : '#999'}
+              />
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                New PIN (4-6 digits)
+              </Text>
+              <TextInput
+                style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                value={newPin}
+                onChangeText={setNewPin}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter new PIN"
+                placeholderTextColor={isDarkMode ? '#888' : '#999'}
+              />
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
+                Confirm New PIN
+              </Text>
+              <TextInput
+                style={[styles.input, isDarkMode ? styles.inputDark : styles.inputLight]}
+                value={confirmNewPin}
+                onChangeText={setConfirmNewPin}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Confirm new PIN"
+                placeholderTextColor={isDarkMode ? '#888' : '#999'}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowChangePinModal(false);
+                  setCurrentPin('');
+                  setNewPin('');
+                  setConfirmNewPin('');
+                }}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleSubmitPinChange}
+              >
+                <Text style={styles.modalButtonTextConfirm}>Change PIN</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-
-        <Modal
-          visible={showNameModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowNameModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modal, { backgroundColor: theme.card }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Name</Text>
-                <TouchableOpacity onPress={() => setShowNameModal(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalContent}>
-                <Text style={[styles.label, { color: theme.text }]}>Technician Name</Text>
-                <TextInput
-                  style={[styles.targetInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={nameInput}
-                  onChangeText={setNameInput}
-                  placeholder="Enter your name"
-                  placeholderTextColor={theme.textSecondary}
-                />
-
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                  onPress={handleUpdateName}
-                >
-                  <Text style={styles.saveButtonText}>Save Name</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 }
@@ -732,172 +670,190 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   container: {
     flex: 1,
   },
-  contentContainer: {
+  content: {
     padding: 16,
-    paddingBottom: 100,
+    paddingTop: Platform.OS === 'android' ? 48 : 16,
   },
   header: {
-    marginBottom: 24,
-    paddingTop: 16,
-  },
-  title: {
     fontSize: 32,
     fontWeight: 'bold',
-  },
-  subtitle: {
-    fontSize: 16,
-    marginTop: 4,
+    marginBottom: 24,
   },
   section: {
-    padding: 20,
-    borderRadius: 16,
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+  },
+  sectionLight: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  },
+  sectionDark: {
+    backgroundColor: 'rgba(30, 30, 30, 0.95)',
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: 'bold',
     marginBottom: 16,
   },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
   },
-  settingInfo: {
+  settingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     flex: 1,
-    marginRight: 16,
   },
-  settingLabel: {
+  settingText: {
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
   },
-  settingDescription: {
+  settingSubtext: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  inputGroup: {
+    marginBottom: 12,
+  },
+  label: {
     fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  input: {
+    height: 48,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    borderWidth: 1,
+  },
+  inputLight: {
+    backgroundColor: '#fff',
+    borderColor: '#2196F3',
+    color: '#000',
+  },
+  inputDark: {
+    backgroundColor: '#1a1a1a',
+    borderColor: '#2196F3',
+    color: '#fff',
   },
   sliderContainer: {
-    marginTop: 8,
+    marginTop: 12,
   },
   slider: {
     width: '100%',
     height: 40,
   },
-  sliderValue: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  button: {
-    flexDirection: 'row',
+  updateButton: {
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+    padding: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    borderRadius: 12,
     marginTop: 12,
-    gap: 8,
   },
-  buttonText: {
-    color: '#ffffff',
+  updateButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  pinChangeContainer: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
-  },
-  pinInput: {
-    height: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    textAlign: 'center',
-    letterSpacing: 4,
-  },
-  logoutButton: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 56,
-    borderRadius: 12,
-    marginTop: 8,
-    gap: 8,
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
   },
-  editButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  actionButtonText: {
+    fontSize: 16,
+    color: '#2196F3',
+    fontWeight: '500',
+  },
+  logoutButton: {
+    backgroundColor: '#f44336',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
+    marginTop: 8,
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  textLight: {
+    color: '#fff',
+  },
+  textDark: {
+    color: '#000',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modal: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '60%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    padding: 24,
   },
   modalContent: {
-    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  modalLight: {
+    backgroundColor: '#fff',
   },
-  targetInput: {
-    height: 56,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 18,
-    textAlign: 'center',
+  modalDark: {
+    backgroundColor: '#1a1a1a',
+  },
+  modalTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-  },
-  helpText: {
-    fontSize: 14,
-    marginTop: 8,
     marginBottom: 24,
     textAlign: 'center',
   },
-  saveButton: {
-    height: 56,
-    borderRadius: 12,
-    justifyContent: 'center',
+  modalInputGroup: {
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
     alignItems: 'center',
   },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
+  modalButtonCancel: {
+    backgroundColor: '#666',
+  },
+  modalButtonConfirm: {
+    backgroundColor: '#2196F3',
+  },
+  modalButtonTextCancel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonTextConfirm: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
 });
