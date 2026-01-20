@@ -209,6 +209,67 @@ export default function AddJobModal() {
     }
   };
 
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    console.log('AddJobModal: Date picker event:', event.type, selectedDate);
+    
+    // On Android, the picker closes automatically after selection
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    
+    // Handle dismissal (user cancelled)
+    if (event.type === 'dismissed') {
+      setShowDatePicker(false);
+      return;
+    }
+    
+    // Update date if a date was selected
+    if (selectedDate) {
+      const newDateTime = new Date(jobDateTime);
+      newDateTime.setFullYear(selectedDate.getFullYear());
+      newDateTime.setMonth(selectedDate.getMonth());
+      newDateTime.setDate(selectedDate.getDate());
+      setJobDateTime(newDateTime);
+      console.log('AddJobModal: Date updated to:', newDateTime.toLocaleDateString());
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // On iOS, close the picker after selection
+      if (Platform.OS === 'ios') {
+        setShowDatePicker(false);
+      }
+    }
+  };
+
+  const handleTimeChange = (event: any, selectedDate?: Date) => {
+    console.log('AddJobModal: Time picker event:', event.type, selectedDate);
+    
+    // On Android, the picker closes automatically after selection
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    
+    // Handle dismissal (user cancelled)
+    if (event.type === 'dismissed') {
+      setShowTimePicker(false);
+      return;
+    }
+    
+    // Update time if a time was selected
+    if (selectedDate) {
+      const newDateTime = new Date(jobDateTime);
+      newDateTime.setHours(selectedDate.getHours());
+      newDateTime.setMinutes(selectedDate.getMinutes());
+      setJobDateTime(newDateTime);
+      console.log('AddJobModal: Time updated to:', newDateTime.toLocaleTimeString());
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // On iOS, close the picker after selection
+      if (Platform.OS === 'ios') {
+        setShowTimePicker(false);
+      }
+    }
+  };
+
   const calculatedMinutes = awToMinutes(aw);
   
   const getVhcColor = (status: string) => {
@@ -399,6 +460,7 @@ export default function AddJobModal() {
                       borderColor: theme.primary
                     }]}
                     onPress={() => {
+                      console.log('AddJobModal: User tapped date picker button');
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setShowDatePicker(true);
                     }}
@@ -419,6 +481,7 @@ export default function AddJobModal() {
                       borderColor: theme.primary
                     }]}
                     onPress={() => {
+                      console.log('AddJobModal: User tapped time picker button');
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setShowTimePicker(true);
                     }}
@@ -590,18 +653,9 @@ export default function AddJobModal() {
           <DateTimePicker
             value={jobDateTime}
             mode="date"
-            display="default"
-            onChange={(event, selectedDate) => {
-              setShowDatePicker(false);
-              if (selectedDate) {
-                const newDateTime = new Date(jobDateTime);
-                newDateTime.setFullYear(selectedDate.getFullYear());
-                newDateTime.setMonth(selectedDate.getMonth());
-                newDateTime.setDate(selectedDate.getDate());
-                setJobDateTime(newDateTime);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
-            }}
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleDateChange}
+            maximumDate={new Date()}
           />
         )}
 
@@ -609,17 +663,9 @@ export default function AddJobModal() {
           <DateTimePicker
             value={jobDateTime}
             mode="time"
-            display="default"
-            onChange={(event, selectedDate) => {
-              setShowTimePicker(false);
-              if (selectedDate) {
-                const newDateTime = new Date(jobDateTime);
-                newDateTime.setHours(selectedDate.getHours());
-                newDateTime.setMinutes(selectedDate.getMinutes());
-                setJobDateTime(newDateTime);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
-            }}
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleTimeChange}
+            is24Hour={true}
           />
         )}
       </View>
