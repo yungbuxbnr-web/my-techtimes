@@ -39,6 +39,7 @@ export default function CalendarScreen() {
   const [calendarData, setCalendarData] = useState<Map<string, DayData>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [monthlyTarget, setMonthlyTarget] = useState(180);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function CalendarScreen() {
     try {
       const schedule = await api.getSchedule();
       const settings = await api.getSettings();
+      setMonthlyTarget(settings.monthlyTarget);
       
       let startDate: Date;
       let endDate: Date;
@@ -352,8 +354,7 @@ export default function CalendarScreen() {
     });
     
     monthEfficiency = monthAvailableHours > 0 ? (monthSoldHours / monthAvailableHours) * 100 : 0;
-    const settings = await api.getSettings();
-    monthProgress = settings.monthlyTarget > 0 ? (monthSoldHours / settings.monthlyTarget) * 100 : 0;
+    monthProgress = monthlyTarget > 0 ? (monthSoldHours / monthlyTarget) * 100 : 0;
     
     const days: (DayData | null)[] = [];
     for (let i = 0; i < startDay; i++) {
