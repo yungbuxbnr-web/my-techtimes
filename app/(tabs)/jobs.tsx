@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -38,17 +38,12 @@ export default function JobsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  useEffect(() => {
-    console.log('JobsScreen: Loading jobs for month:', selectedMonth);
-    loadJobs();
-  }, [selectedMonth]);
-
   function getCurrentMonth() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
 
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       console.log('JobsScreen: Fetching jobs for month:', selectedMonth);
       const fetchedJobs = await api.getJobsForMonth(selectedMonth);
@@ -58,7 +53,12 @@ export default function JobsScreen() {
       console.error('JobsScreen: Error loading jobs:', error);
       Alert.alert('Error', 'Failed to load jobs');
     }
-  };
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    console.log('JobsScreen: Loading jobs for month:', selectedMonth);
+    loadJobs();
+  }, [selectedMonth, loadJobs]);
 
   const onRefresh = async () => {
     console.log('JobsScreen: User refreshing jobs list');

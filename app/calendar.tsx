@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -42,11 +42,7 @@ export default function CalendarScreen() {
   const [monthlyTarget, setMonthlyTarget] = useState(180);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    loadCalendarData();
-  }, [currentDate, viewMode]);
-
-  const loadCalendarData = async () => {
+  const loadCalendarData = useCallback(async () => {
     console.log('CalendarScreen: Loading calendar data for', viewMode, currentDate);
     setLoading(true);
     try {
@@ -133,7 +129,11 @@ export default function CalendarScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentDate, viewMode]);
+
+  useEffect(() => {
+    loadCalendarData();
+  }, [loadCalendarData]);
 
   const navigatePrevious = () => {
     console.log('CalendarScreen: Navigating to previous', viewMode);

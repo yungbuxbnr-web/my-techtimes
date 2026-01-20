@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,12 +20,7 @@ export default function TargetDetailsScreen() {
   const { month } = useLocalSearchParams<{ month: string }>();
   const [details, setDetails] = useState<TargetDetails | null>(null);
 
-  useEffect(() => {
-    console.log('TargetDetailsScreen: Loading target details for month:', month);
-    loadDetails();
-  }, [month]);
-
-  const loadDetails = async () => {
+  const loadDetails = useCallback(async () => {
     try {
       const data = await api.getTargetDetails(month || getCurrentMonth());
       setDetails(data);
@@ -33,7 +28,12 @@ export default function TargetDetailsScreen() {
     } catch (error) {
       console.error('TargetDetailsScreen: Error loading details:', error);
     }
-  };
+  }, [month]);
+
+  useEffect(() => {
+    console.log('TargetDetailsScreen: Loading target details for month:', month);
+    loadDetails();
+  }, [month, loadDetails]);
 
   function getCurrentMonth() {
     const now = new Date();

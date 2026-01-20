@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { AppState, AppStateStatus, Platform } from 'react-native';
@@ -63,21 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  useEffect(() => {
-    if (!initialized) {
-      initializeAuth();
-      setInitialized(true);
-    }
-  }, [initialized]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => {
-      subscription.remove();
-    };
-  }, [lockOnResume, isAuthenticated]);
-
-  const initializeAuth = async () => {
+  const initializeAuth = useCallback(async () => {
     console.log('AuthContext: Initializing authentication');
     try {
       await checkBiometricsAvailability();
@@ -88,9 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const checkSetupStatus = async (): Promise<boolean> => {
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
+    if (appState.match(/inactive|background/) && nextAppState === 'active') {
+      if (lockOnResume && isAuthenticated) {
+        console.log('AuthContext: App resumed, locking due to lockOnResume setting');
+        setIsAuthenticated(false);
+      }
+    }
+    setAppState(nextAppState);
+  }, [appState, lockOnResume, isAuthenticated]);
+
+  const checkSetupStatus = useCallback(async (): Promise<boolean> => {
     try {
       console.log('AuthContext: Checking setup status');
       const setupDone = await getSecureItem(SETUP_COMPLETE_KEY);
@@ -106,7 +102,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSetupComplete(false);
       return false;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!initialized) {
+      initializeAuth();
+      setInitialized(true);
+    }
+  }, [initialized, initializeAuth]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
 
   const checkBiometricsAvailability = async () => {
     try {

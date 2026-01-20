@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -27,19 +27,7 @@ export default function StatsScreen() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [schedule, setSchedule] = useState<any>(null);
 
-  useEffect(() => {
-    console.log('StatsScreen: Loading statistics');
-    loadStats();
-    
-    // Update time every second for live timers
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    
-    return () => clearInterval(timer);
-  }, []);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       console.log('StatsScreen: Fetching all statistics');
       const currentMonth = getCurrentMonth();
@@ -62,7 +50,19 @@ export default function StatsScreen() {
     } catch (error) {
       console.error('StatsScreen: Error loading stats:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('StatsScreen: Loading statistics');
+    loadStats();
+    
+    // Update time every second for live timers
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [loadStats]);
 
   const getCurrentMonth = () => {
     const now = new Date();

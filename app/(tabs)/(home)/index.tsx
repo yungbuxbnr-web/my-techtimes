@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,26 @@ export default function HomeScreen() {
   const [technicianName, setTechnicianName] = useState('Technician');
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  const loadDashboard = useCallback(async () => {
+    try {
+      const currentMonth = getCurrentMonth();
+      const data = await api.getDashboard(currentMonth);
+      setDashboardData(data);
+      console.log('HomeScreen: Dashboard data loaded:', data);
+    } catch (error) {
+      console.error('HomeScreen: Error loading dashboard:', error);
+    }
+  }, []);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const profile = await api.getTechnicianProfile();
+      setTechnicianName(profile.name);
+    } catch (error) {
+      console.error('HomeScreen: Error loading profile:', error);
+    }
+  }, []);
+
   useEffect(() => {
     console.log('HomeScreen: Loading dashboard data');
     loadDashboard();
@@ -35,27 +55,7 @@ export default function HomeScreen() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
-
-  const loadDashboard = async () => {
-    try {
-      const currentMonth = getCurrentMonth();
-      const data = await api.getDashboard(currentMonth);
-      setDashboardData(data);
-      console.log('HomeScreen: Dashboard data loaded:', data);
-    } catch (error) {
-      console.error('HomeScreen: Error loading dashboard:', error);
-    }
-  };
-
-  const loadProfile = async () => {
-    try {
-      const profile = await api.getTechnicianProfile();
-      setTechnicianName(profile.name);
-    } catch (error) {
-      console.error('HomeScreen: Error loading profile:', error);
-    }
-  };
+  }, [loadDashboard, loadProfile]);
 
   const getCurrentMonth = () => {
     const now = new Date();

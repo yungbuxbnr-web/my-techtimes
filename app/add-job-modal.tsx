@@ -35,7 +35,7 @@ export default function AddJobModal() {
   const [confirmationOpacity] = useState(new Animated.Value(0));
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
-  const vhcOptions: Array<'GREEN' | 'AMBER' | 'RED' | 'N/A'> = ['N/A', 'GREEN', 'AMBER', 'RED'];
+  const vhcOptions: ('GREEN' | 'AMBER' | 'RED' | 'N/A')[] = ['N/A', 'GREEN', 'AMBER', 'RED'];
 
   const handleSave = async (saveAnother: boolean = false) => {
     console.log('AddJobModal: User tapped Save button, saveAnother:', saveAnother);

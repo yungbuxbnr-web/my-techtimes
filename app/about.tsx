@@ -718,7 +718,7 @@ export default function AboutScreen() {
             <Text style={[styles.text, { color: theme.textSecondary }]}>
               • <Text style={{ fontWeight: 'bold' }}>Daily Reminder:</Text> Set time for daily job logging reminder{'\n'}
               • <Text style={{ fontWeight: 'bold' }}>Weekly Report:</Text> Choose day for weekly summary{'\n'}
-              • <Text style={{ fontWeight: 'bold' }}>Monthly Report:</strong> End-of-month statistics{'\n'}
+              • <Text style={{ fontWeight: 'bold' }}>Monthly Report:</Text> End-of-month statistics{'\n'}
               • <Text style={{ fontWeight: 'bold' }}>Target Reminder:</Text> Alerts when approaching target{'\n'}
               • <Text style={{ fontWeight: 'bold' }}>Efficiency Alert:</Text> Notifies when below threshold
             </Text>

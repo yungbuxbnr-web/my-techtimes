@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,19 +28,7 @@ export default function DashboardScreen() {
   const [todayStats, setTodayStats] = useState<any>(null);
   const [weekStats, setWeekStats] = useState<any>(null);
 
-  useEffect(() => {
-    console.log('DashboardScreen: Loading dashboard data');
-    loadDashboardData();
-    
-    // Update timer every second
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    
-    return () => clearInterval(timer);
-  }, []);
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       console.log('DashboardScreen: Fetching stats from API');
       const currentMonth = getCurrentMonth();
@@ -59,7 +47,19 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('DashboardScreen: Error loading dashboard data:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('DashboardScreen: Loading dashboard data');
+    loadDashboardData();
+    
+    // Update timer every second
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [loadDashboardData]);
 
   const getCurrentMonth = () => {
     const now = new Date();

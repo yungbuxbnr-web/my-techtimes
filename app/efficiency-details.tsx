@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,12 +19,7 @@ export default function EfficiencyDetailsScreen() {
   const { month } = useLocalSearchParams<{ month: string }>();
   const [details, setDetails] = useState<EfficiencyDetails | null>(null);
 
-  useEffect(() => {
-    console.log('EfficiencyDetailsScreen: Loading efficiency details for month:', month);
-    loadDetails();
-  }, [month]);
-
-  const loadDetails = async () => {
+  const loadDetails = useCallback(async () => {
     try {
       const data = await api.getEfficiencyDetails(month || getCurrentMonth());
       setDetails(data);
@@ -32,7 +27,12 @@ export default function EfficiencyDetailsScreen() {
     } catch (error) {
       console.error('EfficiencyDetailsScreen: Error loading details:', error);
     }
-  };
+  }, [month]);
+
+  useEffect(() => {
+    console.log('EfficiencyDetailsScreen: Loading efficiency details for month:', month);
+    loadDetails();
+  }, [month, loadDetails]);
 
   function getCurrentMonth() {
     const now = new Date();

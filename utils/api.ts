@@ -37,7 +37,7 @@ export interface MonthlyStats {
   efficiencyColor: 'green' | 'yellow' | 'red';
   totalJobs: number;
   totalAw: number;
-  weeklyBreakdown: Array<{ week: number; jobs: number; aw: number; hours: number }>;
+  weeklyBreakdown: { week: number; jobs: number; aw: number; hours: number }[];
 }
 
 export interface TargetDetails {
