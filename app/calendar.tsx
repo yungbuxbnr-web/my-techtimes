@@ -54,6 +54,8 @@ export default function CalendarScreen() {
       const settings = await api.getSettings();
       setMonthlyTarget(settings.monthlyTarget);
       
+      const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
+      
       let startDate: Date;
       let endDate: Date;
       
@@ -100,16 +102,16 @@ export default function CalendarScreen() {
         const dayJobs = jobsByDay.get(dateStr) || [];
         
         const dayOfWeek = currentDay.getDay();
-        const isWorkingDay = (dayOfWeek >= 1 && dayOfWeek <= 5) || 
-                             (dayOfWeek === 6 && schedule.saturdayWorking);
+        const isWorkingDay = workingDays.includes(dayOfWeek);
         
         const availableHours = isWorkingDay ? schedule.dailyWorkingHours : 0;
         const totalAw = dayJobs.reduce((sum, job) => sum + job.aw, 0);
-        const soldHours = (totalAw * 5) / 60;
+        const soldHours = (totalAw * 5) / 60; // 1 AW = 5 minutes = 0.0833 hours
         const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
         
         // Progress is sold hours vs daily target (proportional to monthly target)
-        const dailyTarget = settings.monthlyTarget / 22; // Approximate working days
+        const workingDaysPerMonth = workingDays.length * 4.33; // Approximate
+        const dailyTarget = settings.monthlyTarget / workingDaysPerMonth;
         const progress = dailyTarget > 0 ? (soldHours / dailyTarget) * 100 : 0;
         
         dayMap.set(dateStr, {
@@ -164,8 +166,8 @@ export default function CalendarScreen() {
   };
 
   const getEfficiencyColor = (efficiency: number): string => {
-    if (efficiency >= 65) return '#4CAF50';
-    if (efficiency >= 31) return '#FFC107';
+    if (efficiency >= 90) return '#4CAF50';
+    if (efficiency >= 75) return '#FFC107';
     return '#F44336';
   };
 

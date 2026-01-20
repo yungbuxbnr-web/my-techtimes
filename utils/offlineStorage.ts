@@ -26,6 +26,10 @@ export interface Job {
 export interface Schedule {
   dailyWorkingHours: number;
   saturdayWorking: boolean;
+  workingDays?: number[]; // Array of day numbers: 0=Sunday, 1=Monday, etc.
+  startTime?: string; // HH:MM format
+  endTime?: string; // HH:MM format
+  lunchBreakMinutes?: number;
 }
 
 export interface TechnicianProfile {
@@ -182,6 +186,10 @@ export const offlineStorage = {
     return await getItem<Schedule>(KEYS.SCHEDULE, {
       dailyWorkingHours: 8.5,
       saturdayWorking: false,
+      workingDays: [1, 2, 3, 4, 5], // Monday to Friday
+      startTime: '07:00',
+      endTime: '18:00',
+      lunchBreakMinutes: 30,
     });
   },
 

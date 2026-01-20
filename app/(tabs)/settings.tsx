@@ -34,8 +34,7 @@ export default function SettingsScreen() {
   
   const [technicianName, setTechnicianName] = useState('');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
-  const [dailyWorkingHours, setDailyWorkingHours] = useState('8.5');
-  const [saturdayWorking, setSaturdayWorking] = useState(false);
+  const [scheduleInfo, setScheduleInfo] = useState('Loading...');
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [lockOnResume, setLockOnResume] = useState(true);
   
@@ -73,8 +72,13 @@ export default function SettingsScreen() {
       
       setTechnicianName(profile.name);
       setMonthlyTarget(settings.monthlyTarget.toString());
-      setDailyWorkingHours(schedule.dailyWorkingHours.toString());
-      setSaturdayWorking(schedule.saturdayWorking);
+      
+      // Format schedule info
+      const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const workingDayNames = workingDays.map(d => dayNames[d]).join(', ');
+      const scheduleText = `${workingDayNames} • ${schedule.startTime || '07:00'}-${schedule.endTime || '18:00'} • ${schedule.dailyWorkingHours.toFixed(1)}h/day`;
+      setScheduleInfo(scheduleText);
     } catch (error) {
       console.error('SettingsScreen: Error loading settings:', error);
     }
@@ -105,25 +109,6 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('SettingsScreen: Error updating target:', error);
       Alert.alert('Error', 'Failed to update monthly target');
-    }
-  };
-
-  const handleUpdateSchedule = async () => {
-    console.log('SettingsScreen: Updating schedule');
-    try {
-      const hours = parseFloat(dailyWorkingHours);
-      if (isNaN(hours) || hours <= 0 || hours > 24) {
-        Alert.alert('Invalid Hours', 'Please enter valid daily working hours (0-24)');
-        return;
-      }
-      await api.updateSchedule({
-        dailyWorkingHours: hours,
-        saturdayWorking,
-      });
-      Alert.alert('Success', 'Work schedule updated');
-    } catch (error) {
-      console.error('SettingsScreen: Error updating schedule:', error);
-      Alert.alert('Error', 'Failed to update schedule');
     }
   };
 
@@ -432,31 +417,33 @@ export default function SettingsScreen() {
         {/* Work Schedule */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Schedule</Text>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Daily Working Hours</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-              value={dailyWorkingHours}
-              onChangeText={setDailyWorkingHours}
-              keyboardType="numeric"
-              placeholder="8.5"
-              placeholderTextColor={theme.textSecondary}
+          <View style={[styles.scheduleInfoBox, { backgroundColor: theme.background }]}>
+            <IconSymbol
+              ios_icon_name="calendar"
+              android_material_icon_name="calendar-today"
+              size={20}
+              color={theme.primary}
             />
-            <View style={styles.switchRow}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Saturday Working</Text>
-              <Switch
-                value={saturdayWorking}
-                onValueChange={setSaturdayWorking}
-                trackColor={{ false: theme.border, true: theme.primary }}
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.primary }]}
-              onPress={handleUpdateSchedule}
-            >
-              <Text style={styles.buttonText}>Update Schedule</Text>
-            </TouchableOpacity>
+            <Text style={[styles.scheduleInfoText, { color: theme.text }]}>{scheduleInfo}</Text>
           </View>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: theme.primary, marginTop: 12 }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Edit Work Schedule button');
+              router.push('/edit-work-schedule');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="pencil"
+              android_material_icon_name="edit"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.buttonText}>Edit Work Schedule</Text>
+          </TouchableOpacity>
+          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
+            Customize your working days and hours to accurately track efficiency
+          </Text>
         </View>
         
         {/* Appearance */}
@@ -917,6 +904,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  scheduleInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  scheduleInfoText: {
+    flex: 1,
+    fontSize: 14,
+  },
+  hint: {
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   switchRow: {
     flexDirection: 'row',

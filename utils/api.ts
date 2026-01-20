@@ -117,27 +117,76 @@ function calculateJobStats(jobs: Job[]): JobStats {
   };
 }
 
-function getWeekdaysInMonth(year: number, month: number, saturdayWorking: boolean): number {
+/**
+ * Calculate working days in a month based on custom schedule
+ * @param year - Year
+ * @param month - Month (1-12)
+ * @param schedule - Work schedule with working days array
+ * @returns Number of working days in the month
+ */
+function getWorkingDaysInMonth(year: number, month: number, schedule: Schedule): number {
+  const workingDays = schedule.workingDays || [1, 2, 3, 4, 5]; // Default Mon-Fri
   const date = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0).getDate();
-  let weekdays = 0;
+  let count = 0;
 
   for (let day = 1; day <= lastDay; day++) {
     date.setDate(day);
     const dayOfWeek = date.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-      weekdays++;
-    } else if (dayOfWeek === 6 && saturdayWorking) {
-      weekdays++;
+    if (workingDays.includes(dayOfWeek)) {
+      count++;
     }
   }
 
-  return weekdays;
+  console.log(`API: Calculated ${count} working days in ${year}-${month} based on schedule:`, workingDays);
+  return count;
+}
+
+/**
+ * Calculate working days from start of month to today
+ * @param year - Year
+ * @param month - Month (1-12)
+ * @param schedule - Work schedule with working days array
+ * @returns Number of working days from month start to today
+ */
+function getWorkingDaysToDate(year: number, month: number, schedule: Schedule): number {
+  const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+  
+  // If the month is in the future, return 0
+  if (year > currentYear || (year === currentYear && month > currentMonth)) {
+    return 0;
+  }
+  
+  // Determine the last day to count
+  let lastDay: number;
+  if (year === currentYear && month === currentMonth) {
+    lastDay = currentDay; // Count up to today
+  } else {
+    lastDay = new Date(year, month, 0).getDate(); // Count full month
+  }
+  
+  const date = new Date(year, month - 1, 1);
+  let count = 0;
+
+  for (let day = 1; day <= lastDay; day++) {
+    date.setDate(day);
+    const dayOfWeek = date.getDay();
+    if (workingDays.includes(dayOfWeek)) {
+      count++;
+    }
+  }
+
+  console.log(`API: Calculated ${count} working days from ${year}-${month}-01 to ${year}-${month}-${lastDay}`);
+  return count;
 }
 
 function getEfficiencyColor(efficiency: number): 'green' | 'yellow' | 'red' {
-  if (efficiency >= 65) return 'green';
-  if (efficiency >= 31) return 'yellow';
+  if (efficiency >= 90) return 'green';
+  if (efficiency >= 75) return 'yellow';
   return 'red';
 }
 
@@ -246,8 +295,12 @@ export const api = {
     const settings = await offlineStorage.getSettings();
 
     const [year, monthNum] = month.split('-').map(Number);
-    const weekdaysInMonth = getWeekdaysInMonth(year, monthNum, schedule.saturdayWorking);
-    const availableHours = weekdaysInMonth * schedule.dailyWorkingHours;
+    
+    // Calculate available hours based on working days from start of month to today
+    const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
+    const availableHours = workingDaysToDate * schedule.dailyWorkingHours;
+
+    console.log(`API: Month ${month} - ${workingDaysToDate} working days × ${schedule.dailyWorkingHours}h = ${availableHours}h available`);
 
     // Calculate absence deductions
     let absenceHoursFromAvailable = 0;
@@ -276,8 +329,10 @@ export const api = {
     const adjustedTargetHours = (settings.monthlyTarget || targetHours) - absenceHoursFromTarget;
 
     const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
-    const soldHours = (totalAw * 5) / 60;
+    const soldHours = (totalAw * 5) / 60; // 1 AW = 5 minutes = 0.0833 hours
     const efficiency = adjustedAvailableHours > 0 ? (soldHours / adjustedAvailableHours) * 100 : 0;
+
+    console.log(`API: Sold Hours: ${soldHours.toFixed(2)}h, Available Hours: ${adjustedAvailableHours.toFixed(2)}h, Efficiency: ${efficiency.toFixed(1)}%`);
 
     return {
       month,
@@ -315,7 +370,7 @@ export const api = {
     const schedule = await offlineStorage.getSchedule();
     const absences = await offlineStorage.getAbsences(month);
     const [year, monthNum] = month.split('-').map(Number);
-    const weekdaysInMonth = getWeekdaysInMonth(year, monthNum, schedule.saturdayWorking);
+    const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
 
     return {
       month,
@@ -323,7 +378,7 @@ export const api = {
       availableHours: monthlyStats.availableHours,
       efficiency: monthlyStats.efficiency,
       efficiencyColor: monthlyStats.efficiencyColor,
-      weekdaysInMonth,
+      weekdaysInMonth: workingDaysToDate,
       absenceDays: absences.length,
       formula: 'Efficiency = (Sold Hours / Available Hours) × 100',
     };
@@ -399,6 +454,11 @@ export const api = {
     console.log('API: Updating monthly target in local storage to', value);
     await offlineStorage.updateSettings({ monthlyTarget: value });
     return { value };
+  },
+
+  async getSettings(): Promise<{ monthlyTarget: number }> {
+    console.log('API: Fetching settings from local storage');
+    return await offlineStorage.getSettings();
   },
 
   // OCR endpoints - These would need a backend or local ML model

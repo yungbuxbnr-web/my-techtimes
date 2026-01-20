@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "Tech Times",
@@ -73,5 +72,6 @@
       "router": {},
       "backendUrl": "https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev"
     }
-  }
+  },
+  "scheme": "Tech Times"
 }
