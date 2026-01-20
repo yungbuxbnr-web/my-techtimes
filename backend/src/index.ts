@@ -4,6 +4,8 @@ import * as authSchema from './db/auth-schema.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerStatsRoutes } from './routes/stats.js';
 import { registerExportRoutes } from './routes/export.js';
+import { registerAbsenceRoutes } from './routes/absences.js';
+import { registerSettingsRoutes } from './routes/settings.js';
 
 // Combine schemas
 const schema = { ...appSchema, ...authSchema };
@@ -22,6 +24,8 @@ app.withAuth();
 registerJobRoutes(app);
 registerStatsRoutes(app);
 registerExportRoutes(app);
+registerAbsenceRoutes(app);
+registerSettingsRoutes(app);
 
 await app.run();
 app.logger.info('Application running');

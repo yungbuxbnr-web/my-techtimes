@@ -1,220 +1,87 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { sql, gte, lte, and } from 'drizzle-orm';
+import type { FastifyRequest, FastifyReply } from 'fastify';
+import { gte, lte, and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
-interface StatsResponse {
-  jobCount: number;
-  totalAw: number;
-  totalMinutes: number;
-  averageAw: number;
+// Utility functions
+function getWeekdaysInMonth(year: number, month: number): number {
+  // month is 0-indexed
+  let weekdays = 0;
+  const date = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0).getDate();
+
+  for (let day = 1; day <= lastDay; day++) {
+    date.setDate(day);
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      weekdays++;
+    }
+  }
+  return weekdays;
 }
 
-interface WeeklyBreakdown {
-  week: number;
-  jobCount: number;
-  totalAw: number;
-  totalMinutes: number;
+function parseMonthString(monthStr: string): { year: number; month: number } {
+  const [year, month] = monthStr.split('-').map(Number);
+  return { year, month: month - 1 }; // month is 0-indexed for Date
 }
 
-interface MonthStatsResponse extends StatsResponse {
-  weeklyBreakdown: WeeklyBreakdown[];
+function getEfficiencyColor(efficiency: number): 'green' | 'yellow' | 'red' {
+  if (efficiency >= 65) return 'green';
+  if (efficiency >= 31) return 'yellow';
+  return 'red';
 }
 
-function calculateStats(jobs: any[]): StatsResponse {
-  const jobCount = jobs.length;
-  const totalAw = jobs.reduce((sum, job) => sum + (job.aw || 0), 0);
-  const totalMinutes = totalAw * 5;
-  const averageAw = jobCount > 0 ? Math.round((totalAw / jobCount) * 100) / 100 : 0;
-
-  return {
-    jobCount,
-    totalAw,
-    totalMinutes,
-    averageAw,
-  };
+function calculateDeduction(
+  daysCount: number,
+  isHalfDay: boolean
+): number {
+  if (isHalfDay) {
+    return daysCount * 4.25;
+  }
+  return daysCount * 8.5;
 }
 
 export function registerStatsRoutes(app: App) {
   const requireAuth = app.requireAuth();
   const fastify = app.fastify;
 
-  // GET /api/stats/today - Returns stats for today
+  // Helper to get monthly target setting
+  async function getMonthlyTargetHours(): Promise<number> {
+    const setting = await app.db
+      .select()
+      .from(schema.settings)
+      .where(eq(schema.settings.key, 'monthly-target'));
+    return setting.length > 0 ? parseFloat(setting[0].value) : 180;
+  }
+
+  // GET /api/stats/monthly/:month - Get monthly stats with target and efficiency
   fastify.get(
-    '/api/stats/today',
+    '/api/stats/monthly/:month',
     {
       schema: {
-        description: 'Get stats for today',
-        tags: ['stats'],
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              jobCount: { type: 'number' },
-              totalAw: { type: 'number' },
-              totalMinutes: { type: 'number' },
-              averageAw: { type: 'number' },
-            },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const session = await requireAuth(request, reply);
-      if (!session) return;
-
-      app.logger.info({}, 'Fetching stats for today');
-      try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        const jobs = await app.db
-          .select()
-          .from(schema.jobs)
-          .where(and(gte(schema.jobs.createdAt, today), lte(schema.jobs.createdAt, tomorrow)));
-
-        const stats = calculateStats(jobs);
-        app.logger.info(stats, 'Today stats calculated successfully');
-        return stats;
-      } catch (error) {
-        app.logger.error({ err: error }, 'Failed to fetch today stats');
-        throw error;
-      }
-    }
-  );
-
-  // GET /api/stats/week - Returns stats for current week
-  fastify.get(
-    '/api/stats/week',
-    {
-      schema: {
-        description: 'Get stats for current week',
-        tags: ['stats'],
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              jobCount: { type: 'number' },
-              totalAw: { type: 'number' },
-              totalMinutes: { type: 'number' },
-              averageAw: { type: 'number' },
-            },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const session = await requireAuth(request, reply);
-      if (!session) return;
-
-      app.logger.info({}, 'Fetching stats for current week');
-      try {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - dayOfWeek);
-        startOfWeek.setHours(0, 0, 0, 0);
-
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 7);
-
-        const jobs = await app.db
-          .select()
-          .from(schema.jobs)
-          .where(and(gte(schema.jobs.createdAt, startOfWeek), lte(schema.jobs.createdAt, endOfWeek)));
-
-        const stats = calculateStats(jobs);
-        app.logger.info(stats, 'Week stats calculated successfully');
-        return stats;
-      } catch (error) {
-        app.logger.error({ err: error }, 'Failed to fetch week stats');
-        throw error;
-      }
-    }
-  );
-
-  // GET /api/stats/month - Returns stats for current month
-  fastify.get(
-    '/api/stats/month',
-    {
-      schema: {
-        description: 'Get stats for current month',
-        tags: ['stats'],
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              jobCount: { type: 'number' },
-              totalAw: { type: 'number' },
-              totalMinutes: { type: 'number' },
-              averageAw: { type: 'number' },
-            },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const session = await requireAuth(request, reply);
-      if (!session) return;
-
-      app.logger.info({}, 'Fetching stats for current month');
-      try {
-        const today = new Date();
-        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-
-        const jobs = await app.db
-          .select()
-          .from(schema.jobs)
-          .where(and(gte(schema.jobs.createdAt, startOfMonth), lte(schema.jobs.createdAt, endOfMonth)));
-
-        const stats = calculateStats(jobs);
-        app.logger.info(stats, 'Month stats calculated successfully');
-        return stats;
-      } catch (error) {
-        app.logger.error({ err: error }, 'Failed to fetch month stats');
-        throw error;
-      }
-    }
-  );
-
-  // GET /api/stats/month/:year/:month - Returns stats for specific month with weekly breakdown
-  fastify.get(
-    '/api/stats/month/:year/:month',
-    {
-      schema: {
-        description: 'Get stats for specific month with weekly breakdown',
+        description: 'Get monthly stats',
         tags: ['stats'],
         params: {
           type: 'object',
           properties: {
-            year: { type: 'string' },
             month: { type: 'string' },
           },
-          required: ['year', 'month'],
+          required: ['month'],
         },
         response: {
           200: {
             type: 'object',
             properties: {
-              jobCount: { type: 'number' },
+              month: { type: 'string' },
+              soldHours: { type: 'number' },
+              targetHours: { type: 'number' },
+              remainingHours: { type: 'number' },
+              availableHours: { type: 'number' },
+              efficiency: { type: 'number' },
+              efficiencyColor: { type: 'string' },
+              totalJobs: { type: 'number' },
               totalAw: { type: 'number' },
-              totalMinutes: { type: 'number' },
-              averageAw: { type: 'number' },
-              weeklyBreakdown: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    week: { type: 'number' },
-                    jobCount: { type: 'number' },
-                    totalAw: { type: 'number' },
-                    totalMinutes: { type: 'number' },
-                  },
-                },
-              },
+              weeklyBreakdown: { type: 'array' },
             },
           },
         },
@@ -224,53 +91,291 @@ export function registerStatsRoutes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { year, month } = request.params as { year: string; month: string };
+      const { month: monthStr } = request.params as { month: string };
 
-      app.logger.info({ year, month }, 'Fetching stats for specific month with weekly breakdown');
+      app.logger.info({ month: monthStr }, 'Fetching monthly stats');
+
       try {
-        const y = parseInt(year, 10);
-        const m = parseInt(month, 10) - 1; // Convert to 0-indexed
+        const { year, month } = parseMonthString(monthStr);
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 1);
 
-        const startOfMonth = new Date(y, m, 1);
-        const endOfMonth = new Date(y, m + 1, 1);
-
+        // Get jobs for the month
         const jobs = await app.db
           .select()
           .from(schema.jobs)
-          .where(and(gte(schema.jobs.createdAt, startOfMonth), lte(schema.jobs.createdAt, endOfMonth)));
+          .where(and(gte(schema.jobs.createdAt, startDate), lte(schema.jobs.createdAt, endDate)));
 
-        const stats = calculateStats(jobs);
+        // Get absences for the month
+        const absences = await app.db
+          .select()
+          .from(schema.absences)
+          .where(eq(schema.absences.month, monthStr));
+
+        // Calculate metrics
+        const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+        const soldMinutes = totalAw * 5;
+        const soldHours = Math.round((soldMinutes / 60) * 100) / 100;
+
+        // Get target hours
+        const defaultTarget = await getMonthlyTargetHours();
+
+        // Calculate deductions
+        let targetDeduction = 0;
+        let availableDeduction = 0;
+
+        for (const absence of absences) {
+          const deduction = calculateDeduction(parseFloat(absence.daysCount.toString()), absence.isHalfDay);
+          if (absence.deductionType === 'target') {
+            targetDeduction += deduction;
+          } else {
+            availableDeduction += deduction;
+          }
+        }
+
+        const targetHours = defaultTarget - targetDeduction;
+        const weekdaysCount = getWeekdaysInMonth(year, month);
+        const availableHours = weekdaysCount * 8.5 - availableDeduction;
+        const remainingHours = Math.round((targetHours - soldHours) * 100) / 100;
+
+        const efficiency = availableHours > 0 ? Math.round((soldHours / availableHours) * 100) : 0;
+        const efficiencyColor = getEfficiencyColor(efficiency);
 
         // Calculate weekly breakdown
-        const weeklyBreakdown: WeeklyBreakdown[] = [];
+        const weeklyBreakdown: any[] = [];
         for (let week = 1; week <= 5; week++) {
-          const weekStart = new Date(y, m, (week - 1) * 7 + 1);
-          const weekEnd = new Date(y, m, week * 7 + 1);
+          const weekStartDay = (week - 1) * 7 + 1;
+          const weekEndDay = Math.min(week * 7 + 1, new Date(year, month + 1, 0).getDate() + 1);
+          const weekStart = new Date(year, month, weekStartDay);
+          const weekEnd = new Date(year, month, weekEndDay);
 
           const weekJobs = jobs.filter(
             (job) =>
-              new Date(job.createdAt) >= weekStart &&
-              new Date(job.createdAt) < weekEnd
+              new Date(job.createdAt) >= weekStart && new Date(job.createdAt) < weekEnd
           );
 
-          const weekStats = calculateStats(weekJobs);
+          const weekTotalAw = weekJobs.reduce((sum, job) => sum + job.aw, 0);
+          const weekMinutes = weekTotalAw * 5;
+          const weekHours = Math.round((weekMinutes / 60) * 100) / 100;
+
           weeklyBreakdown.push({
             week,
-            jobCount: weekStats.jobCount,
-            totalAw: weekStats.totalAw,
-            totalMinutes: weekStats.totalMinutes,
+            jobs: weekJobs.length,
+            aw: weekTotalAw,
+            hours: weekHours,
           });
         }
 
-        const result: MonthStatsResponse = {
-          ...stats,
+        const result = {
+          month: monthStr,
+          soldHours,
+          targetHours,
+          remainingHours,
+          availableHours,
+          efficiency,
+          efficiencyColor,
+          totalJobs: jobs.length,
+          totalAw,
           weeklyBreakdown,
         };
 
-        app.logger.info({ year, month, ...stats }, 'Month stats with breakdown calculated successfully');
+        app.logger.info({ month: monthStr, ...result }, 'Monthly stats calculated');
         return result;
       } catch (error) {
-        app.logger.error({ err: error, year, month }, 'Failed to fetch month stats with breakdown');
+        app.logger.error({ err: error, month: monthStr }, 'Failed to fetch monthly stats');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/stats/target-details/:month - Get detailed target breakdown
+  fastify.get(
+    '/api/stats/target-details/:month',
+    {
+      schema: {
+        description: 'Get target details',
+        tags: ['stats'],
+        params: {
+          type: 'object',
+          properties: {
+            month: { type: 'string' },
+          },
+          required: ['month'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              month: { type: 'string' },
+              targetHours: { type: 'number' },
+              soldHours: { type: 'number' },
+              remainingHours: { type: 'number' },
+              totalJobs: { type: 'number' },
+              totalAw: { type: 'number' },
+              percentComplete: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { month: monthStr } = request.params as { month: string };
+
+      app.logger.info({ month: monthStr }, 'Fetching target details');
+
+      try {
+        const { year, month } = parseMonthString(monthStr);
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 1);
+
+        // Get jobs for the month
+        const jobs = await app.db
+          .select()
+          .from(schema.jobs)
+          .where(and(gte(schema.jobs.createdAt, startDate), lte(schema.jobs.createdAt, endDate)));
+
+        // Get absences for the month
+        const absences = await app.db
+          .select()
+          .from(schema.absences)
+          .where(eq(schema.absences.month, monthStr));
+
+        // Calculate metrics
+        const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+        const soldMinutes = totalAw * 5;
+        const soldHours = Math.round((soldMinutes / 60) * 100) / 100;
+
+        // Get target hours
+        const defaultTarget = await getMonthlyTargetHours();
+
+        // Calculate target deductions
+        let targetDeduction = 0;
+        for (const absence of absences) {
+          if (absence.deductionType === 'target') {
+            targetDeduction += calculateDeduction(parseFloat(absence.daysCount.toString()), absence.isHalfDay);
+          }
+        }
+
+        const targetHours = defaultTarget - targetDeduction;
+        const remainingHours = Math.round((targetHours - soldHours) * 100) / 100;
+        const percentComplete = targetHours > 0 ? Math.round((soldHours / targetHours) * 100) : 0;
+
+        const result = {
+          month: monthStr,
+          targetHours,
+          soldHours,
+          remainingHours,
+          totalJobs: jobs.length,
+          totalAw,
+          percentComplete,
+        };
+
+        app.logger.info({ month: monthStr, ...result }, 'Target details calculated');
+        return result;
+      } catch (error) {
+        app.logger.error({ err: error, month: monthStr }, 'Failed to fetch target details');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/stats/efficiency-details/:month - Get detailed efficiency breakdown
+  fastify.get(
+    '/api/stats/efficiency-details/:month',
+    {
+      schema: {
+        description: 'Get efficiency details',
+        tags: ['stats'],
+        params: {
+          type: 'object',
+          properties: {
+            month: { type: 'string' },
+          },
+          required: ['month'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              month: { type: 'string' },
+              soldHours: { type: 'number' },
+              availableHours: { type: 'number' },
+              efficiency: { type: 'number' },
+              efficiencyColor: { type: 'string' },
+              weekdaysInMonth: { type: 'number' },
+              absenceDays: { type: 'number' },
+              formula: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { month: monthStr } = request.params as { month: string };
+
+      app.logger.info({ month: monthStr }, 'Fetching efficiency details');
+
+      try {
+        const { year, month } = parseMonthString(monthStr);
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 1);
+
+        // Get jobs for the month
+        const jobs = await app.db
+          .select()
+          .from(schema.jobs)
+          .where(and(gte(schema.jobs.createdAt, startDate), lte(schema.jobs.createdAt, endDate)));
+
+        // Get absences for the month
+        const absences = await app.db
+          .select()
+          .from(schema.absences)
+          .where(eq(schema.absences.month, monthStr));
+
+        // Calculate metrics
+        const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+        const soldMinutes = totalAw * 5;
+        const soldHours = Math.round((soldMinutes / 60) * 100) / 100;
+
+        const weekdaysInMonth = getWeekdaysInMonth(year, month);
+
+        // Calculate available deductions
+        let availableDeduction = 0;
+        let absenceDays = 0;
+
+        for (const absence of absences) {
+          if (absence.deductionType === 'available') {
+            const days = parseFloat(absence.daysCount.toString());
+            availableDeduction += calculateDeduction(days, absence.isHalfDay);
+            absenceDays += days;
+          }
+        }
+
+        const availableHours = weekdaysInMonth * 8.5 - availableDeduction;
+        const efficiency = availableHours > 0 ? Math.round((soldHours / availableHours) * 100) : 0;
+        const efficiencyColor = getEfficiencyColor(efficiency);
+
+        const result = {
+          month: monthStr,
+          soldHours,
+          availableHours,
+          efficiency,
+          efficiencyColor,
+          weekdaysInMonth,
+          absenceDays,
+          formula: `(Sold Hours / Available Hours) × 100 = (${soldHours} / ${availableHours}) × 100 = ${efficiency}%`,
+        };
+
+        app.logger.info({ month: monthStr, ...result }, 'Efficiency details calculated');
+        return result;
+      } catch (error) {
+        app.logger.error({ err: error, month: monthStr }, 'Failed to fetch efficiency details');
         throw error;
       }
     }
