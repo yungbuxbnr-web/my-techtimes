@@ -20,6 +20,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
+import { offlineStorage } from '@/utils/offlineStorage';
 import AppBackground from '@/components/AppBackground';
 
 export default function SettingsScreen() {
@@ -51,15 +52,18 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      console.log('Settings: Loading settings');
+      console.log('Settings: Loading settings from local storage');
       const schedule = await api.getSchedule();
       setDailyHours(schedule.dailyWorkingHours.toString());
       setSaturdayWorking(schedule.saturdayWorking);
 
       const profile = await api.getTechnicianProfile();
       setTechnicianName(profile.name);
+
+      const target = await api.getMonthlyTarget();
+      setMonthlyTarget(target.value.toString());
       
-      console.log('Settings: Loaded - schedule:', schedule, 'profile:', profile);
+      console.log('Settings: Loaded - schedule:', schedule, 'profile:', profile, 'target:', target.value);
     } catch (error) {
       console.error('Settings: Error loading settings:', error);
     }
@@ -71,8 +75,14 @@ export default function SettingsScreen() {
       Alert.alert('Invalid Input', 'Please enter a valid target hours value');
       return;
     }
-    console.log('Settings: Updating monthly target to', value);
-    Alert.alert('Success', 'Monthly target updated');
+    try {
+      console.log('Settings: Updating monthly target to', value);
+      await api.updateMonthlyTarget(value);
+      Alert.alert('Success', 'Monthly target updated and saved to device');
+    } catch (error) {
+      console.error('Settings: Error updating target:', error);
+      Alert.alert('Error', 'Failed to update target');
+    }
   };
 
   const handleUpdateSchedule = async () => {
@@ -88,7 +98,7 @@ export default function SettingsScreen() {
         dailyWorkingHours: hours,
         saturdayWorking,
       });
-      Alert.alert('Success', 'Schedule updated successfully');
+      Alert.alert('Success', 'Schedule updated and saved to device');
     } catch (error) {
       console.error('Settings: Error updating schedule:', error);
       Alert.alert('Error', 'Failed to update schedule');
@@ -104,7 +114,7 @@ export default function SettingsScreen() {
     try {
       console.log('Settings: Updating technician name to', technicianName);
       await api.updateTechnicianProfile({ name: technicianName.trim() });
-      Alert.alert('Success', 'Name updated successfully');
+      Alert.alert('Success', 'Name updated and saved to device');
     } catch (error) {
       console.error('Settings: Error updating name:', error);
       Alert.alert('Error', 'Failed to update name');
@@ -143,7 +153,7 @@ export default function SettingsScreen() {
     
     if (success) {
       console.log('Settings: PIN changed successfully');
-      Alert.alert('Success', 'PIN changed successfully. You will remain logged in.');
+      Alert.alert('Success', 'PIN changed successfully and saved securely on device. You will remain logged in.');
       setShowChangePinModal(false);
       setCurrentPin('');
       setNewPin('');
@@ -196,7 +206,7 @@ export default function SettingsScreen() {
 
   const handleExportCSV = async () => {
     try {
-      console.log('Settings: Exporting CSV');
+      console.log('Settings: Exporting CSV from local storage');
       const jobs = await api.getAllJobs();
       
       const csvHeader = 'Created At,WIP Number,Vehicle Reg,AW,Minutes,Notes,VHC Status\n';
@@ -214,6 +224,7 @@ export default function SettingsScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri);
         console.log('Settings: CSV exported and shared');
+        Alert.alert('Success', 'CSV exported successfully from local device storage');
       } else {
         Alert.alert('Success', `CSV saved to ${fileUri}`);
       }
@@ -225,31 +236,18 @@ export default function SettingsScreen() {
 
   const handleBackup = async () => {
     try {
-      console.log('Settings: Creating backup');
-      const jobs = await api.getAllJobs();
-      const schedule = await api.getSchedule();
-      const profile = await api.getTechnicianProfile();
-      
-      const backup = {
-        version: '1.0',
-        timestamp: new Date().toISOString(),
-        jobs,
-        schedule,
-        profile,
-        settings: {
-          monthlyTarget: parseFloat(monthlyTarget),
-        },
-      };
+      console.log('Settings: Creating backup from local storage');
+      const backupData = await offlineStorage.exportAllData();
       
       const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
       const fileUri = FileSystem.documentDirectory + fileName;
       
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
+      await FileSystem.writeAsStringAsync(fileUri, backupData);
       
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri);
         console.log('Settings: Backup created and shared');
-        Alert.alert('Success', 'Backup created successfully');
+        Alert.alert('Success', 'Backup created successfully from local device storage. Save this file in a safe location.');
       } else {
         Alert.alert('Success', `Backup saved to ${fileUri}`);
       }
@@ -262,7 +260,7 @@ export default function SettingsScreen() {
   const handleRestore = async () => {
     Alert.alert(
       'Restore Backup',
-      'This will overwrite all current data. This action requires your PIN for security.',
+      'This will overwrite all current data on this device. This action requires your PIN for security.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -305,10 +303,23 @@ export default function SettingsScreen() {
 
       const fileUri = result.assets[0].uri;
       const content = await FileSystem.readAsStringAsync(fileUri);
-      const backup = JSON.parse(content);
 
-      console.log('Settings: Restoring backup from', backup.timestamp);
-      Alert.alert('Info', 'Backup restore is not yet fully implemented. Please contact support.');
+      console.log('Settings: Restoring backup to local storage');
+      await offlineStorage.importAllData(content);
+      
+      Alert.alert(
+        'Success', 
+        'Backup restored successfully to device storage. Please restart the app to see the changes.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reload settings
+              loadSettings();
+            },
+          },
+        ]
+      );
     } catch (error) {
       console.error('Settings: Error restoring backup:', error);
       Alert.alert('Error', 'Failed to restore backup. Please check the file format.');
@@ -319,7 +330,7 @@ export default function SettingsScreen() {
     console.log('Settings: User requested logout');
     Alert.alert(
       'Logout',
-      'Are you sure you want to logout? You will need to enter your PIN to login again.',
+      'Are you sure you want to logout? You will need to enter your PIN to login again. All data remains safely stored on your device.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -340,6 +351,22 @@ export default function SettingsScreen() {
         <Text style={[styles.header, isDarkMode ? styles.textLight : styles.textDark]}>
           Settings
         </Text>
+
+        {/* Offline Mode Notice */}
+        <View style={[styles.noticeCard, { backgroundColor: '#2196F3' }]}>
+          <IconSymbol
+            ios_icon_name="checkmark.shield.fill"
+            android_material_icon_name="offline-pin"
+            size={24}
+            color="#ffffff"
+          />
+          <View style={styles.noticeContent}>
+            <Text style={styles.noticeTitle}>Offline Mode Active</Text>
+            <Text style={styles.noticeText}>
+              All data is stored securely on your device. No internet connection required.
+            </Text>
+          </View>
+        </View>
 
         {/* Technician Profile */}
         <View style={[styles.section, isDarkMode ? styles.sectionDark : styles.sectionLight]}>
@@ -673,7 +700,29 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 32,
     fontWeight: 'bold',
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 12,
+  },
+  noticeContent: {
+    flex: 1,
+  },
+  noticeTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  noticeText: {
+    color: '#ffffff',
+    fontSize: 13,
+    opacity: 0.9,
   },
   section: {
     borderRadius: 12,
