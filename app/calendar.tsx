@@ -44,7 +44,8 @@ export default function CalendarScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const loadCalendarData = useCallback(async () => {
-    console.log('CalendarScreen: Loading calendar data for', viewMode, currentDate);
+    const dateStr = currentDate.toISOString().split('T')[0];
+    console.log('CalendarScreen: Loading calendar data for month', dateStr);
     setLoading(true);
     try {
       const schedule = await api.getSchedule();
@@ -95,8 +96,8 @@ export default function CalendarScreen() {
       // Calculate data for each day
       const currentDay = new Date(startDate);
       while (currentDay <= endDate) {
-        const dateStr = currentDay.toISOString().split('T')[0];
-        const dayJobs = jobsByDay.get(dateStr) || [];
+        const dayDateStr = currentDay.toISOString().split('T')[0];
+        const dayJobs = jobsByDay.get(dayDateStr) || [];
         
         const dayOfWeek = currentDay.getDay();
         const isWorkingDay = workingDays.includes(dayOfWeek);
@@ -111,8 +112,8 @@ export default function CalendarScreen() {
         const dailyTarget = settings.monthlyTarget / workingDaysPerMonth;
         const progress = dailyTarget > 0 ? (soldHours / dailyTarget) * 100 : 0;
         
-        dayMap.set(dateStr, {
-          date: dateStr,
+        dayMap.set(dayDateStr, {
+          date: dayDateStr,
           jobs: dayJobs,
           efficiency: Math.min(efficiency, 100),
           soldHours,
@@ -134,18 +135,6 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     loadCalendarData();
-  }, [loadCalendarData]);
-
-  // Reload data when screen comes into focus
-  useEffect(() => {
-    const unsubscribe = router.subscribe(() => {
-      console.log('CalendarScreen: Screen focused, reloading data');
-      loadCalendarData();
-    });
-    
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, [loadCalendarData]);
 
   const navigatePrevious = () => {
