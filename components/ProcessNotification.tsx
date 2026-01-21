@@ -1,15 +1,18 @@
 
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
   runOnJS,
 } from 'react-native-reanimated';
 import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
+import { Svg, Path } from 'react-native-svg';
 
 interface ProcessNotificationProps {
   visible: boolean;
@@ -19,6 +22,54 @@ interface ProcessNotificationProps {
   total?: number;
   onComplete?: () => void;
   type?: 'loading' | 'success' | 'error';
+}
+
+// Doodle animation component
+function DoodleAnimation() {
+  const rotation = useSharedValue(0);
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withSequence(
+        withTiming(10, { duration: 500 }),
+        withTiming(-10, { duration: 500 })
+      ),
+      -1,
+      true
+    );
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.1, { duration: 600 }),
+        withTiming(0.9, { duration: 600 })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { rotate: `${rotation.value}deg` },
+        { scale: scale.value },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: 80, height: 80 }, animatedStyle]}>
+      <Svg width="80" height="80" viewBox="0 0 80 80">
+        <Path
+          d="M40 10 C20 10, 10 20, 10 40 C10 60, 20 70, 40 70 C60 70, 70 60, 70 40 C70 20, 60 10, 40 10 M30 35 L35 35 M45 35 L50 35 M30 50 Q40 55, 50 50"
+          stroke="#2196F3"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+        />
+      </Svg>
+    </Animated.View>
+  );
 }
 
 export function ProcessNotification({
@@ -88,9 +139,7 @@ export function ProcessNotification({
     <View style={styles.overlay}>
       <Animated.View style={[styles.container, animatedStyle]}>
         <View style={styles.content}>
-          {type === 'loading' && (
-            <ActivityIndicator size="large" color="#2196F3" />
-          )}
+          {type === 'loading' && <DoodleAnimation />}
           {type === 'success' && (
             <IconSymbol
               ios_icon_name="checkmark.circle.fill"

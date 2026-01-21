@@ -10,7 +10,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
@@ -34,6 +34,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function CalendarScreen() {
   console.log('CalendarScreen: Rendering calendar view');
   const { theme } = useThemeContext();
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarData, setCalendarData] = useState<Map<string, DayData>>(new Map());
@@ -133,6 +134,18 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     loadCalendarData();
+  }, [loadCalendarData]);
+
+  // Reload data when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = router.subscribe(() => {
+      console.log('CalendarScreen: Screen focused, reloading data');
+      loadCalendarData();
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [loadCalendarData]);
 
   const navigatePrevious = () => {

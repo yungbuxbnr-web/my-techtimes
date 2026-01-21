@@ -10,10 +10,12 @@ interface AuthContextType {
   biometricsEnabled: boolean;
   lockOnResume: boolean;
   biometricsAvailable: boolean;
+  pinAuthEnabled: boolean;
   loading: boolean;
   login: (pin: string) => Promise<boolean>;
   logout: () => void;
   setBiometricsEnabled: (enabled: boolean) => Promise<boolean>;
+  setPinAuthEnabled: (enabled: boolean) => Promise<boolean>;
   setLockOnResume: (enabled: boolean) => void;
   changePin: (currentPin: string, newPin: string) => Promise<boolean>;
   authenticateWithBiometrics: () => Promise<boolean>;
@@ -24,6 +26,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const PIN_KEY = 'user_pin';
 const BIOMETRICS_KEY = 'biometrics_enabled';
+const PIN_AUTH_KEY = 'pin_auth_enabled';
 const LOCK_ON_RESUME_KEY = 'lock_on_resume';
 const SETUP_COMPLETE_KEY = 'setup_complete';
 
@@ -57,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [biometricsEnabled, setBiometricsEnabledState] = useState(false);
+  const [pinAuthEnabled, setPinAuthEnabledState] = useState(true);
   const [lockOnResume, setLockOnResumeState] = useState(true);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -110,11 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('AuthContext: Loading settings');
       const biometrics = await getSecureItem(BIOMETRICS_KEY);
+      const pinAuth = await getSecureItem(PIN_AUTH_KEY);
       const lockResume = await getSecureItem(LOCK_ON_RESUME_KEY);
       
       setBiometricsEnabledState(biometrics === 'true');
+      setPinAuthEnabledState(pinAuth !== 'false'); // Default to true
       setLockOnResumeState(lockResume !== 'false'); // Default to true
-      console.log('AuthContext: Settings loaded - biometrics:', biometrics === 'true', 'lockOnResume:', lockResume !== 'false');
+      console.log('AuthContext: Settings loaded - biometrics:', biometrics === 'true', 'pinAuth:', pinAuth !== 'false', 'lockOnResume:', lockResume !== 'false');
     } catch (error) {
       console.error('AuthContext: Failed to load settings:', error);
     }
@@ -225,6 +231,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [biometricsAvailable]);
 
+  const setPinAuthEnabled = useCallback(async (enabled: boolean): Promise<boolean> => {
+    try {
+      console.log('AuthContext: Setting PIN auth enabled:', enabled);
+      
+      // If disabling PIN, biometrics must be enabled
+      if (!enabled && !biometricsEnabled) {
+        console.error('AuthContext: Cannot disable PIN - biometrics not enabled');
+        return false;
+      }
+      
+      await setSecureItem(PIN_AUTH_KEY, enabled.toString());
+      setPinAuthEnabledState(enabled);
+      console.log('AuthContext: PIN auth setting saved');
+      return true;
+    } catch (error) {
+      console.error('AuthContext: Failed to save PIN auth setting:', error);
+      return false;
+    }
+  }, [biometricsEnabled]);
+
   const setLockOnResume = useCallback(async (enabled: boolean) => {
     try {
       console.log('AuthContext: Setting lock on resume:', enabled);
@@ -289,12 +315,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         setupComplete,
         biometricsEnabled,
+        pinAuthEnabled,
         lockOnResume,
         biometricsAvailable,
         loading,
         login,
         logout,
         setBiometricsEnabled,
+        setPinAuthEnabled,
         setLockOnResume,
         changePin,
         authenticateWithBiometrics,

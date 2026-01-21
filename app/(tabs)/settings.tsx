@@ -31,13 +31,12 @@ import * as Sharing from 'expo-sharing';
 
 export default function SettingsScreen() {
   console.log('SettingsScreen: Rendering settings page');
-  const { logout } = useAuth();
+  const { logout, biometricsAvailable, biometricsEnabled, pinAuthEnabled, setBiometricsEnabled: setAuthBiometrics, setPinAuthEnabled } = useAuth();
   const { theme, isDarkMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
   
   const [technicianName, setTechnicianName] = useState('');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
   const [scheduleInfo, setScheduleInfo] = useState('Loading...');
-  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [lockOnResume, setLockOnResume] = useState(true);
   
   const [showPinChange, setShowPinChange] = useState(false);
@@ -165,8 +164,34 @@ export default function SettingsScreen() {
   const handleToggleBiometrics = async (value: boolean) => {
     console.log('SettingsScreen: Toggling biometrics to', value);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setBiometricsEnabled(value);
-    toastManager.info(value ? 'Biometrics enabled' : 'Biometrics disabled');
+    
+    const success = await setAuthBiometrics(value);
+    if (success) {
+      toastManager.success(value ? 'Biometrics enabled' : 'Biometrics disabled');
+    } else {
+      toastManager.error('Failed to update biometrics setting');
+    }
+  };
+
+  const handleTogglePinAuth = async (value: boolean) => {
+    console.log('SettingsScreen: Toggling PIN auth to', value);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    if (!value && !biometricsEnabled) {
+      Alert.alert(
+        'Cannot Disable PIN',
+        'You must enable biometrics before disabling PIN authentication.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    const success = await setPinAuthEnabled(value);
+    if (success) {
+      toastManager.success(value ? 'PIN authentication enabled' : 'PIN authentication disabled');
+    } else {
+      toastManager.error('Failed to update PIN authentication setting');
+    }
   };
 
   const handleExportCSV = async () => {
@@ -396,6 +421,36 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleClearAllData = () => {
+    console.log('SettingsScreen: User tapped Clear All Data');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    Alert.alert(
+      'Clear All Data',
+      'This will permanently delete ALL jobs, settings, and data. This action cannot be undone. Are you absolutely sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear Everything',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('SettingsScreen: Clearing all data');
+              await offlineStorage.clearAllData();
+              toastManager.success('All data cleared');
+              Alert.alert('Success', 'All data has been cleared. The app will now restart.', [
+                { text: 'OK', onPress: () => logout() },
+              ]);
+            } catch (error) {
+              console.error('SettingsScreen: Error clearing data:', error);
+              toastManager.error('Failed to clear data');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleLogout = () => {
     console.log('SettingsScreen: Logging out');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -491,7 +546,17 @@ export default function SettingsScreen() {
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
           <View style={styles.switchRow}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Dark Mode</Text>
+            <View style={styles.labelWithIcon}>
+              <IconSymbol
+                ios_icon_name={isDarkMode ? "moon.fill" : "sun.max.fill"}
+                android_material_icon_name={isDarkMode ? "dark-mode" : "light-mode"}
+                size={20}
+                color={theme.primary}
+              />
+              <Text style={[styles.label, { color: theme.textSecondary }]}>
+                {isDarkMode ? 'Dark Workshop' : 'Light Workshop'}
+              </Text>
+            </View>
             <Switch
               value={isDarkMode}
               onValueChange={() => {
@@ -525,14 +590,52 @@ export default function SettingsScreen() {
           >
             <Text style={styles.buttonText}>Change PIN</Text>
           </TouchableOpacity>
-          <View style={styles.switchRow}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Enable Biometrics</Text>
-            <Switch
-              value={biometricsEnabled}
-              onValueChange={handleToggleBiometrics}
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
+          
+          {biometricsAvailable && (
+            <>
+              <View style={styles.switchRow}>
+                <View style={styles.labelWithIcon}>
+                  <IconSymbol
+                    ios_icon_name="faceid"
+                    android_material_icon_name="fingerprint"
+                    size={20}
+                    color={theme.primary}
+                  />
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>Enable Biometrics</Text>
+                </View>
+                <Switch
+                  value={biometricsEnabled}
+                  onValueChange={handleToggleBiometrics}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                />
+              </View>
+              
+              <View style={styles.switchRow}>
+                <View style={styles.labelWithIcon}>
+                  <IconSymbol
+                    ios_icon_name="lock.fill"
+                    android_material_icon_name="lock"
+                    size={20}
+                    color={theme.primary}
+                  />
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>Enable PIN Authentication</Text>
+                </View>
+                <Switch
+                  value={pinAuthEnabled}
+                  onValueChange={handleTogglePinAuth}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                  disabled={!biometricsEnabled}
+                />
+              </View>
+              
+              {!pinAuthEnabled && biometricsEnabled && (
+                <Text style={[styles.hint, { color: theme.accent, marginTop: 8 }]}>
+                  ℹ️ PIN authentication is disabled. You can only use biometrics to unlock the app.
+                </Text>
+              )}
+            </>
+          )}
+          
           <View style={styles.switchRow}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Lock on Resume</Text>
             <Switch
@@ -585,7 +688,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
             onPress={() => {
-              console.log('SettingsScreen: User tapped View Calendar button');
+              console.log('SettingsScreen: User tapped Performance Calendar button');
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/calendar');
             }}
@@ -596,7 +699,7 @@ export default function SettingsScreen() {
               size={20}
               color="#fff"
             />
-            <Text style={styles.buttonText}>View Calendar</Text>
+            <Text style={styles.buttonText}>Performance Calendar</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.accent, marginTop: 12 }]}
@@ -679,6 +782,25 @@ export default function SettingsScreen() {
           >
             <Text style={styles.buttonText}>Restore Backup</Text>
           </TouchableOpacity>
+        </View>
+        
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Danger Zone</Text>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: '#d32f2f' }]}
+            onPress={handleClearAllData}
+          >
+            <IconSymbol
+              ios_icon_name="trash.fill"
+              android_material_icon_name="delete-forever"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.buttonText}>Clear All Data</Text>
+          </TouchableOpacity>
+          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
+            ⚠️ This will permanently delete ALL jobs, settings, and data. This action cannot be undone.
+          </Text>
         </View>
         
         <View style={[styles.section, { backgroundColor: theme.card }]}>
@@ -1047,6 +1169,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
+  },
+  labelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   sliderGroup: {
     gap: 8,

@@ -343,8 +343,8 @@ export default function DashboardScreen() {
         <TouchableOpacity
           style={[styles.calendarButton, { backgroundColor: theme.card }]}
           onPress={() => {
-            console.log('DashboardScreen: User tapped Calendar button');
-            setShowCalendarModal(true);
+            console.log('DashboardScreen: User tapped Calendar button - navigating to Performance Calendar');
+            router.push('/calendar');
           }}
         >
           <IconSymbol
@@ -353,7 +353,7 @@ export default function DashboardScreen() {
             size={24}
             color={theme.primary}
           />
-          <Text style={[styles.calendarButtonText, { color: theme.text }]}>View Calendar</Text>
+          <Text style={[styles.calendarButtonText, { color: theme.text }]}>Performance Calendar</Text>
         </TouchableOpacity>
 
         {/* Monthly Breakdown */}

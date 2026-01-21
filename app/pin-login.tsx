@@ -36,12 +36,21 @@ export default function PinLoginScreen() {
   const [pin, setPin] = useState('');
   const [technicianName, setTechnicianName] = useState('');
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [pinAuthEnabled, setPinAuthEnabled] = useState(true);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
 
   useEffect(() => {
     loadTechnicianName();
     checkBiometrics();
   }, []);
+
+  useEffect(() => {
+    // Auto-trigger biometric auth if PIN is disabled
+    if (biometricsEnabled && !pinAuthEnabled && biometricsAvailable) {
+      console.log('PinLogin: PIN disabled, auto-triggering biometric auth');
+      handleBiometricAuth();
+    }
+  }, [biometricsEnabled, pinAuthEnabled, biometricsAvailable]);
 
   const loadTechnicianName = async () => {
     try {
@@ -66,14 +75,16 @@ export default function PinLoginScreen() {
       }
       
       const enabled = await getSecureItem(BIOMETRICS_KEY);
+      const pinAuth = await getSecureItem('pin_auth_enabled');
       const compatible = await LocalAuthentication.hasHardwareAsync();
       const enrolled = await LocalAuthentication.isEnrolledAsync();
       
       const available = compatible && enrolled;
       setBiometricsAvailable(available);
       setBiometricsEnabled(enabled === 'true' && available);
+      setPinAuthEnabled(pinAuth !== 'false'); // Default to true
       
-      console.log('PinLogin: Biometrics - enabled:', enabled === 'true', 'available:', available);
+      console.log('PinLogin: Biometrics - enabled:', enabled === 'true', 'available:', available, 'pinAuth:', pinAuth !== 'false');
     } catch (error) {
       console.error('PinLogin: Error checking biometrics:', error);
     }
@@ -162,77 +173,81 @@ export default function PinLoginScreen() {
           ) : null}
         </View>
 
-        <View style={styles.pinDisplay}>
-          <View style={styles.pinDots}>
-            {[0, 1, 2, 3, 4, 5].map((index) => (
-              <View
-                key={index}
-                style={[
-                  styles.pinDot,
-                  index < pin.length && styles.pinDotFilled,
-                  isDarkMode ? styles.pinDotDark : styles.pinDotLight,
-                ]}
-              />
-            ))}
-          </View>
-          <Text style={[styles.pinLabel, isDarkMode ? styles.textLight : styles.textDark]}>
-            Enter your PIN
-          </Text>
-        </View>
-
-        <View style={styles.keypad}>
-          {[
-            ['1', '2', '3'],
-            ['4', '5', '6'],
-            ['7', '8', '9'],
-            ['', '0', 'backspace'],
-          ].map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keypadRow}>
-              {row.map((key, keyIndex) => {
-                if (key === '') {
-                  return <View key={keyIndex} style={styles.keypadButton} />;
-                }
-                
-                if (key === 'backspace') {
-                  return (
-                    <TouchableOpacity
-                      key={keyIndex}
-                      style={styles.keypadButton}
-                      onPress={handleBackspace}
-                    >
-                      <IconSymbol
-                        ios_icon_name="delete.left"
-                        android_material_icon_name="backspace"
-                        size={28}
-                        color={isDarkMode ? '#fff' : '#000'}
-                      />
-                    </TouchableOpacity>
-                  );
-                }
-                
-                return (
-                  <TouchableOpacity
-                    key={keyIndex}
+        {pinAuthEnabled && (
+          <>
+            <View style={styles.pinDisplay}>
+              <View style={styles.pinDots}>
+                {[0, 1, 2, 3, 4, 5].map((index) => (
+                  <View
+                    key={index}
                     style={[
-                      styles.keypadButton,
-                      isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
+                      styles.pinDot,
+                      index < pin.length && styles.pinDotFilled,
+                      isDarkMode ? styles.pinDotDark : styles.pinDotLight,
                     ]}
-                    onPress={() => handleNumberPress(key)}
-                  >
-                    <Text
-                      style={[
-                        styles.keypadButtonText,
-                        isDarkMode ? styles.textLight : styles.textDark,
-                      ]}
-                    >
-                      {key}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                  />
+                ))}
+              </View>
+              <Text style={[styles.pinLabel, isDarkMode ? styles.textLight : styles.textDark]}>
+                Enter your PIN
+              </Text>
             </View>
-          ))}
-        </View>
+
+            <View style={styles.keypad}>
+              {[
+                ['1', '2', '3'],
+                ['4', '5', '6'],
+                ['7', '8', '9'],
+                ['', '0', 'backspace'],
+              ].map((row, rowIndex) => (
+                <View key={rowIndex} style={styles.keypadRow}>
+                  {row.map((key, keyIndex) => {
+                    if (key === '') {
+                      return <View key={keyIndex} style={styles.keypadButton} />;
+                    }
+                    
+                    if (key === 'backspace') {
+                      return (
+                        <TouchableOpacity
+                          key={keyIndex}
+                          style={styles.keypadButton}
+                          onPress={handleBackspace}
+                        >
+                          <IconSymbol
+                            ios_icon_name="delete.left"
+                            android_material_icon_name="backspace"
+                            size={28}
+                            color={isDarkMode ? '#fff' : '#000'}
+                          />
+                        </TouchableOpacity>
+                      );
+                    }
+                    
+                    return (
+                      <TouchableOpacity
+                        key={keyIndex}
+                        style={[
+                          styles.keypadButton,
+                          isDarkMode ? styles.keypadButtonDark : styles.keypadButtonLight,
+                        ]}
+                        onPress={() => handleNumberPress(key)}
+                      >
+                        <Text
+                          style={[
+                            styles.keypadButtonText,
+                            isDarkMode ? styles.textLight : styles.textDark,
+                          ]}
+                        >
+                          {key}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
         {biometricsEnabled && biometricsAvailable && (
           <TouchableOpacity

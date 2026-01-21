@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -33,15 +33,52 @@ export default function AddJobModal() {
   const [vhcStatus, setVhcStatus] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
   const [saving, setSaving] = useState(false);
   const [showAwPicker, setShowAwPicker] = useState(false);
-  const [showVhcPicker, setShowVhcPicker] = useState(false);
   const [showSaveNotification, setShowSaveNotification] = useState(false);
   const [saveNotificationType, setSaveNotificationType] = useState<'loading' | 'success' | 'error'>('loading');
   const [jobDateTime, setJobDateTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [jobMemory, setJobMemory] = useState<Map<string, { wipNumber: string; vehicleReg: string }>>(new Map());
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
-  const vhcOptions: ('NONE' | 'GREEN' | 'ORANGE' | 'RED')[] = ['NONE', 'GREEN', 'ORANGE', 'RED'];
+
+  // Load job memory from previous jobs
+  useEffect(() => {
+    loadJobMemory();
+  }, []);
+
+  const loadJobMemory = async () => {
+    try {
+      const jobs = await api.getAllJobs();
+      const memory = new Map<string, { wipNumber: string; vehicleReg: string }>();
+      
+      // Group by vehicle reg and remember the most recent WIP for each
+      jobs.forEach(job => {
+        const key = job.vehicleReg.toUpperCase();
+        if (!memory.has(key) || new Date(job.createdAt) > new Date(memory.get(key)!.wipNumber)) {
+          memory.set(key, { wipNumber: job.wipNumber, vehicleReg: job.vehicleReg });
+        }
+      });
+      
+      setJobMemory(memory);
+      console.log('AddJobModal: Loaded job memory for', memory.size, 'vehicles');
+    } catch (error) {
+      console.error('AddJobModal: Error loading job memory:', error);
+    }
+  };
+
+  // Auto-fill WIP when vehicle reg is entered
+  useEffect(() => {
+    if (vehicleReg.length >= 3) {
+      const key = vehicleReg.toUpperCase();
+      const remembered = jobMemory.get(key);
+      if (remembered && !wipNumber) {
+        console.log('AddJobModal: Auto-filling WIP from memory:', remembered.wipNumber);
+        setWipNumber(remembered.wipNumber);
+        toastManager.info(`Remembered WIP: ${remembered.wipNumber}`);
+      }
+    }
+  }, [vehicleReg]);
 
   const handleSave = async (saveAnother: boolean = false) => {
     console.log('AddJobModal: User tapped Save button, saveAnother:', saveAnother);
@@ -414,26 +451,82 @@ export default function AddJobModal() {
               
               <View style={styles.formGroup}>
                 <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>VHC Status</Text>
-                <TouchableOpacity
-                  style={[styles.pickerButton, { 
-                    backgroundColor: isDarkMode ? '#000' : '#fff',
-                    borderColor: getVhcColor(vhcStatus)
-                  }]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowVhcPicker(true);
-                  }}
-                >
-                  <Text style={[styles.pickerButtonText, { color: getVhcColor(vhcStatus) }]}>
-                    VHC: {vhcStatus}
-                  </Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.down"
-                    android_material_icon_name="arrow-drop-down"
-                    size={24}
-                    color={isDarkMode ? '#888' : '#999'}
-                  />
-                </TouchableOpacity>
+                <View style={styles.vhcTickBoxes}>
+                  <TouchableOpacity
+                    style={[
+                      styles.vhcTickBox,
+                      { borderColor: '#4CAF50' },
+                      vhcStatus === 'GREEN' && { backgroundColor: '#4CAF50' },
+                    ]}
+                    onPress={() => {
+                      console.log('AddJobModal: User selected VHC GREEN');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setVhcStatus(vhcStatus === 'GREEN' ? 'NONE' : 'GREEN');
+                    }}
+                  >
+                    {vhcStatus === 'GREEN' && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={24}
+                        color="#ffffff"
+                      />
+                    )}
+                    <Text style={[styles.vhcTickLabel, { color: vhcStatus === 'GREEN' ? '#ffffff' : '#4CAF50' }]}>
+                      Green
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.vhcTickBox,
+                      { borderColor: '#FF9800' },
+                      vhcStatus === 'ORANGE' && { backgroundColor: '#FF9800' },
+                    ]}
+                    onPress={() => {
+                      console.log('AddJobModal: User selected VHC AMBER');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setVhcStatus(vhcStatus === 'ORANGE' ? 'NONE' : 'ORANGE');
+                    }}
+                  >
+                    {vhcStatus === 'ORANGE' && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={24}
+                        color="#ffffff"
+                      />
+                    )}
+                    <Text style={[styles.vhcTickLabel, { color: vhcStatus === 'ORANGE' ? '#ffffff' : '#FF9800' }]}>
+                      Amber
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.vhcTickBox,
+                      { borderColor: '#f44336' },
+                      vhcStatus === 'RED' && { backgroundColor: '#f44336' },
+                    ]}
+                    onPress={() => {
+                      console.log('AddJobModal: User selected VHC RED');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setVhcStatus(vhcStatus === 'RED' ? 'NONE' : 'RED');
+                    }}
+                  >
+                    {vhcStatus === 'RED' && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={24}
+                        color="#ffffff"
+                      />
+                    )}
+                    <Text style={[styles.vhcTickLabel, { color: vhcStatus === 'RED' ? '#ffffff' : '#f44336' }]}>
+                      Red
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={[styles.timeDisplay, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}>
@@ -600,54 +693,7 @@ export default function AddJobModal() {
           </View>
         </Modal>
         
-        <Modal
-          visible={showVhcPicker}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowVhcPicker(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.pickerModal, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff' }]}>
-              <View style={styles.pickerHeader}>
-                <Text style={[styles.pickerTitle, { color: isDarkMode ? '#fff' : '#000' }]}>Select VHC Status</Text>
-                <TouchableOpacity onPress={() => setShowVhcPicker(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={isDarkMode ? '#888' : '#999'}
-                  />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.pickerScroll}>
-                {vhcOptions.map((value) => (
-                  <TouchableOpacity
-                    key={value}
-                    style={[
-                      styles.pickerOption,
-                      { backgroundColor: vhcStatus === value ? getVhcColor(value) : 'transparent' },
-                    ]}
-                    onPress={() => {
-                      console.log('AddJobModal: User selected VHC status:', value);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setVhcStatus(value);
-                      setShowVhcPicker(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.pickerOptionText,
-                        { color: vhcStatus === value ? '#ffffff' : getVhcColor(value) },
-                      ]}
-                    >
-                      {value}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+
 
         {showDatePicker && (
           <DateTimePicker
@@ -832,6 +878,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dateTimeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  vhcTickBoxes: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  vhcTickBox: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 3,
+    gap: 4,
+  },
+  vhcTickLabel: {
     fontSize: 14,
     fontWeight: '600',
   },
