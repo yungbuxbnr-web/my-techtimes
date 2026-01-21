@@ -6,6 +6,8 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { scheduleAllNotifications } from '@/utils/notificationScheduler';
+import { requestNotificationPermissions } from '@/utils/permissions';
 
 let backPressCount = 0;
 let backPressTimer: NodeJS.Timeout | null = null;
@@ -15,6 +17,26 @@ export default function RootLayout() {
 
   useEffect(() => {
     console.log('RootLayout: App initializing');
+    
+    // Initialize notifications
+    const initNotifications = async () => {
+      try {
+        console.log('RootLayout: Requesting notification permissions');
+        const hasPermission = await requestNotificationPermissions();
+        
+        if (hasPermission) {
+          console.log('RootLayout: Scheduling all notifications');
+          await scheduleAllNotifications();
+          console.log('RootLayout: Notifications scheduled successfully');
+        } else {
+          console.log('RootLayout: Notification permissions not granted');
+        }
+      } catch (error) {
+        console.error('RootLayout: Error initializing notifications:', error);
+      }
+    };
+    
+    initNotifications();
     setIsReady(true);
   }, []);
 

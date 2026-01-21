@@ -10,14 +10,29 @@ import {
   TextInput,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { offlineStorage } from '@/utils/offlineStorage';
+import { scheduleAllNotifications, sendTestNotification } from '@/utils/notificationScheduler';
+import { requestNotificationPermissions } from '@/utils/permissions';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const SOUND_OPTIONS = [
+  { id: 'default', label: 'Default Sound' },
+  { id: 'none', label: 'No Sound (Silent)' },
+];
+
+const VIBRATION_PATTERNS = [
+  { id: 'default', label: 'Default', description: 'Standard vibration' },
+  { id: 'short', label: 'Short', description: 'Quick buzz' },
+  { id: 'long', label: 'Long', description: 'Extended vibration' },
+  { id: 'double', label: 'Double', description: 'Two quick buzzes' },
+];
 
 export default function NotificationSettingsScreen() {
   console.log('NotificationSettingsScreen: Rendering notification settings');
@@ -32,7 +47,20 @@ export default function NotificationSettingsScreen() {
   const [targetReminder, setTargetReminder] = useState(true);
   const [efficiencyAlert, setEfficiencyAlert] = useState(true);
   const [lowEfficiencyThreshold, setLowEfficiencyThreshold] = useState('75');
+  
+  // New notification options
+  const [workStartNotification, setWorkStartNotification] = useState(true);
+  const [workEndNotification, setWorkEndNotification] = useState(true);
+  const [lunchStartNotification, setLunchStartNotification] = useState(true);
+  const [lunchEndNotification, setLunchEndNotification] = useState(true);
+  const [notificationSound, setNotificationSound] = useState('default');
+  const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [vibrationPattern, setVibrationPattern] = useState('default');
+  
+  const [showSoundPicker, setShowSoundPicker] = useState(false);
+  const [showVibrationPicker, setShowVibrationPicker] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -52,11 +80,57 @@ export default function NotificationSettingsScreen() {
       setEfficiencyAlert(settings.efficiencyAlert);
       setLowEfficiencyThreshold(settings.lowEfficiencyThreshold.toString());
       
+      // New settings
+      setWorkStartNotification(settings.workStartNotification ?? true);
+      setWorkEndNotification(settings.workEndNotification ?? true);
+      setLunchStartNotification(settings.lunchStartNotification ?? true);
+      setLunchEndNotification(settings.lunchEndNotification ?? true);
+      setNotificationSound(settings.notificationSound ?? 'default');
+      setVibrationEnabled(settings.vibrationEnabled ?? true);
+      setVibrationPattern(settings.vibrationPattern ?? 'default');
+      
       console.log('NotificationSettingsScreen: Settings loaded');
     } catch (error) {
       console.error('NotificationSettingsScreen: Error loading settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    console.log('NotificationSettingsScreen: User tapped Test Notification');
+    
+    // Check permissions first
+    const hasPermission = await requestNotificationPermissions();
+    if (!hasPermission) {
+      Alert.alert('Permission Required', 'Please enable notifications in your device settings to test notifications.');
+      return;
+    }
+    
+    try {
+      const settings = {
+        dailyReminder,
+        dailyReminderTime,
+        weeklyReport,
+        weeklyReportDay,
+        monthlyReport,
+        targetReminder,
+        efficiencyAlert,
+        lowEfficiencyThreshold: parseInt(lowEfficiencyThreshold),
+        workStartNotification,
+        workEndNotification,
+        lunchStartNotification,
+        lunchEndNotification,
+        notificationSound,
+        vibrationEnabled,
+        vibrationPattern,
+      };
+      
+      await sendTestNotification(settings);
+      Alert.alert('Test Sent', 'A test notification has been sent with your current settings.');
+    } catch (error) {
+      console.error('NotificationSettingsScreen: Error sending test notification:', error);
+      Alert.alert('Error', 'Failed to send test notification');
     }
   };
 
@@ -69,7 +143,19 @@ export default function NotificationSettingsScreen() {
       return;
     }
     
+    setSaving(true);
+    
     try {
+      // Check permissions
+      const hasPermission = await requestNotificationPermissions();
+      if (!hasPermission) {
+        Alert.alert(
+          'Permission Required',
+          'Notifications are disabled. Please enable them in your device settings to receive alerts.',
+          [{ text: 'OK' }]
+        );
+      }
+      
       await offlineStorage.updateNotificationSettings({
         dailyReminder,
         dailyReminderTime,
@@ -79,16 +165,29 @@ export default function NotificationSettingsScreen() {
         targetReminder,
         efficiencyAlert,
         lowEfficiencyThreshold: threshold,
+        workStartNotification,
+        workEndNotification,
+        lunchStartNotification,
+        lunchEndNotification,
+        notificationSound,
+        vibrationEnabled,
+        vibrationPattern,
       });
+      
+      // Reschedule all notifications with new settings
+      console.log('NotificationSettingsScreen: Rescheduling notifications');
+      await scheduleAllNotifications();
       
       Alert.alert(
         'Success',
-        'Notification settings updated successfully',
+        'Notification settings updated successfully. All notifications have been rescheduled based on your work schedule.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error) {
       console.error('NotificationSettingsScreen: Error saving settings:', error);
       Alert.alert('Error', 'Failed to save notification settings');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -109,6 +208,9 @@ export default function NotificationSettingsScreen() {
       </AppBackground>
     );
   }
+
+  const selectedSound = SOUND_OPTIONS.find(s => s.id === notificationSound);
+  const selectedVibration = VIBRATION_PATTERNS.find(v => v.id === vibrationPattern);
 
   return (
     <>
@@ -133,8 +235,150 @@ export default function NotificationSettingsScreen() {
               color={theme.primary}
             />
             <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-              Customize which notifications you receive and when. All notifications run in the background to keep you informed about your progress.
+              Customize which notifications you receive and when. All notifications are automatically synced with your work schedule.
             </Text>
+          </View>
+
+          {/* Work Schedule Notifications */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionHeader, { color: theme.text }]}>Work Schedule Notifications</Text>
+            <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>
+              Receive notifications based on your work schedule times
+            </Text>
+            
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Start</Text>
+                <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                  Notify when your work day starts
+                </Text>
+              </View>
+              <Switch
+                value={workStartNotification}
+                onValueChange={setWorkStartNotification}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+            
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Work End</Text>
+                <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                  Notify when your work day ends
+                </Text>
+              </View>
+              <Switch
+                value={workEndNotification}
+                onValueChange={setWorkEndNotification}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+            
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Lunch Start</Text>
+                <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                  Notify when lunch break starts
+                </Text>
+              </View>
+              <Switch
+                value={lunchStartNotification}
+                onValueChange={setLunchStartNotification}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+            
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Lunch End</Text>
+                <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                  Notify when lunch break ends
+                </Text>
+              </View>
+              <Switch
+                value={lunchEndNotification}
+                onValueChange={setLunchEndNotification}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+          </View>
+
+          {/* Sound & Vibration Settings */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionHeader, { color: theme.text }]}>Sound & Vibration</Text>
+            <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>
+              Customize notification sound and vibration
+            </Text>
+            
+            <View style={styles.pickerContainer}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Notification Sound</Text>
+              <TouchableOpacity
+                style={[styles.pickerButton, { backgroundColor: theme.background }]}
+                onPress={() => setShowSoundPicker(true)}
+              >
+                <Text style={[styles.pickerButtonText, { color: theme.text }]}>
+                  {selectedSound?.label || 'Default Sound'}
+                </Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={20}
+                  color={theme.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Vibration</Text>
+                <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                  Enable vibration for notifications
+                </Text>
+              </View>
+              <Switch
+                value={vibrationEnabled}
+                onValueChange={setVibrationEnabled}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+            
+            {vibrationEnabled && (
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Vibration Pattern</Text>
+                <TouchableOpacity
+                  style={[styles.pickerButton, { backgroundColor: theme.background }]}
+                  onPress={() => setShowVibrationPicker(true)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pickerButtonText, { color: theme.text }]}>
+                      {selectedVibration?.label || 'Default'}
+                    </Text>
+                    <Text style={[styles.pickerButtonSubtext, { color: theme.textSecondary }]}>
+                      {selectedVibration?.description || 'Standard vibration'}
+                    </Text>
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="arrow-forward"
+                    size={20}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            <TouchableOpacity
+              style={[styles.testButton, { backgroundColor: theme.accent }]}
+              onPress={handleTestNotification}
+            >
+              <IconSymbol
+                ios_icon_name="speaker.wave.2.fill"
+                android_material_icon_name="volume-up"
+                size={20}
+                color="#ffffff"
+              />
+              <Text style={styles.testButtonText}>Test Notification</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Daily Reminder */}
@@ -286,8 +530,9 @@ export default function NotificationSettingsScreen() {
 
           {/* Save Button */}
           <TouchableOpacity
-            style={[styles.saveButton, { backgroundColor: theme.primary }]}
+            style={[styles.saveButton, { backgroundColor: theme.primary }, saving && { opacity: 0.6 }]}
             onPress={handleSave}
+            disabled={saving}
           >
             <IconSymbol
               ios_icon_name="checkmark.circle.fill"
@@ -295,11 +540,124 @@ export default function NotificationSettingsScreen() {
               size={24}
               color="#ffffff"
             />
-            <Text style={styles.saveButtonText}>Save Settings</Text>
+            <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Settings'}</Text>
           </TouchableOpacity>
 
           <View style={{ height: 40 }} />
         </ScrollView>
+        
+        {/* Sound Picker Modal */}
+        <Modal
+          visible={showSoundPicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowSoundPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Select Notification Sound</Text>
+                <TouchableOpacity onPress={() => setShowSoundPicker(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.optionsList}>
+                {SOUND_OPTIONS.map((sound) => {
+                  const isSelected = notificationSound === sound.id;
+                  return (
+                    <TouchableOpacity
+                      key={sound.id}
+                      style={[
+                        styles.optionItem,
+                        { backgroundColor: isSelected ? theme.primary : theme.background },
+                      ]}
+                      onPress={() => {
+                        setNotificationSound(sound.id);
+                        setShowSoundPicker(false);
+                      }}
+                    >
+                      <Text style={[styles.optionText, { color: isSelected ? '#ffffff' : theme.text }]}>
+                        {sound.label}
+                      </Text>
+                      {isSelected && (
+                        <IconSymbol
+                          ios_icon_name="checkmark"
+                          android_material_icon_name="check"
+                          size={20}
+                          color="#ffffff"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+        
+        {/* Vibration Pattern Picker Modal */}
+        <Modal
+          visible={showVibrationPicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowVibrationPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Select Vibration Pattern</Text>
+                <TouchableOpacity onPress={() => setShowVibrationPicker(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={28}
+                    color={theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.optionsList}>
+                {VIBRATION_PATTERNS.map((pattern) => {
+                  const isSelected = vibrationPattern === pattern.id;
+                  return (
+                    <TouchableOpacity
+                      key={pattern.id}
+                      style={[
+                        styles.optionItem,
+                        { backgroundColor: isSelected ? theme.primary : theme.background },
+                      ]}
+                      onPress={() => {
+                        setVibrationPattern(pattern.id);
+                        setShowVibrationPicker(false);
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.optionText, { color: isSelected ? '#ffffff' : theme.text }]}>
+                          {pattern.label}
+                        </Text>
+                        <Text style={[styles.optionSubtext, { color: isSelected ? '#ffffff' : theme.textSecondary }]}>
+                          {pattern.description}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <IconSymbol
+                          ios_icon_name="checkmark"
+                          android_material_icon_name="check"
+                          size={20}
+                          color="#ffffff"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </AppBackground>
     </>
   );
@@ -343,31 +701,44 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  sectionHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  sectionDescription: {
+    fontSize: 13,
+    marginBottom: 16,
+  },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
   },
   switchLabel: {
     flex: 1,
     marginRight: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 13,
   },
   timeInputContainer: {
-    marginTop: 16,
+    marginTop: 8,
   },
   dayPickerContainer: {
-    marginTop: 16,
+    marginTop: 8,
   },
   thresholdInputContainer: {
-    marginTop: 16,
+    marginTop: 8,
+  },
+  pickerContainer: {
+    marginBottom: 16,
   },
   label: {
     fontSize: 14,
@@ -401,6 +772,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  pickerButtonSubtext: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  testButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+    marginTop: 8,
+  },
+  testButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,5 +818,46 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    maxHeight: '70%',
+    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  optionsList: {
+    maxHeight: 400,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  optionSubtext: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

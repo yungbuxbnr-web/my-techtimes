@@ -68,6 +68,14 @@ export interface NotificationSettings {
   targetReminder: boolean;
   efficiencyAlert: boolean;
   lowEfficiencyThreshold: number; // Percentage
+  // New notification options
+  workStartNotification: boolean;
+  workEndNotification: boolean;
+  lunchStartNotification: boolean;
+  lunchEndNotification: boolean;
+  notificationSound: string; // 'default' | 'none' | device sound identifier
+  vibrationEnabled: boolean;
+  vibrationPattern: 'default' | 'short' | 'long' | 'double';
 }
 
 // Helper functions
@@ -298,6 +306,14 @@ export const offlineStorage = {
       targetReminder: true,
       efficiencyAlert: true,
       lowEfficiencyThreshold: 75,
+      // New defaults
+      workStartNotification: true,
+      workEndNotification: true,
+      lunchStartNotification: true,
+      lunchEndNotification: true,
+      notificationSound: 'default',
+      vibrationEnabled: true,
+      vibrationPattern: 'default',
     });
   },
 

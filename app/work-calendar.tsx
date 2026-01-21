@@ -13,7 +13,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
-import { api, Absence } from '@/utils/api';
+import { api, Absence, Schedule } from '@/utils/api';
 
 interface DayInfo {
   date: Date;
@@ -41,20 +41,38 @@ export default function WorkCalendarScreen() {
   const loadScheduleAndAbsences = async () => {
     try {
       const schedule = await api.getSchedule();
-      setWorkingDays(schedule.workingDays || [1, 2, 3, 4, 5]);
+      console.log('WorkCalendarScreen: Loaded schedule with working days:', schedule.workingDays);
+      
+      // Handle Saturday frequency
+      let effectiveWorkingDays = [...(schedule.workingDays || [1, 2, 3, 4, 5])];
+      
+      // If Saturday frequency is 'every', ensure Saturday (6) is in working days
+      if (schedule.saturdayFrequency === 'every' && !effectiveWorkingDays.includes(6)) {
+        effectiveWorkingDays.push(6);
+        effectiveWorkingDays.sort();
+      }
+      
+      // If Saturday frequency is 'none', ensure Saturday is NOT in working days
+      if (schedule.saturdayFrequency === 'none') {
+        effectiveWorkingDays = effectiveWorkingDays.filter(d => d !== 6);
+      }
+      
+      console.log('WorkCalendarScreen: Effective working days after Saturday frequency:', effectiveWorkingDays);
+      
+      setWorkingDays(effectiveWorkingDays);
       setDailyHours(schedule.dailyWorkingHours || 8.5);
       
       const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
       const monthAbsences = await api.getAbsences(monthStr);
       setAbsences(monthAbsences);
       
-      generateCalendar(schedule.workingDays || [1, 2, 3, 4, 5], monthAbsences);
+      generateCalendar(effectiveWorkingDays, monthAbsences, schedule);
     } catch (error) {
       console.error('WorkCalendarScreen: Error loading data:', error);
     }
   };
 
-  const generateCalendar = (workDays: number[], monthAbsences: Absence[]) => {
+  const generateCalendar = (workDays: number[], monthAbsences: Absence[], schedule: Schedule) => {
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -62,11 +80,55 @@ export default function WorkCalendarScreen() {
     
     const days: DayInfo[] = [];
     
+    // Helper function to check if a date is a working Saturday based on frequency
+    const isWorkingSaturday = (date: Date): boolean => {
+      if (date.getDay() !== 6) return false; // Not a Saturday
+      
+      if (schedule.saturdayFrequency === 'every') return true;
+      if (schedule.saturdayFrequency === 'none') return false;
+      
+      // For custom frequency patterns (1-in-2, 1-in-3, 1-in-4, custom)
+      if (schedule.nextWorkingSaturday) {
+        const nextWorkingSat = new Date(schedule.nextWorkingSaturday);
+        const dateStr = date.toISOString().split('T')[0];
+        const nextWorkingSatStr = nextWorkingSat.toISOString().split('T')[0];
+        
+        if (dateStr === nextWorkingSatStr) return true;
+        
+        // Calculate pattern-based Saturdays
+        if (schedule.saturdayFrequency === '1-in-2') {
+          const weeksDiff = Math.floor((date.getTime() - nextWorkingSat.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          return weeksDiff % 2 === 0;
+        } else if (schedule.saturdayFrequency === '1-in-3') {
+          const weeksDiff = Math.floor((date.getTime() - nextWorkingSat.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          return weeksDiff % 3 === 0;
+        } else if (schedule.saturdayFrequency === '1-in-4') {
+          const weeksDiff = Math.floor((date.getTime() - nextWorkingSat.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          return weeksDiff % 4 === 0;
+        }
+      }
+      
+      // Check custom Saturday dates
+      if (schedule.customSaturdayDates && schedule.customSaturdayDates.length > 0) {
+        const dateStr = date.toISOString().split('T')[0];
+        return schedule.customSaturdayDates.includes(dateStr);
+      }
+      
+      return false;
+    };
+    
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const date = new Date(year, month, day);
       const dateString = date.toISOString().split('T')[0];
       const dayOfWeek = date.getDay();
-      const isWorkingDay = workDays.includes(dayOfWeek);
+      
+      // Check if it's a working day (including Saturday logic)
+      let isWorkingDay = workDays.includes(dayOfWeek);
+      
+      // Special handling for Saturdays based on frequency
+      if (dayOfWeek === 6) {
+        isWorkingDay = isWorkingSaturday(date);
+      }
       
       // Check if there's an absence for this date
       const absence = monthAbsences.find(a => a.absenceDate === dateString);
@@ -80,6 +142,7 @@ export default function WorkCalendarScreen() {
       });
     }
     
+    console.log('WorkCalendarScreen: Generated calendar with', days.filter(d => d.isWorkingDay).length, 'working days');
     setCalendarDays(days);
   };
 
