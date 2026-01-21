@@ -125,17 +125,17 @@ export default function JobStatsScreen() {
     const jobsToExport = allJobs.filter(job => selectedJobs.has(job.id));
     
     try {
+      const settings = await api.getSettings();
+      const schedule = await api.getSchedule();
+      
       if (format === 'pdf') {
         await exportToPdf(jobsToExport, technicianName, {
-          groupBy: 'none',
-          includeVhc: true,
-          includeNotes: true,
+          type: 'all',
+          targetHours: settings.monthlyTarget,
+          availableHours: schedule.dailyWorkingHours * 20,
         });
       } else {
-        const jsonUri = await exportToJson(jobsToExport);
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(jsonUri);
-        }
+        await exportToJson(jobsToExport);
       }
       
       setShowExportModal(false);
@@ -272,7 +272,6 @@ export default function JobStatsScreen() {
       />
       
       <View style={[styles.container, Platform.OS === 'android' && { paddingTop: 16 }]}>
-        {/* Search Bar */}
         <View style={[styles.searchContainer, { backgroundColor: theme.card }]}>
           <IconSymbol
             ios_icon_name="magnifyingglass"
@@ -299,7 +298,6 @@ export default function JobStatsScreen() {
           )}
         </View>
 
-        {/* Search Filters */}
         <View style={styles.filterContainer}>
           <TouchableOpacity
             style={[
@@ -350,7 +348,6 @@ export default function JobStatsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Selection Controls */}
         <View style={[styles.controlsContainer, { backgroundColor: theme.card }]}>
           <View style={styles.selectionInfo}>
             <Text style={[styles.selectionText, { color: theme.text }]}>
@@ -399,7 +396,6 @@ export default function JobStatsScreen() {
           </View>
         </View>
 
-        {/* Jobs List */}
         <FlatList
           data={filteredJobs}
           renderItem={renderJob}
@@ -421,7 +417,6 @@ export default function JobStatsScreen() {
         />
       </View>
 
-      {/* Export Modal */}
       <Modal
         visible={showExportModal}
         transparent={true}
@@ -447,19 +442,6 @@ export default function JobStatsScreen() {
             </Text>
             
             <TouchableOpacity
-              style={[styles.exportOptionButton, { backgroundColor: theme.primary }]}
-              onPress={() => handleExportSelected('pdf')}
-            >
-              <IconSymbol
-                ios_icon_name="doc.text.fill"
-                android_material_icon_name="description"
-                size={24}
-                color="#ffffff"
-              />
-              <Text style={styles.exportOptionText}>Export as PDF</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
               style={[styles.exportOptionButton, { backgroundColor: theme.secondary }]}
               onPress={() => handleExportSelected('json')}
             >
@@ -469,7 +451,26 @@ export default function JobStatsScreen() {
                 size={24}
                 color="#ffffff"
               />
-              <Text style={styles.exportOptionText}>Export as JSON</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportOptionText}>Export as JSON (Priority)</Text>
+                <Text style={styles.exportOptionSubtext}>Best for backup & restore</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.exportOptionButton, { backgroundColor: theme.primary }]}
+              onPress={() => handleExportSelected('pdf')}
+            >
+              <IconSymbol
+                ios_icon_name="doc.text.fill"
+                android_material_icon_name="description"
+                size={24}
+                color="#ffffff"
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportOptionText}>Export as PDF</Text>
+                <Text style={styles.exportOptionSubtext}>With efficiency progress bars</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -705,7 +706,6 @@ const styles = StyleSheet.create({
   exportOptionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
@@ -715,5 +715,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  exportOptionSubtext: {
+    color: '#ffffff',
+    fontSize: 12,
+    opacity: 0.8,
+    marginTop: 2,
   },
 });

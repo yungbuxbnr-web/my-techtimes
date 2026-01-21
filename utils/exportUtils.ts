@@ -10,6 +10,8 @@ export interface ExportOptions {
   week?: number;
   day?: string;
   year?: number;
+  targetHours?: number;
+  availableHours?: number;
 }
 
 // Group jobs by day
@@ -44,7 +46,7 @@ function getWeekNumber(date: Date): number {
 // Get week range (Monday to Saturday)
 function getWeekRange(date: Date): { start: Date; end: Date } {
   const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(date.setDate(diff));
   const saturday = new Date(monday);
   saturday.setDate(monday.getDate() + 5);
@@ -93,7 +95,30 @@ function getVhcDisplayHtml(vhcStatus?: string): string {
   return `<span style="color: ${vhcColor}; font-weight: bold;">● ${vhcStatus}</span>`;
 }
 
-// Generate PDF HTML with enhanced grouping
+// Generate efficiency progress bar HTML
+function generateEfficiencyBar(soldHours: number, availableHours: number, label: string): string {
+  const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
+  const efficiencyColor = efficiency >= 90 ? '#4CAF50' : efficiency >= 75 ? '#FF9800' : '#f44336';
+  const barWidth = Math.min(efficiency, 100);
+  
+  return `
+    <div style="margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 8px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+        <span style="font-weight: bold; font-size: 12px;">${label}</span>
+        <span style="font-weight: bold; color: ${efficiencyColor}; font-size: 12px;">${efficiency.toFixed(1)}%</span>
+      </div>
+      <div style="width: 100%; height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden;">
+        <div style="width: ${barWidth}%; height: 100%; background: ${efficiencyColor}; transition: width 0.3s;"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; color: #666;">
+        <span>Sold: ${soldHours.toFixed(2)}h</span>
+        <span>Available: ${availableHours.toFixed(2)}h</span>
+      </div>
+    </div>
+  `;
+}
+
+// Generate PDF HTML with enhanced grouping and efficiency bars
 function generatePdfHtml(
   jobs: Job[],
   technicianName: string,
@@ -104,6 +129,10 @@ function generatePdfHtml(
   const groupedByDay = groupJobsByDay(jobs);
   const sortedDays = Array.from(groupedByDay.keys()).sort();
   const overallTotals = calculateTotals(jobs);
+  
+  // Calculate overall efficiency if available hours provided
+  const targetHours = options.targetHours || 0;
+  const availableHours = options.availableHours || 0;
   
   let html = `
     <!DOCTYPE html>
@@ -160,6 +189,20 @@ function generatePdfHtml(
         .summary-value {
           color: #2196F3;
           font-weight: bold;
+        }
+        .efficiency-section {
+          background: #fff;
+          padding: 15px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          border: 2px solid #2196F3;
+        }
+        .efficiency-title {
+          font-size: 16px;
+          font-weight: bold;
+          color: #2196F3;
+          margin-bottom: 15px;
+          text-align: center;
         }
         .day-section {
           margin-bottom: 25px;
@@ -253,7 +296,7 @@ function generatePdfHtml(
   `;
   
   if (options.type === 'daily') {
-    // Daily export - just show the selected day
+    // Daily export - show the selected day
     const dayJobs = groupedByDay.get(options.day!) || [];
     const dayTotals = calculateTotals(dayJobs);
     const dayDate = new Date(options.day!);
@@ -271,7 +314,8 @@ function generatePdfHtml(
           <thead>
             <tr>
               <th>WIP Number</th>
-              <th>Work Done</th>
+              <th>Vehicle Reg</th>
+              <th>VHC</th>
               <th>AW</th>
               <th>Hours</th>
             </tr>
@@ -281,11 +325,10 @@ function generatePdfHtml(
     
     dayJobs.forEach(job => {
       const hours = (job.aw * 5) / 60;
-      const workDone = job.notes || job.vehicleReg;
       html += `
         <tr>
           <td>${job.wipNumber}</td>
-          <td>${workDone}</td>
+          <td>${job.vehicleReg}</td>
           <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
           <td>${job.aw}</td>
           <td>${hours.toFixed(2)}h</td>
@@ -302,6 +345,17 @@ function generatePdfHtml(
         </div>
       </div>
     `;
+    
+    // Add efficiency bar for the day
+    if (availableHours > 0) {
+      const dailyAvailable = availableHours / 30; // Rough estimate
+      html += `
+        <div class="efficiency-section">
+          <div class="efficiency-title">Daily Efficiency</div>
+          ${generateEfficiencyBar(dayTotals.totalHours, dailyAvailable, 'Day Performance')}
+        </div>
+      `;
+    }
   } else if (options.type === 'weekly') {
     // Weekly export - show each day with totals, then week total
     const weekGroups = groupDaysByWeek(sortedDays);
@@ -332,7 +386,7 @@ function generatePdfHtml(
               <thead>
                 <tr>
                   <th>WIP Number</th>
-                  <th>Work Done</th>
+                  <th>Vehicle Reg</th>
                   <th>VHC</th>
                   <th>AW</th>
                   <th>Hours</th>
@@ -343,18 +397,11 @@ function generatePdfHtml(
         
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
-          const workDone = job.notes || job.vehicleReg;
-          const vhcColor = job.vhcStatus === 'GREEN' ? '#4CAF50' : 
-                          job.vhcStatus === 'ORANGE' ? '#FF9800' : 
-                          job.vhcStatus === 'RED' ? '#f44336' : '#999';
-          const vhcDisplay = job.vhcStatus && job.vhcStatus !== 'NONE' 
-            ? `<span style="color: ${vhcColor}; font-weight: bold;">● ${job.vhcStatus}</span>` 
-            : '-';
           html += `
             <tr>
               <td>${job.wipNumber}</td>
-              <td>${workDone}</td>
-              <td>${vhcDisplay}</td>
+              <td>${job.vehicleReg}</td>
+              <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
               <td>${job.aw}</td>
               <td>${hours.toFixed(2)}h</td>
             </tr>
@@ -382,6 +429,17 @@ function generatePdfHtml(
           <div><span class="total-value">${weekTotals.jobCount} jobs | ${weekTotals.totalAw} AW | ${weekTotals.totalHours.toFixed(2)}h</span></div>
         </div>
       `;
+      
+      // Add efficiency bar for the week
+      if (availableHours > 0) {
+        const weeklyAvailable = (availableHours / 30) * 6; // 6 working days per week
+        html += `
+          <div class="efficiency-section">
+            <div class="efficiency-title">Weekly Efficiency</div>
+            ${generateEfficiencyBar(weekTotals.totalHours, weeklyAvailable, 'Week Performance')}
+          </div>
+        `;
+      }
     });
   } else if (options.type === 'monthly') {
     // Monthly export - show each day with totals, then month total
@@ -412,7 +470,7 @@ function generatePdfHtml(
               <thead>
                 <tr>
                   <th>WIP Number</th>
-                  <th>Work Done</th>
+                  <th>Vehicle Reg</th>
                   <th>VHC</th>
                   <th>AW</th>
                   <th>Hours</th>
@@ -423,18 +481,11 @@ function generatePdfHtml(
         
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
-          const workDone = job.notes || job.vehicleReg;
-          const vhcColor = job.vhcStatus === 'GREEN' ? '#4CAF50' : 
-                          job.vhcStatus === 'ORANGE' ? '#FF9800' : 
-                          job.vhcStatus === 'RED' ? '#f44336' : '#999';
-          const vhcDisplay = job.vhcStatus && job.vhcStatus !== 'NONE' 
-            ? `<span style="color: ${vhcColor}; font-weight: bold;">● ${job.vhcStatus}</span>` 
-            : '-';
           html += `
             <tr>
               <td>${job.wipNumber}</td>
-              <td>${workDone}</td>
-              <td>${vhcDisplay}</td>
+              <td>${job.vehicleReg}</td>
+              <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
               <td>${job.aw}</td>
               <td>${hours.toFixed(2)}h</td>
             </tr>
@@ -462,6 +513,16 @@ function generatePdfHtml(
           <div><span class="total-value">${monthTotals.jobCount} jobs | ${monthTotals.totalAw} AW | ${monthTotals.totalHours.toFixed(2)}h</span></div>
         </div>
       `;
+      
+      // Add efficiency bar for the month
+      if (availableHours > 0) {
+        html += `
+          <div class="efficiency-section">
+            <div class="efficiency-title">Monthly Efficiency</div>
+            ${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}
+          </div>
+        `;
+      }
     });
   } else {
     // All/Entire export - show days, week totals, and month totals
@@ -494,7 +555,7 @@ function generatePdfHtml(
               <thead>
                 <tr>
                   <th>WIP Number</th>
-                  <th>Work Done</th>
+                  <th>Vehicle Reg</th>
                   <th>VHC</th>
                   <th>AW</th>
                   <th>Hours</th>
@@ -505,18 +566,11 @@ function generatePdfHtml(
         
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
-          const workDone = job.notes || job.vehicleReg;
-          const vhcColor = job.vhcStatus === 'GREEN' ? '#4CAF50' : 
-                          job.vhcStatus === 'ORANGE' ? '#FF9800' : 
-                          job.vhcStatus === 'RED' ? '#f44336' : '#999';
-          const vhcDisplay = job.vhcStatus && job.vhcStatus !== 'NONE' 
-            ? `<span style="color: ${vhcColor}; font-weight: bold;">● ${job.vhcStatus}</span>` 
-            : '-';
           html += `
             <tr>
               <td>${job.wipNumber}</td>
-              <td>${workDone}</td>
-              <td>${vhcDisplay}</td>
+              <td>${job.vehicleReg}</td>
+              <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
               <td>${job.aw}</td>
               <td>${hours.toFixed(2)}h</td>
             </tr>
@@ -546,7 +600,7 @@ function generatePdfHtml(
       `;
     });
     
-    // Add week totals summary at the end
+    // Add week totals summary
     html += `<div class="section-divider"></div>`;
     html += `<h2 style="color: #2196F3;">Weekly Summary</h2>`;
     
@@ -564,6 +618,17 @@ function generatePdfHtml(
         </div>
       `;
     });
+    
+    // Add overall efficiency section at the end
+    if (availableHours > 0) {
+      html += `
+        <div class="section-divider"></div>
+        <div class="efficiency-section">
+          <div class="efficiency-title">Overall Efficiency Summary</div>
+          ${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}
+        </div>
+      `;
+    }
   }
   
   html += `
@@ -604,19 +669,22 @@ export async function exportToPdf(
   }
 }
 
-// Export to JSON - Format matching the user's exact format
-export async function exportToJson(jobs: Job[]): Promise<void> {
-  console.log('ExportUtils: Exporting', jobs.length, 'jobs to JSON');
+// Export to JSON - Format matching the exact format (PRIORITY)
+export async function exportToJson(jobs: Job[]): Promise<string> {
+  console.log('ExportUtils: Exporting', jobs.length, 'jobs to JSON (PRIORITY FORMAT)');
   
-  // Format exactly as shown in the user's JSON
+  // Format exactly as the user's JSON format
   const exportData = {
+    exportDate: new Date().toISOString(),
+    version: '1.0',
+    jobCount: jobs.length,
     jobs: jobs.map(job => ({
       wipNumber: job.wipNumber,
       vehicleReg: job.vehicleReg,
       vhcStatus: job.vhcStatus,
       description: job.notes || '',
       aws: job.aw,
-      jobDateTime: job.createdAt, // ISO format: "2025-11-28T16:18:00"
+      jobDateTime: job.createdAt,
     })),
   };
   
@@ -635,14 +703,16 @@ export async function exportToJson(jobs: Job[]): Promise<void> {
     });
     console.log('ExportUtils: JSON shared successfully');
   }
+  
+  return fileUri;
 }
 
-// Import from JSON - Parse the exact format from the user
+// Import from JSON - Parse the exact format from the user (PRIORITY)
 export async function importFromJson(
   jsonUri: string,
   onProgress: (current: number, total: number, job: any) => void
 ): Promise<{ imported: number; skipped: number; errors: string[]; jobs: any[] }> {
-  console.log('ExportUtils: Importing jobs from', jsonUri);
+  console.log('ExportUtils: Importing jobs from JSON (PRIORITY FORMAT):', jsonUri);
   
   const jsonString = await FileSystem.readAsStringAsync(jsonUri);
   console.log('ExportUtils: Read JSON string, length:', jsonString.length);

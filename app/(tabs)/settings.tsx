@@ -138,7 +138,6 @@ export default function SettingsScreen() {
       return;
     }
     
-    // In a real app, you would save the new PIN securely
     Alert.alert('Success', 'PIN changed successfully');
     setShowChangePinModal(false);
     setCurrentPin('');
@@ -164,12 +163,8 @@ export default function SettingsScreen() {
     toastManager.show(value ? 'PIN authentication enabled' : 'PIN authentication disabled', 'success');
   };
 
-  const handleExportCSV = async () => {
-    console.log('SettingsScreen: User tapped Export CSV');
-    setShowExportModal(true);
-  };
-
   const handleOpenExportModal = () => {
+    console.log('SettingsScreen: User tapped Export Data');
     setShowExportModal(true);
   };
 
@@ -178,22 +173,27 @@ export default function SettingsScreen() {
     try {
       const jobs = await api.getAllJobs();
       const profile = await api.getTechnicianProfile();
+      const settings = await api.getSettings();
+      const schedule = await api.getSchedule();
+      
+      // Get current month for stats
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const monthlyStats = await api.getMonthlyStats(currentMonth);
       
       if (format === 'pdf') {
         await exportToPdf(jobs, profile.name, {
-          groupBy: 'month',
-          includeVhc: true,
-          includeNotes: true,
+          type: 'all',
+          targetHours: settings.monthlyTarget,
+          availableHours: monthlyStats.availableHours,
         });
+        toastManager.show('PDF exported successfully with efficiency bars', 'success');
       } else {
-        const jsonUri = await exportToJson(jobs);
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(jsonUri);
-        }
+        await exportToJson(jobs);
+        toastManager.show('JSON exported successfully (priority format)', 'success');
       }
       
       setShowExportModal(false);
-      toastManager.show('Export successful', 'success');
     } catch (error) {
       console.error('SettingsScreen: Error exporting:', error);
       Alert.alert('Error', 'Failed to export data');
@@ -201,25 +201,81 @@ export default function SettingsScreen() {
   };
 
   const handleOpenImportModal = () => {
+    console.log('SettingsScreen: User tapped Import Data');
     setShowImportModal(true);
   };
 
-  const handleBackup = async () => {
-    console.log('SettingsScreen: Creating backup');
+  const handleImportJobs = async () => {
+    console.log('SettingsScreen: User starting import process');
     try {
-      const backupData = await offlineStorage.exportAllData();
-      const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
-      const fileUri = FileSystem.cacheDirectory + fileName;
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
       
-      await FileSystem.writeAsStringAsync(fileUri, backupData);
-      
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
-          dialogTitle: 'Save TechTimes Backup',
-        });
+      if (result.canceled) {
+        console.log('SettingsScreen: User cancelled import');
+        return;
       }
       
+      const fileUri = result.assets[0].uri;
+      console.log('SettingsScreen: Selected file:', fileUri);
+      
+      setIsImporting(true);
+      setShowImportModal(false);
+      
+      const importResults = await importFromJson(
+        fileUri,
+        (current, total, job) => {
+          setImportProgress({ current, total, job });
+        }
+      );
+      
+      console.log('SettingsScreen: Import results:', importResults);
+      
+      // Now import the jobs to the API
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const job of importResults.jobs) {
+        try {
+          await api.createJob(job);
+          successCount++;
+        } catch (error) {
+          console.error('SettingsScreen: Error creating job:', error);
+          failCount++;
+        }
+      }
+      
+      setIsImporting(false);
+      
+      if (importResults.errors.length > 0) {
+        Alert.alert(
+          'Import Complete with Warnings',
+          `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped: ${importResults.skipped}\n\nErrors:\n${importResults.errors.slice(0, 5).join('\n')}${importResults.errors.length > 5 ? '\n...' : ''}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Import Successful',
+          `Successfully imported ${successCount} job(s) from JSON backup.`,
+          [{ text: 'OK' }]
+        );
+      }
+      
+      toastManager.show(`Imported ${successCount} jobs successfully`, 'success');
+    } catch (error) {
+      console.error('SettingsScreen: Error importing:', error);
+      setIsImporting(false);
+      Alert.alert('Error', `Failed to import data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleBackup = async () => {
+    console.log('SettingsScreen: Creating backup (JSON priority format)');
+    try {
+      const jobs = await api.getAllJobs();
+      await exportToJson(jobs);
       toastManager.show('Backup created successfully', 'success');
     } catch (error) {
       console.error('SettingsScreen: Error creating backup:', error);
@@ -231,40 +287,15 @@ export default function SettingsScreen() {
     console.log('SettingsScreen: User tapped Restore');
     Alert.alert(
       'Restore Backup',
-      'This will replace all current data with the backup. Are you sure?',
+      'This will import jobs from a JSON backup file. Existing jobs will not be deleted.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Restore',
-          style: 'destructive',
-          onPress: performRestore,
+          text: 'Import',
+          onPress: handleImportJobs,
         },
       ]
     );
-  };
-
-  const performRestore = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-        copyToCacheDirectory: true,
-      });
-      
-      if (result.canceled) {
-        console.log('SettingsScreen: User cancelled restore');
-        return;
-      }
-      
-      const fileUri = result.assets[0].uri;
-      const backupData = await FileSystem.readAsStringAsync(fileUri);
-      
-      await offlineStorage.importAllData(backupData);
-      
-      Alert.alert('Success', 'Backup restored successfully. Please restart the app.');
-    } catch (error) {
-      console.error('SettingsScreen: Error restoring backup:', error);
-      Alert.alert('Error', 'Failed to restore backup');
-    }
   };
 
   const handleClearAllData = () => {
@@ -320,7 +351,6 @@ export default function SettingsScreen() {
           <Text style={[styles.title, { color: '#ffffff' }]}>Settings</Text>
         </View>
 
-        {/* Permissions */}
         {!hasPermissions && (
           <View style={[styles.permissionsCard, { backgroundColor: theme.chartYellow }]}>
             <IconSymbol
@@ -344,7 +374,6 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {/* Profile */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Profile</Text>
           
@@ -366,7 +395,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Monthly Target */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Monthly Target</Text>
           
@@ -389,7 +417,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Quick Links */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Quick Links</Text>
           
@@ -470,7 +497,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Appearance */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
           
@@ -500,7 +526,6 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        {/* Security */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
           
@@ -530,7 +555,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Data Management */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
           
@@ -557,7 +581,7 @@ export default function SettingsScreen() {
               size={20}
               color={theme.primary}
             />
-            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Create Backup</Text>
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Create Backup (JSON)</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -570,7 +594,7 @@ export default function SettingsScreen() {
               size={20}
               color={theme.primary}
             />
-            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Restore Backup</Text>
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Import Jobs (JSON)</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -587,7 +611,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* About */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
           
@@ -621,7 +644,6 @@ export default function SettingsScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Change PIN Modal */}
       <Modal
         visible={showChangePinModal}
         transparent={true}
@@ -685,7 +707,6 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
-      {/* Export Modal */}
       <Modal
         visible={showExportModal}
         transparent={true}
@@ -706,18 +727,9 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
             
-            <TouchableOpacity
-              style={[styles.exportOption, { backgroundColor: theme.primary }]}
-              onPress={() => handleExport('pdf')}
-            >
-              <IconSymbol
-                ios_icon_name="doc.text.fill"
-                android_material_icon_name="description"
-                size={24}
-                color="#ffffff"
-              />
-              <Text style={styles.exportOptionText}>Export as PDF</Text>
-            </TouchableOpacity>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary, marginBottom: 20 }]}>
+              Choose export format
+            </Text>
             
             <TouchableOpacity
               style={[styles.exportOption, { backgroundColor: theme.secondary }]}
@@ -729,7 +741,26 @@ export default function SettingsScreen() {
                 size={24}
                 color="#ffffff"
               />
-              <Text style={styles.exportOptionText}>Export as JSON</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportOptionText}>Export as JSON (Priority)</Text>
+                <Text style={styles.exportOptionSubtext}>Best for backup & restore</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.exportOption, { backgroundColor: theme.primary }]}
+              onPress={() => handleExport('pdf')}
+            >
+              <IconSymbol
+                ios_icon_name="doc.text.fill"
+                android_material_icon_name="description"
+                size={24}
+                color="#ffffff"
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportOptionText}>Export as PDF</Text>
+                <Text style={styles.exportOptionSubtext}>With efficiency progress bars</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -900,6 +931,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     flex: 1,
   },
+  modalSubtitle: {
+    fontSize: 14,
+  },
   pinInput: {
     padding: 12,
     borderRadius: 8,
@@ -921,7 +955,6 @@ const styles = StyleSheet.create({
   exportOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
@@ -931,5 +964,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  exportOptionSubtext: {
+    color: '#ffffff',
+    fontSize: 12,
+    opacity: 0.8,
+    marginTop: 2,
   },
 });
