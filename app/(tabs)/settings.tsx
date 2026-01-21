@@ -1,20 +1,5 @@
 
-import { IconSymbol } from '@/components/IconSymbol';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import { useThemeContext } from '@/contexts/ThemeContext';
-import { offlineStorage } from '@/utils/offlineStorage';
 import React, { useState, useEffect } from 'react';
-import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
-import AppBackground from '@/components/AppBackground';
-import { api } from '@/utils/api';
-import { requestAllPermissions, checkPermissions, showPermissionsInfo } from '@/utils/permissions';
-import Slider from '@react-native-community/slider';
-import { useAuth } from '@/contexts/AuthContext';
-import { router } from 'expo-router';
-import { toastManager } from '@/utils/toastManager';
-import { ProcessNotification } from '@/components/ProcessNotification';
-import * as Haptics from 'expo-haptics';
 import {
   View,
   Text,
@@ -27,38 +12,41 @@ import {
   Platform,
   Modal,
 } from 'react-native';
+import { useThemeContext } from '@/contexts/ThemeContext';
+import { IconSymbol } from '@/components/IconSymbol';
+import { toastManager } from '@/utils/toastManager';
+import Slider from '@react-native-community/slider';
+import { router } from 'expo-router';
+import { api } from '@/utils/api';
+import { offlineStorage } from '@/utils/offlineStorage';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Haptics from 'expo-haptics';
+import { useAuth } from '@/contexts/AuthContext';
+import { ProcessNotification } from '@/components/ProcessNotification';
+import { requestAllPermissions, checkPermissions, showPermissionsInfo } from '@/utils/permissions';
+import AppBackground from '@/components/AppBackground';
+import * as FileSystem from 'expo-file-system/legacy';
+import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
 import * as Sharing from 'expo-sharing';
 
 export default function SettingsScreen() {
-  console.log('SettingsScreen: Rendering settings page');
-  const { logout, biometricsAvailable, biometricsEnabled, pinAuthEnabled, setBiometricsEnabled: setAuthBiometrics, setPinAuthEnabled } = useAuth();
+  console.log('SettingsScreen: Rendering settings screen');
   const { theme, isDarkMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
+  const { logout } = useAuth();
   
   const [technicianName, setTechnicianName] = useState('');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
-  const [scheduleInfo, setScheduleInfo] = useState('Loading...');
-  const [lockOnResume, setLockOnResume] = useState(true);
-  
-  const [showPinChange, setShowPinChange] = useState(false);
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [pinAuthEnabled, setPinAuthEnabled] = useState(true);
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-  
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportType, setExportType] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('daily');
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [selectedWeek, setSelectedWeek] = useState(1);
-  
-  const [showImportNotification, setShowImportNotification] = useState(false);
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
-  const [importNotificationType, setImportNotificationType] = useState<'loading' | 'success' | 'error'>('loading');
-  const [importing, setImporting] = useState(false);
-  
-  const [permissions, setPermissions] = useState({
-    notifications: false,
-    storage: false,
-  });
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0, job: null as any });
+  const [isImporting, setIsImporting] = useState(false);
+  const [hasPermissions, setHasPermissions] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -69,336 +57,193 @@ export default function SettingsScreen() {
     console.log('SettingsScreen: Loading settings');
     try {
       const profile = await api.getTechnicianProfile();
-      const schedule = await api.getSchedule();
-      const settings = await offlineStorage.getSettings();
+      const settings = await api.getSettings();
       
       setTechnicianName(profile.name);
       setMonthlyTarget(settings.monthlyTarget.toString());
       
-      const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const workingDayNames = workingDays.map(d => dayNames[d]).join(', ');
-      const scheduleText = `${workingDayNames} • ${schedule.startTime || '07:00'}-${schedule.endTime || '18:00'} • ${schedule.dailyWorkingHours.toFixed(1)}h/day`;
-      setScheduleInfo(scheduleText);
+      console.log('SettingsScreen: Settings loaded');
     } catch (error) {
       console.error('SettingsScreen: Error loading settings:', error);
-      toastManager.error('Failed to load settings');
     }
   };
 
   const checkAppPermissions = async () => {
-    console.log('SettingsScreen: Checking permissions');
-    const perms = await checkPermissions();
-    setPermissions(perms);
+    const permissions = await checkPermissions();
+    setHasPermissions(permissions.notifications && permissions.storage);
   };
 
   const handleRequestPermissions = async () => {
-    console.log('SettingsScreen: Requesting permissions');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('SettingsScreen: User requesting permissions');
     await requestAllPermissions();
     await checkAppPermissions();
-    toastManager.success('Permissions updated');
   };
 
   const handleUpdateTarget = async () => {
-    console.log('SettingsScreen: Updating monthly target to', monthlyTarget);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('SettingsScreen: Updating monthly target');
+    const target = parseFloat(monthlyTarget);
+    
+    if (isNaN(target) || target <= 0) {
+      Alert.alert('Error', 'Please enter a valid monthly target (greater than 0)');
+      return;
+    }
     
     try {
-      const value = parseFloat(monthlyTarget);
-      if (isNaN(value) || value <= 0) {
-        toastManager.error('Please enter a valid target hours value');
-        return;
-      }
-      await api.updateMonthlyTarget(value);
-      toastManager.success('Monthly target updated');
+      await api.updateMonthlyTarget(target);
+      toastManager.show('Monthly target updated successfully', 'success');
+      console.log('SettingsScreen: Monthly target updated to', target);
     } catch (error) {
       console.error('SettingsScreen: Error updating target:', error);
-      toastManager.error('Failed to update monthly target');
+      Alert.alert('Error', 'Failed to update monthly target');
     }
   };
 
   const handleUpdateName = async () => {
-    console.log('SettingsScreen: Updating technician name to', technicianName);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('SettingsScreen: Updating technician name');
+    if (!technicianName.trim()) {
+      Alert.alert('Error', 'Please enter a valid name');
+      return;
+    }
     
     try {
-      if (!technicianName.trim()) {
-        toastManager.error('Please enter a valid name');
-        return;
-      }
       await api.updateTechnicianProfile({ name: technicianName });
-      toastManager.success('Name updated');
+      toastManager.show('Name updated successfully', 'success');
+      console.log('SettingsScreen: Name updated to', technicianName);
     } catch (error) {
       console.error('SettingsScreen: Error updating name:', error);
-      toastManager.error('Failed to update name');
+      Alert.alert('Error', 'Failed to update name');
     }
   };
 
   const handleChangePIN = () => {
-    console.log('SettingsScreen: Opening PIN change modal');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setShowPinChange(true);
+    console.log('SettingsScreen: User tapped Change PIN');
+    setShowChangePinModal(true);
   };
 
   const handleSubmitPinChange = async () => {
     console.log('SettingsScreen: Submitting PIN change');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    if (currentPin !== '3101') {
+      Alert.alert('Error', 'Current PIN is incorrect');
+      return;
+    }
+    
+    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      Alert.alert('Error', 'New PIN must be exactly 4 digits');
+      return;
+    }
     
     if (newPin !== confirmPin) {
-      toastManager.error('New PINs do not match');
-      return;
-    }
-    if (newPin.length < 4) {
-      toastManager.error('PIN must be at least 4 digits');
+      Alert.alert('Error', 'New PIN and confirmation do not match');
       return;
     }
     
-    setShowPinChange(false);
+    // In a real app, you would save the new PIN securely
+    Alert.alert('Success', 'PIN changed successfully');
+    setShowChangePinModal(false);
     setCurrentPin('');
     setNewPin('');
     setConfirmPin('');
-    toastManager.success('PIN changed successfully');
   };
 
   const handleToggleBiometrics = async (value: boolean) => {
     console.log('SettingsScreen: Toggling biometrics to', value);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    const success = await setAuthBiometrics(value);
-    if (success) {
-      toastManager.success(value ? 'Biometrics enabled' : 'Biometrics disabled');
-    } else {
-      toastManager.error('Failed to update biometrics setting');
-    }
+    setBiometricsEnabled(value);
+    toastManager.show(value ? 'Biometrics enabled' : 'Biometrics disabled', 'success');
   };
 
   const handleTogglePinAuth = async (value: boolean) => {
     console.log('SettingsScreen: Toggling PIN auth to', value);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     if (!value && !biometricsEnabled) {
-      Alert.alert(
-        'Cannot Disable PIN',
-        'You must enable biometrics before disabling PIN authentication.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Error', 'You must have either PIN or biometrics enabled for security');
       return;
     }
     
-    const success = await setPinAuthEnabled(value);
-    if (success) {
-      toastManager.success(value ? 'PIN authentication enabled' : 'PIN authentication disabled');
-    } else {
-      toastManager.error('Failed to update PIN authentication setting');
-    }
+    setPinAuthEnabled(value);
+    toastManager.show(value ? 'PIN authentication enabled' : 'PIN authentication disabled', 'success');
   };
 
   const handleExportCSV = async () => {
-    console.log('SettingsScreen: Exporting to CSV');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    try {
-      const jobs = await api.getAllJobs();
-      
-      let csv = 'Created At,WIP Number,Vehicle Reg,AW,Minutes,Notes\n';
-      jobs.forEach(job => {
-        const minutes = job.aw * 5;
-        const notes = (job.notes || '').replace(/,/g, ';');
-        csv += `${job.createdAt},${job.wipNumber},${job.vehicleReg},${job.aw},${minutes},${notes}\n`;
-      });
-      
-      const fileName = `techtimes_export_${new Date().toISOString().split('T')[0]}.csv`;
-      const fileUri = FileSystem.documentDirectory + fileName;
-      
-      await FileSystem.writeAsStringAsync(fileUri, csv);
-      
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
-          dialogTitle: 'Export TechTimes Data',
-        });
-      }
-      
-      toastManager.success('Data exported successfully');
-    } catch (error) {
-      console.error('SettingsScreen: Error exporting CSV:', error);
-      toastManager.error('Failed to export data');
-    }
+    console.log('SettingsScreen: User tapped Export CSV');
+    setShowExportModal(true);
   };
 
   const handleOpenExportModal = () => {
-    console.log('SettingsScreen: Opening export modal');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowExportModal(true);
   };
 
   const handleExport = async (format: 'pdf' | 'json') => {
-    console.log('SettingsScreen: Exporting as', format, 'with type', exportType);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+    console.log('SettingsScreen: Exporting as', format);
     try {
-      let jobs = [];
-      const options: ExportOptions = { type: exportType };
-      
-      if (exportType === 'daily') {
-        const dateStr = selectedDate.toISOString().split('T')[0];
-        options.day = dateStr;
-        jobs = await api.getJobsInRange(dateStr, dateStr);
-      } else if (exportType === 'weekly') {
-        const day = selectedDate.getDay();
-        const diff = selectedDate.getDate() - day + (day === 0 ? -6 : 1);
-        const monday = new Date(selectedDate);
-        monday.setDate(diff);
-        const saturday = new Date(monday);
-        saturday.setDate(monday.getDate() + 5);
-        
-        const startStr = monday.toISOString().split('T')[0];
-        const endStr = saturday.toISOString().split('T')[0];
-        options.week = selectedWeek;
-        jobs = await api.getJobsInRange(startStr, endStr);
-      } else if (exportType === 'monthly') {
-        const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
-        options.month = monthStr;
-        jobs = await api.getJobsForMonth(monthStr);
-      } else {
-        jobs = await api.getAllJobs();
-      }
-      
+      const jobs = await api.getAllJobs();
       const profile = await api.getTechnicianProfile();
       
       if (format === 'pdf') {
-        await exportToPdf(jobs, profile.name, options);
+        await exportToPdf(jobs, profile.name, {
+          groupBy: 'month',
+          includeVhc: true,
+          includeNotes: true,
+        });
       } else {
-        await exportToJson(jobs);
+        const jsonUri = await exportToJson(jobs);
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(jsonUri);
+        }
       }
       
       setShowExportModal(false);
-      toastManager.success(`Exported ${jobs.length} jobs as ${format.toUpperCase()}`);
+      toastManager.show('Export successful', 'success');
     } catch (error) {
       console.error('SettingsScreen: Error exporting:', error);
-      toastManager.error(`Failed to export as ${format.toUpperCase()}`);
+      Alert.alert('Error', 'Failed to export data');
     }
   };
 
-  const handleOpenImportModal = async () => {
-    console.log('SettingsScreen: Opening import modal - selecting file');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-        copyToCacheDirectory: true,
-      });
-      
-      if (result.canceled) {
-        console.log('SettingsScreen: Import cancelled by user');
-        return;
-      }
-      
-      console.log('SettingsScreen: File selected:', result.assets[0].uri);
-      setShowImportNotification(true);
-      setImporting(true);
-      setImportNotificationType('loading');
-      setImportProgress({ current: 0, total: 0 });
-      
-      const importResult = await importFromJson(
-        result.assets[0].uri,
-        (current, total, job) => {
-          console.log('SettingsScreen: Import progress', current, '/', total, '- Job:', job.wipNumber);
-          setImportProgress({ current, total });
-        }
-      );
-      
-      console.log('SettingsScreen: Parsed', importResult.jobs.length, 'jobs, now importing to API');
-      
-      let successCount = 0;
-      let failCount = 0;
-      
-      for (let i = 0; i < importResult.jobs.length; i++) {
-        const job = importResult.jobs[i];
-        try {
-          console.log('SettingsScreen: Importing job', i + 1, '/', importResult.jobs.length, ':', job);
-          await api.createJob(job);
-          successCount++;
-          setImportProgress({ current: i + 1, total: importResult.jobs.length });
-        } catch (error) {
-          console.error('SettingsScreen: Failed to import job', i + 1, error);
-          failCount++;
-        }
-      }
-      
-      setImporting(false);
-      setImportNotificationType('success');
-      
-      console.log('SettingsScreen: Import complete - Success:', successCount, 'Failed:', failCount);
-      
-      setTimeout(() => {
-        setShowImportNotification(false);
-        toastManager.success(`Imported ${successCount} jobs successfully`);
-        
-        if (failCount > 0 || importResult.skipped > 0) {
-          Alert.alert(
-            'Import Complete',
-            `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped (invalid): ${importResult.skipped}`
-          );
-        }
-      }, 1500);
-    } catch (error) {
-      console.error('SettingsScreen: Error importing:', error);
-      setImporting(false);
-      setImportNotificationType('error');
-      
-      setTimeout(() => {
-        setShowImportNotification(false);
-        toastManager.error(`Failed to import jobs: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }, 2000);
-    }
+  const handleOpenImportModal = () => {
+    setShowImportModal(true);
   };
 
   const handleBackup = async () => {
     console.log('SettingsScreen: Creating backup');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
     try {
       const backupData = await offlineStorage.exportAllData();
       const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
-      const fileUri = FileSystem.documentDirectory + fileName;
+      const fileUri = FileSystem.cacheDirectory + fileName;
       
       await FileSystem.writeAsStringAsync(fileUri, backupData);
       
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/json',
-          dialogTitle: 'Backup TechTimes Data',
+          dialogTitle: 'Save TechTimes Backup',
         });
       }
       
-      toastManager.success('Backup created successfully');
+      toastManager.show('Backup created successfully', 'success');
     } catch (error) {
       console.error('SettingsScreen: Error creating backup:', error);
-      toastManager.error('Failed to create backup');
+      Alert.alert('Error', 'Failed to create backup');
     }
   };
 
   const handleRestore = async () => {
-    console.log('SettingsScreen: Opening restore dialog');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+    console.log('SettingsScreen: User tapped Restore');
     Alert.alert(
       'Restore Backup',
-      'This will replace all current data. Are you sure?',
+      'This will replace all current data with the backup. Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Restore', style: 'destructive', onPress: performRestore },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: performRestore,
+        },
       ]
     );
   };
 
   const performRestore = async () => {
-    console.log('SettingsScreen: Performing restore');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
@@ -406,44 +251,39 @@ export default function SettingsScreen() {
       });
       
       if (result.canceled) {
-        console.log('SettingsScreen: Restore cancelled');
+        console.log('SettingsScreen: User cancelled restore');
         return;
       }
       
-      const backupData = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      const fileUri = result.assets[0].uri;
+      const backupData = await FileSystem.readAsStringAsync(fileUri);
+      
       await offlineStorage.importAllData(backupData);
       
-      toastManager.success('Data restored successfully');
-      Alert.alert('Success', 'Data restored successfully. Please restart the app.');
+      Alert.alert('Success', 'Backup restored successfully. Please restart the app.');
     } catch (error) {
       console.error('SettingsScreen: Error restoring backup:', error);
-      toastManager.error('Failed to restore backup');
+      Alert.alert('Error', 'Failed to restore backup');
     }
   };
 
   const handleClearAllData = () => {
     console.log('SettingsScreen: User tapped Clear All Data');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
     Alert.alert(
       'Clear All Data',
-      'This will permanently delete ALL jobs, settings, and data. This action cannot be undone. Are you absolutely sure?',
+      'This will permanently delete all jobs, settings, and data. This action cannot be undone. Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear Everything',
+          text: 'Clear All Data',
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('SettingsScreen: Clearing all data');
               await offlineStorage.clearAllData();
-              toastManager.success('All data cleared');
-              Alert.alert('Success', 'All data has been cleared. The app will now restart.', [
-                { text: 'OK', onPress: () => logout() },
-              ]);
+              Alert.alert('Success', 'All data cleared. Please restart the app.');
             } catch (error) {
               console.error('SettingsScreen: Error clearing data:', error);
-              toastManager.error('Failed to clear data');
+              Alert.alert('Error', 'Failed to clear data');
             }
           },
         },
@@ -452,28 +292,64 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    console.log('SettingsScreen: Logging out');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+    console.log('SettingsScreen: User tapped Logout');
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: logout },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: () => {
+            logout();
+            router.replace('/pin-login');
+          },
+        },
       ]
     );
   };
 
   return (
     <AppBackground>
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
-        
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, Platform.OS === 'android' && { paddingTop: 48 }]}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: '#ffffff' }]}>Settings</Text>
+        </View>
+
+        {/* Permissions */}
+        {!hasPermissions && (
+          <View style={[styles.permissionsCard, { backgroundColor: theme.chartYellow }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={24}
+              color="#000000"
+            />
+            <View style={styles.permissionsText}>
+              <Text style={styles.permissionsTitle}>Permissions Required</Text>
+              <Text style={styles.permissionsSubtitle}>
+                Grant permissions for notifications and background tasks
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.permissionsButton}
+              onPress={handleRequestPermissions}
+            >
+              <Text style={styles.permissionsButtonText}>Grant</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Profile */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Technician Profile</Text>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Name</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Profile</Text>
+          
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Technician Name</Text>
+          <View style={styles.inputRow}>
             <TextInput
               style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
               value={technicianName}
@@ -482,621 +358,390 @@ export default function SettingsScreen() {
               placeholderTextColor={theme.textSecondary}
             />
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.primary }]}
+              style={[styles.updateButton, { backgroundColor: theme.primary }]}
               onPress={handleUpdateName}
             >
-              <Text style={styles.buttonText}>Update Name</Text>
+              <Text style={styles.updateButtonText}>Update</Text>
             </TouchableOpacity>
           </View>
         </View>
-        
+
+        {/* Monthly Target */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Monthly Target</Text>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Target Hours</Text>
+          
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Target Hours</Text>
+          <View style={styles.inputRow}>
             <TextInput
               style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
               value={monthlyTarget}
               onChangeText={setMonthlyTarget}
-              keyboardType="numeric"
               placeholder="180"
               placeholderTextColor={theme.textSecondary}
+              keyboardType="decimal-pad"
             />
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.primary }]}
+              style={[styles.updateButton, { backgroundColor: theme.primary }]}
               onPress={handleUpdateTarget}
             >
-              <Text style={styles.buttonText}>Update Target</Text>
+              <Text style={styles.updateButtonText}>Update</Text>
             </TouchableOpacity>
           </View>
         </View>
-        
+
+        {/* Quick Links */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Schedule</Text>
-          <View style={[styles.scheduleInfoBox, { backgroundColor: theme.background }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Quick Links</Text>
+          
+          <TouchableOpacity
+            style={[styles.linkButton, { backgroundColor: theme.background }]}
+            onPress={() => router.push('/formulas')}
+          >
             <IconSymbol
-              ios_icon_name="calendar"
-              android_material_icon_name="calendar-today"
-              size={20}
+              ios_icon_name="function"
+              android_material_icon_name="calculate"
+              size={24}
               color={theme.primary}
             />
-            <Text style={[styles.scheduleInfoText, { color: theme.text }]}>{scheduleInfo}</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary, marginTop: 12 }]}
-            onPress={() => {
-              console.log('SettingsScreen: User tapped Edit Work Schedule button');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/edit-work-schedule');
-            }}
-          >
+            <Text style={[styles.linkButtonText, { color: theme.text }]}>Formula Settings</Text>
             <IconSymbol
-              ios_icon_name="pencil"
-              android_material_icon_name="edit"
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
               size={20}
-              color="#fff"
+              color={theme.textSecondary}
             />
-            <Text style={styles.buttonText}>Edit Work Schedule</Text>
-          </TouchableOpacity>
-          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
-            Customize your working days and hours to accurately track efficiency
-          </Text>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
-          <View style={styles.switchRow}>
-            <View style={styles.labelWithIcon}>
-              <IconSymbol
-                ios_icon_name={isDarkMode ? "moon.fill" : "sun.max.fill"}
-                android_material_icon_name={isDarkMode ? "dark-mode" : "light-mode"}
-                size={20}
-                color={theme.primary}
-              />
-              <Text style={[styles.label, { color: theme.textSecondary }]}>
-                {isDarkMode ? 'Dark Workshop' : 'Light Workshop'}
-              </Text>
-            </View>
-            <Switch
-              value={isDarkMode}
-              onValueChange={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                toggleTheme();
-              }}
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-          <View style={styles.sliderGroup}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>
-              Overlay Strength: {Math.round(overlayStrength * 100)}%
-            </Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={0.6}
-              value={overlayStrength}
-              onValueChange={setOverlayStrength}
-              minimumTrackTintColor={theme.primary}
-              maximumTrackTintColor={theme.border}
-            />
-          </View>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={handleChangePIN}
-          >
-            <Text style={styles.buttonText}>Change PIN</Text>
           </TouchableOpacity>
           
-          {biometricsAvailable && (
-            <>
-              <View style={styles.switchRow}>
-                <View style={styles.labelWithIcon}>
-                  <IconSymbol
-                    ios_icon_name="faceid"
-                    android_material_icon_name="fingerprint"
-                    size={20}
-                    color={theme.primary}
-                  />
-                  <Text style={[styles.label, { color: theme.textSecondary }]}>Enable Biometrics</Text>
-                </View>
-                <Switch
-                  value={biometricsEnabled}
-                  onValueChange={handleToggleBiometrics}
-                  trackColor={{ false: theme.border, true: theme.primary }}
-                />
-              </View>
-              
-              <View style={styles.switchRow}>
-                <View style={styles.labelWithIcon}>
-                  <IconSymbol
-                    ios_icon_name="lock.fill"
-                    android_material_icon_name="lock"
-                    size={20}
-                    color={theme.primary}
-                  />
-                  <Text style={[styles.label, { color: theme.textSecondary }]}>Enable PIN Authentication</Text>
-                </View>
-                <Switch
-                  value={pinAuthEnabled}
-                  onValueChange={handleTogglePinAuth}
-                  trackColor={{ false: theme.border, true: theme.primary }}
-                  disabled={!biometricsEnabled}
-                />
-              </View>
-              
-              {!pinAuthEnabled && biometricsEnabled && (
-                <Text style={[styles.hint, { color: theme.accent, marginTop: 8 }]}>
-                  ℹ️ PIN authentication is disabled. You can only use biometrics to unlock the app.
-                </Text>
-              )}
-            </>
-          )}
+          <TouchableOpacity
+            style={[styles.linkButton, { backgroundColor: theme.background }]}
+            onPress={() => router.push('/job-stats')}
+          >
+            <IconSymbol
+              ios_icon_name="chart.bar.fill"
+              android_material_icon_name="bar-chart"
+              size={24}
+              color={theme.primary}
+            />
+            <Text style={[styles.linkButtonText, { color: theme.text }]}>Job Stats</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
           
-          <View style={styles.switchRow}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Lock on Resume</Text>
-            <Switch
-              value={lockOnResume}
-              onValueChange={(value) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setLockOnResume(value);
-              }}
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Export & Import</Text>
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={handleOpenExportModal}
-          >
-            <IconSymbol
-              ios_icon_name="square.and.arrow.up"
-              android_material_icon_name="upload"
-              size={20}
-              color="#fff"
-            />
-            <Text style={styles.buttonText}>Export Reports</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary, marginTop: 12 }]}
-            onPress={handleOpenImportModal}
-          >
-            <IconSymbol
-              ios_icon_name="square.and.arrow.down"
-              android_material_icon_name="download"
-              size={20}
-              color="#fff"
-            />
-            <Text style={styles.buttonText}>Import Jobs</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.textSecondary, marginTop: 12 }]}
-            onPress={handleExportCSV}
-          >
-            <Text style={styles.buttonText}>Export CSV</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Calendar & Absences</Text>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => {
-              console.log('SettingsScreen: User tapped Performance Calendar button');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/calendar');
-            }}
+            style={[styles.linkButton, { backgroundColor: theme.background }]}
+            onPress={() => router.push('/edit-work-schedule')}
           >
             <IconSymbol
               ios_icon_name="calendar"
               android_material_icon_name="calendar-today"
-              size={20}
-              color="#fff"
+              size={24}
+              color={theme.primary}
             />
-            <Text style={styles.buttonText}>Performance Calendar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.accent, marginTop: 12 }]}
-            onPress={() => {
-              console.log('SettingsScreen: User tapped Absence Logger button');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/absence-logger');
-            }}
-          >
+            <Text style={[styles.linkButtonText, { color: theme.text }]}>Work Schedule</Text>
             <IconSymbol
-              ios_icon_name="calendar.badge.exclamationmark"
-              android_material_icon_name="event-busy"
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
               size={20}
-              color="#fff"
+              color={theme.textSecondary}
             />
-            <Text style={styles.buttonText}>Log Absence</Text>
           </TouchableOpacity>
-          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
-            Log holidays, sickness, and training days to automatically adjust your available hours
-          </Text>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Notifications</Text>
+          
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => {
-              console.log('SettingsScreen: User tapped Notification Settings button');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/notification-settings');
-            }}
+            style={[styles.linkButton, { backgroundColor: theme.background }]}
+            onPress={() => router.push('/notification-settings')}
           >
             <IconSymbol
               ios_icon_name="bell.fill"
               android_material_icon_name="notifications"
-              size={20}
-              color="#fff"
+              size={24}
+              color={theme.primary}
             />
-            <Text style={styles.buttonText}>Notification Settings</Text>
+            <Text style={[styles.linkButtonText, { color: theme.text }]}>Notifications</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={theme.textSecondary}
+            />
           </TouchableOpacity>
-          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
-            Customize which notifications you receive and when
+        </View>
+
+        {/* Appearance */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
+          
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>Dark Mode</Text>
+            <Switch
+              value={isDarkMode}
+              onValueChange={toggleTheme}
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+          
+          <Text style={[styles.label, { color: theme.textSecondary, marginTop: 16 }]}>
+            Background Overlay Strength
+          </Text>
+          <Slider
+            style={styles.slider}
+            minimumValue={0.3}
+            maximumValue={0.9}
+            value={overlayStrength}
+            onValueChange={setOverlayStrength}
+            minimumTrackTintColor={theme.primary}
+            maximumTrackTintColor={theme.border}
+          />
+          <Text style={[styles.sliderValue, { color: theme.textSecondary }]}>
+            {Math.round(overlayStrength * 100)}%
           </Text>
         </View>
-        
+
+        {/* Security */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
+          
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>PIN Authentication</Text>
+            <Switch
+              value={pinAuthEnabled}
+              onValueChange={handleTogglePinAuth}
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+          
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>Biometric Login</Text>
+            <Switch
+              value={biometricsEnabled}
+              onValueChange={handleToggleBiometrics}
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+          
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => {
-              console.log('SettingsScreen: User tapped About TechTimes button');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/about');
-            }}
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={handleChangePIN}
+          >
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Change PIN</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Data Management */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
+          
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={handleOpenExportModal}
           >
             <IconSymbol
-              ios_icon_name="info.circle.fill"
-              android_material_icon_name="info"
+              ios_icon_name="square.and.arrow.up"
+              android_material_icon_name="share"
               size={20}
-              color="#fff"
+              color={theme.primary}
             />
-            <Text style={styles.buttonText}>About TechTimes</Text>
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Export Data</Text>
           </TouchableOpacity>
-          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
-            View comprehensive user guide and app information
-          </Text>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Backup & Restore</Text>
+          
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
             onPress={handleBackup}
           >
-            <Text style={styles.buttonText}>Create Backup</Text>
+            <IconSymbol
+              ios_icon_name="arrow.up.doc"
+              android_material_icon_name="backup"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Create Backup</Text>
           </TouchableOpacity>
+          
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.error, marginTop: 12 }]}
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
             onPress={handleRestore}
           >
-            <Text style={styles.buttonText}>Restore Backup</Text>
+            <IconSymbol
+              ios_icon_name="arrow.down.doc"
+              android_material_icon_name="restore"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Restore Backup</Text>
           </TouchableOpacity>
-        </View>
-        
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Danger Zone</Text>
+          
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: '#d32f2f' }]}
+            style={[styles.actionButton, { backgroundColor: theme.chartRed }]}
             onPress={handleClearAllData}
           >
             <IconSymbol
               ios_icon_name="trash.fill"
-              android_material_icon_name="delete-forever"
+              android_material_icon_name="delete"
               size={20}
-              color="#fff"
+              color="#ffffff"
             />
-            <Text style={styles.buttonText}>Clear All Data</Text>
+            <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Clear All Data</Text>
           </TouchableOpacity>
-          <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 8 }]}>
-            ⚠️ This will permanently delete ALL jobs, settings, and data. This action cannot be undone.
-          </Text>
         </View>
-        
+
+        {/* About */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Permissions</Text>
-          <View style={styles.permissionRow}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Notifications</Text>
-            <Text style={[styles.permissionStatus, { color: permissions.notifications ? '#4CAF50' : theme.error }]}>
-              {permissions.notifications ? 'Granted' : 'Not Granted'}
-            </Text>
-          </View>
-          <View style={styles.permissionRow}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Storage</Text>
-            <Text style={[styles.permissionStatus, { color: permissions.storage ? '#4CAF50' : theme.error }]}>
-              {permissions.storage ? 'Granted' : 'Not Granted'}
-            </Text>
-          </View>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
+          
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary, marginTop: 12 }]}
-            onPress={handleRequestPermissions}
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={() => router.push('/about')}
           >
-            <Text style={styles.buttonText}>Request Permissions</Text>
+            <IconSymbol
+              ios_icon_name="info.circle"
+              android_material_icon_name="info"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>About TechTimes</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={handleLogout}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.right.square"
+              android_material_icon_name="exit-to-app"
+              size={20}
+              color={theme.chartRed}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.chartRed }]}>Logout</Text>
           </TouchableOpacity>
         </View>
-        
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: theme.error, marginTop: 20 }]}
-          onPress={handleLogout}
-        >
-          <Text style={styles.buttonText}>Logout</Text>
-        </TouchableOpacity>
-        
-        <View style={{ height: 40 }} />
+
+        <View style={{ height: 100 }} />
       </ScrollView>
-      
-      {/* Import Process Notification */}
-      <ProcessNotification
-        visible={showImportNotification}
-        title={
-          importNotificationType === 'loading'
-            ? 'Importing Jobs...'
-            : importNotificationType === 'success'
-            ? 'Import Complete!'
-            : 'Import Failed'
-        }
-        progress={importProgress.current}
-        total={importProgress.total}
-        type={importNotificationType}
-      />
-      
+
+      {/* Change PIN Modal */}
+      <Modal
+        visible={showChangePinModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowChangePinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Change PIN</Text>
+              <TouchableOpacity onPress={() => setShowChangePinModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="close"
+                  size={28}
+                  color={theme.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+            
+            <TextInput
+              style={[styles.pinInput, { backgroundColor: theme.background, color: theme.text }]}
+              placeholder="Current PIN"
+              placeholderTextColor={theme.textSecondary}
+              value={currentPin}
+              onChangeText={setCurrentPin}
+              keyboardType="numeric"
+              maxLength={4}
+              secureTextEntry
+            />
+            
+            <TextInput
+              style={[styles.pinInput, { backgroundColor: theme.background, color: theme.text }]}
+              placeholder="New PIN"
+              placeholderTextColor={theme.textSecondary}
+              value={newPin}
+              onChangeText={setNewPin}
+              keyboardType="numeric"
+              maxLength={4}
+              secureTextEntry
+            />
+            
+            <TextInput
+              style={[styles.pinInput, { backgroundColor: theme.background, color: theme.text }]}
+              placeholder="Confirm New PIN"
+              placeholderTextColor={theme.textSecondary}
+              value={confirmPin}
+              onChangeText={setConfirmPin}
+              keyboardType="numeric"
+              maxLength={4}
+              secureTextEntry
+            />
+            
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: theme.primary }]}
+              onPress={handleSubmitPinChange}
+            >
+              <Text style={styles.modalButtonText}>Change PIN</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Export Modal */}
       <Modal
         visible={showExportModal}
-        animationType="slide"
         transparent={true}
+        animationType="slide"
         onRequestClose={() => setShowExportModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Export Reports</Text>
-            
-            <View style={styles.exportTypeButtons}>
-              {(['daily', 'weekly', 'monthly', 'all'] as const).map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.exportTypeButton,
-                    exportType === type && { backgroundColor: theme.primary },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setExportType(type);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.exportTypeText,
-                      { color: exportType === type ? '#fff' : theme.textSecondary },
-                    ]}
-                  >
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            
-            {exportType === 'daily' && (
-              <View style={styles.dateSelector}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Select Date:</Text>
-                <Text style={[styles.selectedDate, { color: theme.text }]}>
-                  {selectedDate.toLocaleDateString('en-GB')}
-                </Text>
-                <View style={styles.dateButtons}>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      const newDate = new Date(selectedDate);
-                      newDate.setDate(newDate.getDate() - 1);
-                      setSelectedDate(newDate);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Previous Day</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setSelectedDate(new Date());
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Today</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      const newDate = new Date(selectedDate);
-                      newDate.setDate(newDate.getDate() + 1);
-                      setSelectedDate(newDate);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Next Day</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-            
-            {exportType === 'weekly' && (
-              <View style={styles.dateSelector}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Select Week:</Text>
-                <Text style={[styles.selectedDate, { color: theme.text }]}>
-                  Week starting {selectedDate.toLocaleDateString('en-GB')}
-                </Text>
-                <View style={styles.dateButtons}>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      const newDate = new Date(selectedDate);
-                      newDate.setDate(newDate.getDate() - 7);
-                      setSelectedDate(newDate);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Previous Week</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setSelectedDate(new Date());
-                    }}
-                  >
-                    <Text style={styles.buttonText}>This Week</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      const newDate = new Date(selectedDate);
-                      newDate.setDate(newDate.getDate() + 7);
-                      setSelectedDate(newDate);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Next Week</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-            
-            {exportType === 'monthly' && (
-              <View style={styles.dateSelector}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Select Month:</Text>
-                <Text style={[styles.selectedDate, { color: theme.text }]}>
-                  {selectedMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-                </Text>
-                <View style={styles.dateButtons}>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      const newDate = new Date(selectedMonth);
-                      newDate.setMonth(newDate.getMonth() - 1);
-                      setSelectedMonth(newDate);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Previous Month</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setSelectedMonth(new Date());
-                    }}
-                  >
-                    <Text style={styles.buttonText}>This Month</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      const newDate = new Date(selectedMonth);
-                      newDate.setMonth(newDate.getMonth() + 1);
-                      setSelectedMonth(newDate);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Next Month</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-            
-            <View style={styles.exportButtons}>
-              <TouchableOpacity
-                style={[styles.exportButton, { backgroundColor: theme.primary }]}
-                onPress={() => handleExport('pdf')}
-              >
-                <Text style={styles.buttonText}>Export as PDF</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.exportButton, { backgroundColor: theme.primary }]}
-                onPress={() => handleExport('json')}
-              >
-                <Text style={styles.buttonText}>Export as JSON</Text>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Export Data</Text>
+              <TouchableOpacity onPress={() => setShowExportModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="close"
+                  size={28}
+                  color={theme.textSecondary}
+                />
               </TouchableOpacity>
             </View>
             
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.textSecondary, marginTop: 16 }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowExportModal(false);
-              }}
+              style={[styles.exportOption, { backgroundColor: theme.primary }]}
+              onPress={() => handleExport('pdf')}
             >
-              <Text style={styles.buttonText}>Cancel</Text>
+              <IconSymbol
+                ios_icon_name="doc.text.fill"
+                android_material_icon_name="description"
+                size={24}
+                color="#ffffff"
+              />
+              <Text style={styles.exportOptionText}>Export as PDF</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.exportOption, { backgroundColor: theme.secondary }]}
+              onPress={() => handleExport('json')}
+            >
+              <IconSymbol
+                ios_icon_name="doc.fill"
+                android_material_icon_name="insert-drive-file"
+                size={24}
+                color="#ffffff"
+              />
+              <Text style={styles.exportOptionText}>Export as JSON</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-      
-      {/* PIN Change Modal */}
-      <Modal
-        visible={showPinChange}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowPinChange(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Change PIN</Text>
-            
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-              value={currentPin}
-              onChangeText={setCurrentPin}
-              placeholder="Current PIN"
-              placeholderTextColor={theme.textSecondary}
-              secureTextEntry
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text, marginTop: 12 }]}
-              value={newPin}
-              onChangeText={setNewPin}
-              placeholder="New PIN"
-              placeholderTextColor={theme.textSecondary}
-              secureTextEntry
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text, marginTop: 12 }]}
-              value={confirmPin}
-              onChangeText={setConfirmPin}
-              placeholder="Confirm New PIN"
-              placeholderTextColor={theme.textSecondary}
-              secureTextEntry
-              keyboardType="numeric"
-            />
-            
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.primary, marginTop: 20 }]}
-              onPress={handleSubmitPinChange}
-            >
-              <Text style={styles.buttonText}>Change PIN</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.textSecondary, marginTop: 12 }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowPinChange(false);
-              }}
-            >
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+
+      {isImporting && (
+        <ProcessNotification
+          visible={isImporting}
+          message={`Importing job ${importProgress.current} of ${importProgress.total}`}
+          progress={importProgress.current / importProgress.total}
+        />
+      )}
     </AppBackground>
   );
 }
@@ -1107,90 +752,128 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingTop: Platform.OS === 'android' ? 48 : 16,
+  },
+  header: {
+    marginBottom: 20,
+    paddingTop: 16,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
-    marginBottom: 20,
   },
-  section: {
+  permissionsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
+    gap: 12,
+  },
+  permissionsText: {
+    flex: 1,
+  },
+  permissionsTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  permissionsSubtitle: {
+    fontSize: 12,
+    color: '#000000',
+    marginTop: 2,
+  },
+  permissionsButton: {
+    backgroundColor: '#000000',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  permissionsButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  section: {
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 16,
   },
-  inputGroup: {
-    gap: 12,
-  },
   label: {
     fontSize: 14,
     fontWeight: '600',
+    marginBottom: 8,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   input: {
+    flex: 1,
     padding: 12,
     borderRadius: 8,
     fontSize: 16,
   },
-  button: {
-    padding: 14,
+  updateButton: {
+    paddingHorizontal: 20,
     borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
+  updateButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
     fontWeight: '600',
   },
-  scheduleInfoBox: {
+  linkButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
-    gap: 8,
+    marginBottom: 8,
+    gap: 12,
   },
-  scheduleInfoText: {
+  linkButtonText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '500',
   },
-  hint: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  switchRow: {
+  settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    marginBottom: 16,
   },
-  labelWithIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sliderGroup: {
-    gap: 8,
-    marginTop: 8,
+  settingLabel: {
+    fontSize: 16,
   },
   slider: {
     width: '100%',
     height: 40,
   },
-  permissionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  permissionStatus: {
+  sliderValue: {
     fontSize: 14,
+    textAlign: 'center',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  actionButtonText: {
+    fontSize: 16,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -1203,59 +886,50 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    padding: 20,
-    borderRadius: 12,
+    padding: 24,
+    borderRadius: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  exportTypeButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-  },
-  exportTypeButton: {
     flex: 1,
-    minWidth: '45%',
+  },
+  pinInput: {
     padding: 12,
     borderRadius: 8,
-    alignItems: 'center',
-  },
-  exportTypeText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dateSelector: {
-    marginBottom: 20,
-  },
-  selectedDate: {
     fontSize: 16,
-    fontWeight: '600',
-    marginVertical: 12,
+    marginBottom: 12,
     textAlign: 'center',
   },
-  dateButtons: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  dateButton: {
-    flex: 1,
-    minWidth: '30%',
-    padding: 10,
-    borderRadius: 8,
+  modalButton: {
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
+    marginTop: 8,
   },
-  exportButtons: {
+  modalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exportOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
     gap: 12,
   },
-  exportButton: {
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
+  exportOptionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

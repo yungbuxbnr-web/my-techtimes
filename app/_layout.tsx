@@ -1,99 +1,123 @@
 
 import { Stack } from 'expo-router';
-import { useEffect } from 'react';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { useEffect, useState } from 'react';
+import { BackHandler, Alert, Platform } from 'react-native';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { WidgetProvider } from '@/contexts/WidgetContext';
+import { AuthProvider } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import * as SplashScreen from 'expo-splash-screen';
-import 'react-native-reanimated';
 
-SplashScreen.preventAutoHideAsync();
+let backPressCount = 0;
+let backPressTimer: NodeJS.Timeout | null = null;
 
 export default function RootLayout() {
+  const [isReady, setIsReady] = useState(false);
+
   useEffect(() => {
-    console.log('RootLayout: App initialized');
-    SplashScreen.hideAsync();
+    console.log('RootLayout: App initializing');
+    setIsReady(true);
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      console.log('RootLayout: Back button pressed, count:', backPressCount + 1);
+      
+      backPressCount++;
+      
+      if (backPressCount === 1) {
+        // First back press - show toast
+        console.log('RootLayout: First back press - showing toast');
+        Alert.alert(
+          'Exit App',
+          'Press back again to exit or minimize to run in background',
+          [
+            {
+              text: 'Minimize to Background',
+              onPress: () => {
+                console.log('RootLayout: User chose to minimize to background');
+                BackHandler.exitApp();
+                backPressCount = 0;
+              },
+            },
+            {
+              text: 'Exit App',
+              onPress: () => {
+                console.log('RootLayout: User chose to exit app');
+                BackHandler.exitApp();
+              },
+              style: 'destructive',
+            },
+            {
+              text: 'Cancel',
+              onPress: () => {
+                console.log('RootLayout: User cancelled exit');
+                backPressCount = 0;
+              },
+              style: 'cancel',
+            },
+          ]
+        );
+        
+        // Reset counter after 2 seconds
+        if (backPressTimer) clearTimeout(backPressTimer);
+        backPressTimer = setTimeout(() => {
+          backPressCount = 0;
+        }, 2000);
+        
+        return true; // Prevent default back behavior
+      }
+      
+      return false;
+    });
+
+    return () => {
+      backHandler.remove();
+      if (backPressTimer) clearTimeout(backPressTimer);
+    };
+  }, []);
+
+  if (!isReady) {
+    return null;
+  }
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ThemeProvider>
-          <WidgetProvider>
-            <ToastProvider>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  animation: 'fade',
-                }}
-              >
-                <Stack.Screen name="index" />
-                <Stack.Screen name="pin-login" />
-                <Stack.Screen name="setup" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen
-                  name="add-job-modal"
-                  options={{
-                    presentation: 'modal',
-                    animation: 'slide_from_bottom',
-                  }}
-                />
-                <Stack.Screen
-                  name="edit-work-schedule"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-                <Stack.Screen
-                  name="work-calendar"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-                <Stack.Screen
-                  name="calendar"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-                <Stack.Screen
-                  name="notification-settings"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-                <Stack.Screen
-                  name="about"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-                <Stack.Screen
-                  name="efficiency-details"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-                <Stack.Screen
-                  name="target-details"
-                  options={{
-                    presentation: 'card',
-                    animation: 'slide_from_right',
-                  }}
-                />
-              </Stack>
-            </ToastProvider>
-          </WidgetProvider>
-        </ThemeProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            >
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="pin-login" options={{ headerShown: false }} />
+              <Stack.Screen name="setup" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="add-job-modal" options={{ presentation: 'modal', headerShown: false }} />
+              <Stack.Screen name="calendar" options={{ headerShown: false }} />
+              <Stack.Screen name="edit-work-schedule" options={{ headerShown: false }} />
+              <Stack.Screen name="work-calendar" options={{ headerShown: false }} />
+              <Stack.Screen name="absence-logger" options={{ headerShown: false }} />
+              <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
+              <Stack.Screen name="target-details" options={{ headerShown: false }} />
+              <Stack.Screen name="efficiency-details" options={{ headerShown: false }} />
+              <Stack.Screen name="about" options={{ headerShown: false }} />
+              <Stack.Screen name="formulas" options={{ headerShown: false }} />
+              <Stack.Screen name="job-stats" options={{ headerShown: false }} />
+              <Stack.Screen name="total-aws-details" options={{ headerShown: false }} />
+              <Stack.Screen name="time-logged-details" options={{ headerShown: false }} />
+              <Stack.Screen name="jobs-done-details" options={{ headerShown: false }} />
+              <Stack.Screen name="hours-remaining-details" options={{ headerShown: false }} />
+              <Stack.Screen name="today-details" options={{ headerShown: false }} />
+              <Stack.Screen name="week-details" options={{ headerShown: false }} />
+            </Stack>
+          </ToastProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
