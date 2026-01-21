@@ -385,34 +385,64 @@ export default function DashboardScreen() {
 
         {/* Stat Tiles */}
         <View style={styles.statsGrid}>
-          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+          <TouchableOpacity
+            style={[styles.statTile, { backgroundColor: theme.card }]}
+            onPress={() => {
+              console.log('DashboardScreen: User tapped Total AWs tile');
+              router.push(`/total-aws-details?month=${getCurrentMonth()}`);
+            }}
+          >
             <Text style={[styles.statValue, { color: theme.primary }]}>{monthlyStats.totalAw}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total AWs</Text>
             <Text style={[styles.statSubLabel, { color: theme.textSecondary }]}>This Month</Text>
-          </View>
-          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.statTile, { backgroundColor: theme.card }]}
+            onPress={() => {
+              console.log('DashboardScreen: User tapped Time Logged tile');
+              router.push(`/time-logged-details?month=${getCurrentMonth()}`);
+            }}
+          >
             <Text style={[styles.statValue, { color: theme.primary }]}>
               {formatTime(monthlyStats.totalAw * 5)}
             </Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Time Logged</Text>
             <Text style={[styles.statSubLabel, { color: theme.textSecondary }]}>This Month</Text>
-          </View>
-          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.statTile, { backgroundColor: theme.card }]}
+            onPress={() => {
+              console.log('DashboardScreen: User tapped Jobs Done tile');
+              router.push(`/jobs-done-details?month=${getCurrentMonth()}`);
+            }}
+          >
             <Text style={[styles.statValue, { color: theme.primary }]}>{monthlyStats.totalJobs}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Jobs Done</Text>
             <Text style={[styles.statSubLabel, { color: theme.textSecondary }]}>This Month</Text>
-          </View>
-          <View style={[styles.statTile, { backgroundColor: theme.card }]}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.statTile, { backgroundColor: theme.card }]}
+            onPress={() => {
+              console.log('DashboardScreen: User tapped Hours Remaining tile');
+              router.push(`/hours-remaining-details?month=${getCurrentMonth()}`);
+            }}
+          >
             <Text style={[styles.statValue, { color: theme.primary }]}>
               {monthlyStats.remainingHours.toFixed(1)}h
             </Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Hours Remaining</Text>
             <Text style={[styles.statSubLabel, { color: theme.textSecondary }]}>To Target</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Today Card */}
-        <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
+        <TouchableOpacity
+          style={[styles.periodCard, { backgroundColor: theme.card }]}
+          onPress={() => {
+            console.log('DashboardScreen: User tapped Today card');
+            router.push('/today-details');
+          }}
+        >
           <Text style={[styles.periodTitle, { color: theme.text }]}>Today</Text>
           <Text style={[styles.periodSubtitle, { color: theme.textSecondary }]}>
             {todayStats.jobCount} jobs • {todayStats.totalAw} AWs
@@ -420,10 +450,16 @@ export default function DashboardScreen() {
           <Text style={[styles.periodTime, { color: theme.primary }]}>
             {formatTime(todayStats.totalMinutes)}
           </Text>
-        </View>
+        </TouchableOpacity>
 
         {/* This Week Card */}
-        <View style={[styles.periodCard, { backgroundColor: theme.card }]}>
+        <TouchableOpacity
+          style={[styles.periodCard, { backgroundColor: theme.card }]}
+          onPress={() => {
+            console.log('DashboardScreen: User tapped This Week card');
+            router.push('/week-details');
+          }}
+        >
           <Text style={[styles.periodTitle, { color: theme.text }]}>This Week</Text>
           <Text style={[styles.periodSubtitle, { color: theme.textSecondary }]}>
             {weekStats.jobCount} jobs • {weekStats.totalAw} AWs
@@ -431,7 +467,7 @@ export default function DashboardScreen() {
           <Text style={[styles.periodTime, { color: theme.primary }]}>
             {formatTime(weekStats.totalMinutes)}
           </Text>
-        </View>
+        </TouchableOpacity>
 
         {/* Add New Job Button */}
         <TouchableOpacity

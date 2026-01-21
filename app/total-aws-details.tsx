@@ -6,74 +6,86 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { useThemeContext } from '@/contexts/ThemeContext';
+import { api, Job } from '@/utils/api';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
-import { api } from '@/utils/api';
-import { formatTime } from '@/utils/jobCalculations';
+import { useThemeContext } from '@/contexts/ThemeContext';
+import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
 
 export default function TotalAwsDetailsScreen() {
   const { theme } = useThemeContext();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const month = params.month as string;
+  const month = (params.month as string) || getCurrentMonth();
   
-  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [totalAw, setTotalAw] = useState(0);
+  const [averageAw, setAverageAw] = useState(0);
+  const [highestAw, setHighestAw] = useState(0);
+  const [lowestAw, setLowestAw] = useState(0);
+  const [awDistribution, setAwDistribution] = useState<{ range: string; count: number; percentage: number }[]>([]);
 
   useEffect(() => {
-    loadStats();
+    loadAwDetails();
   }, [month]);
 
-  const loadStats = async () => {
+  const getCurrentMonth = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const loadAwDetails = async () => {
     try {
-      const monthlyStats = await api.getMonthlyStats(month);
-      const jobs = await api.getJobsForMonth(month);
+      console.log('TotalAwsDetailsScreen: Loading AW details for month', month);
+      setLoading(true);
       
-      // Calculate distribution
-      const awDistribution: { [key: number]: number } = {};
-      jobs.forEach(job => {
-        awDistribution[job.aw] = (awDistribution[job.aw] || 0) + 1;
+      const monthJobs = await api.getJobsForMonth(month);
+      setJobs(monthJobs);
+      
+      const total = monthJobs.reduce((sum, job) => sum + job.aw, 0);
+      setTotalAw(total);
+      
+      const avg = monthJobs.length > 0 ? total / monthJobs.length : 0;
+      setAverageAw(avg);
+      
+      const awValues = monthJobs.map(job => job.aw);
+      const highest = awValues.length > 0 ? Math.max(...awValues) : 0;
+      const lowest = awValues.length > 0 ? Math.min(...awValues) : 0;
+      setHighestAw(highest);
+      setLowestAw(lowest);
+      
+      // Calculate AW distribution
+      const ranges = [
+        { range: '0-10 AWs', min: 0, max: 10 },
+        { range: '11-20 AWs', min: 11, max: 20 },
+        { range: '21-30 AWs', min: 21, max: 30 },
+        { range: '31-40 AWs', min: 31, max: 40 },
+        { range: '41-50 AWs', min: 41, max: 50 },
+        { range: '51+ AWs', min: 51, max: Infinity },
+      ];
+      
+      const distribution = ranges.map(({ range, min, max }) => {
+        const count = monthJobs.filter(job => job.aw >= min && job.aw <= max).length;
+        const percentage = monthJobs.length > 0 ? (count / monthJobs.length) * 100 : 0;
+        return { range, count, percentage };
       });
       
-      const sortedDistribution = Object.entries(awDistribution)
-        .sort(([a], [b]) => parseInt(b) - parseInt(a))
-        .slice(0, 10);
+      setAwDistribution(distribution);
       
-      setStats({
-        ...monthlyStats,
-        jobs,
-        awDistribution: sortedDistribution,
-        averageAw: jobs.length > 0 ? monthlyStats.totalAw / jobs.length : 0,
-        maxAw: jobs.length > 0 ? Math.max(...jobs.map(j => j.aw)) : 0,
-        minAw: jobs.length > 0 ? Math.min(...jobs.map(j => j.aw)) : 0,
-      });
+      console.log('TotalAwsDetailsScreen: AW details loaded successfully');
     } catch (error) {
-      console.error('TotalAwsDetailsScreen: Error loading stats:', error);
+      console.error('TotalAwsDetailsScreen: Error loading AW details:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading || !stats) {
-    return (
-      <AppBackground>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Total AWs Details',
-            headerStyle: { backgroundColor: theme.card },
-            headerTintColor: theme.text,
-          }}
-        />
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.text }]}>Loading details...</Text>
-        </View>
-      </AppBackground>
-    );
-  }
+  const totalMinutes = totalAw * 5;
+  const totalHours = totalMinutes / 60;
 
   return (
     <AppBackground>
@@ -83,87 +95,137 @@ export default function TotalAwsDetailsScreen() {
           title: 'Total AWs Details',
           headerStyle: { backgroundColor: theme.card },
           headerTintColor: theme.text,
+          headerBackTitle: 'Back',
         }}
       />
+      
       <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, Platform.OS === 'android' && { paddingTop: 16 }]}
       >
-        {/* Summary Card */}
-        <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
-          <Text style={[styles.summaryTitle, { color: theme.text }]}>Total AWs Summary</Text>
-          <Text style={[styles.summaryValue, { color: theme.primary }]}>{stats.totalAw}</Text>
-          <Text style={[styles.summarySubtitle, { color: theme.textSecondary }]}>
-            {new Date(month).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+        <View style={[styles.header, { backgroundColor: theme.card }]}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Total AWs Analysis</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+            {new Date(month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </Text>
         </View>
 
-        {/* Statistics */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Statistics</Text>
-          
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Jobs:</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{stats.totalJobs}</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={[styles.loadingText, { color: theme.text }]}>Loading...</Text>
           </View>
-          
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Average AW per Job:</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{stats.averageAw.toFixed(2)}</Text>
-          </View>
-          
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Highest AW:</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{stats.maxAw}</Text>
-          </View>
-          
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Lowest AW:</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{stats.minAw}</Text>
-          </View>
-          
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Time:</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{formatTime(stats.totalAw * 5)}</Text>
-          </View>
-          
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Hours:</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{stats.soldHours.toFixed(2)}h</Text>
-          </View>
-        </View>
+        ) : (
+          <>
+            {/* Summary Card */}
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Summary</Text>
+              
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total AWs:</Text>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{totalAw}</Text>
+              </View>
+              
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Time:</Text>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{formatTime(totalMinutes)}</Text>
+              </View>
+              
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Decimal Hours:</Text>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{formatDecimalHours(totalMinutes)}</Text>
+              </View>
+              
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Jobs:</Text>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{jobs.length}</Text>
+              </View>
+            </View>
 
-        {/* AW Distribution */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Top 10 AW Values</Text>
-          <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
-            Most common AW values this month
-          </Text>
-          
-          {stats.awDistribution.map(([aw, count]: [string, number], index: number) => {
-            const percentage = (count / stats.totalJobs) * 100;
-            return (
-              <View key={aw} style={styles.distributionRow}>
-                <View style={styles.distributionInfo}>
-                  <Text style={[styles.distributionAw, { color: theme.text }]}>{aw} AWs</Text>
-                  <Text style={[styles.distributionCount, { color: theme.textSecondary }]}>
-                    {count} job{count !== 1 ? 's' : ''} ({percentage.toFixed(1)}%)
-                  </Text>
+            {/* Statistics Card */}
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Statistics</Text>
+              
+              <View style={styles.statRow}>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Average AW</Text>
+                  <Text style={[styles.statValue, { color: theme.text }]}>{averageAw.toFixed(1)}</Text>
                 </View>
-                <View style={[styles.distributionBar, { backgroundColor: theme.background }]}>
-                  <View
-                    style={[
-                      styles.distributionBarFill,
-                      { width: `${percentage}%`, backgroundColor: theme.primary },
-                    ]}
-                  />
+                
+                <View style={styles.statItem}>
+                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Highest AW</Text>
+                  <Text style={[styles.statValue, { color: theme.chartGreen }]}>{highestAw}</Text>
                 </View>
               </View>
-            );
-          })}
-        </View>
+              
+              <View style={styles.statRow}>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Lowest AW</Text>
+                  <Text style={[styles.statValue, { color: theme.chartRed }]}>{lowestAw}</Text>
+                </View>
+                
+                <View style={styles.statItem}>
+                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Avg Time/Job</Text>
+                  <Text style={[styles.statValue, { color: theme.text }]}>
+                    {jobs.length > 0 ? formatTime((totalMinutes / jobs.length)) : '0:00'}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
-        <View style={{ height: 40 }} />
+            {/* Distribution Card */}
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>AW Distribution</Text>
+              
+              {awDistribution.map((item, index) => (
+                <View key={index} style={styles.distributionRow}>
+                  <Text style={[styles.distributionLabel, { color: theme.textSecondary }]}>
+                    {item.range}
+                  </Text>
+                  <View style={styles.distributionBar}>
+                    <View
+                      style={[
+                        styles.distributionFill,
+                        { backgroundColor: theme.primary, width: `${item.percentage}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.distributionCount, { color: theme.text }]}>
+                    {item.count} ({item.percentage.toFixed(0)}%)
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Quick Actions */}
+            <View style={styles.actionsContainer}>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: theme.primary }]}
+                onPress={() => router.push('/(tabs)/jobs')}
+              >
+                <IconSymbol
+                  ios_icon_name="list.bullet"
+                  android_material_icon_name="list"
+                  size={20}
+                  color="#ffffff"
+                />
+                <Text style={styles.actionButtonText}>View All Jobs</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: theme.accent }]}
+                onPress={() => router.push('/job-stats')}
+              >
+                <IconSymbol
+                  ios_icon_name="chart.bar"
+                  android_material_icon_name="bar-chart"
+                  size={20}
+                  color="#ffffff"
+                />
+                <Text style={styles.actionButtonText}>Job Stats</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </ScrollView>
     </AppBackground>
   );
@@ -175,41 +237,11 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
+    paddingBottom: 100,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-  },
-  summaryCard: {
-    padding: 24,
-    borderRadius: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  summaryTitle: {
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  summaryValue: {
-    fontSize: 64,
-    fontWeight: 'bold',
-  },
-  summarySubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  section: {
+  header: {
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -217,49 +249,112 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  sectionTitle: {
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 4,
   },
-  sectionSubtitle: {
-    fontSize: 13,
+  headerSubtitle: {
+    fontSize: 14,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  card: {
+    padding: 20,
+    borderRadius: 16,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  summaryLabel: {
+    fontSize: 15,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   statLabel: {
-    fontSize: 14,
+    fontSize: 12,
+    marginBottom: 8,
   },
   statValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
   distributionRow: {
     marginBottom: 16,
   },
-  distributionInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  distributionLabel: {
+    fontSize: 13,
     marginBottom: 6,
   },
-  distributionAw: {
-    fontSize: 14,
-    fontWeight: '600',
+  distributionBar: {
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  distributionFill: {
+    height: '100%',
+    borderRadius: 12,
   },
   distributionCount: {
     fontSize: 12,
+    textAlign: 'right',
   },
-  distributionBar: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
   },
-  distributionBarFill: {
-    height: '100%',
-    borderRadius: 4,
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  actionButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
