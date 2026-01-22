@@ -709,86 +709,169 @@ export async function exportToJson(jobs: Job[]): Promise<string> {
 
 // Import from JSON - Parse the exact format from the user (PRIORITY)
 export async function importFromJson(
-  jsonUri: string,
+  fileUri: string,
   onProgress: (current: number, total: number, job: any) => void
 ): Promise<{ imported: number; skipped: number; errors: string[]; jobs: any[] }> {
-  console.log('ExportUtils: Importing jobs from JSON (PRIORITY FORMAT):', jsonUri);
+  console.log('ExportUtils: Starting import from JSON (PRIORITY FORMAT):', fileUri);
   
-  const jsonString = await FileSystem.readAsStringAsync(jsonUri);
-  console.log('ExportUtils: Read JSON string, length:', jsonString.length);
-  
-  const importData = JSON.parse(jsonString);
-  console.log('ExportUtils: Parsed JSON, found', importData.jobs?.length, 'jobs');
-  
-  if (!importData.jobs || !Array.isArray(importData.jobs)) {
-    throw new Error('Invalid JSON format: missing jobs array');
-  }
-  
-  const results = {
-    imported: 0,
-    skipped: 0,
-    errors: [] as string[],
-    jobs: [] as any[],
-  };
-  
-  const total = importData.jobs.length;
-  
-  for (let i = 0; i < importData.jobs.length; i++) {
-    const job = importData.jobs[i];
+  try {
+    // Read the file content
+    const jsonString = await FileSystem.readAsStringAsync(fileUri);
+    console.log('ExportUtils: Read JSON file, length:', jsonString.length);
     
+    // Parse the JSON
+    let importData;
     try {
-      onProgress(i + 1, total, job);
-      
-      // Map the JSON format to our internal format
-      // JSON format: wipNumber, vehicleReg, vhcStatus, description, aws, jobDateTime
-      // Internal format: wipNumber, vehicleReg, vhcStatus, notes, aw, createdAt
-      
-      const awValue = job.aws !== undefined ? job.aws : job.aw;
-      const notes = job.description !== undefined ? job.description : job.notes;
-      const createdAt = job.jobDateTime !== undefined ? job.jobDateTime : job.createdAt;
-      const vhcStatus = job.vhcStatus || 'NONE';
-      
-      // Validate required fields
-      if (!job.wipNumber || !job.vehicleReg || awValue === undefined || !createdAt) {
-        results.skipped++;
-        results.errors.push(`Job ${i + 1}: Missing required fields (wipNumber: ${job.wipNumber}, vehicleReg: ${job.vehicleReg}, aws: ${awValue}, jobDateTime: ${createdAt})`);
-        console.warn('ExportUtils: Skipping job', i + 1, 'due to missing fields:', job);
-        continue;
-      }
-      
-      // Validate vhcStatus
-      const validVhcStatuses = ['NONE', 'GREEN', 'ORANGE', 'RED'];
-      if (!validVhcStatuses.includes(vhcStatus)) {
-        results.skipped++;
-        results.errors.push(`Job ${i + 1}: Invalid vhcStatus "${vhcStatus}". Must be one of: NONE, GREEN, ORANGE, RED`);
-        console.warn('ExportUtils: Skipping job', i + 1, 'due to invalid vhcStatus:', vhcStatus);
-        continue;
-      }
-      
-      // Create the job object in the format expected by the API
-      const jobToImport = {
-        wipNumber: job.wipNumber,
-        vehicleReg: job.vehicleReg.toUpperCase(),
-        aw: awValue,
-        notes: notes || '',
-        vhcStatus: vhcStatus as 'NONE' | 'GREEN' | 'ORANGE' | 'RED',
-        createdAt: createdAt,
-      };
-      
-      results.jobs.push(jobToImport);
-      results.imported++;
-      
-      console.log('ExportUtils: Prepared job', i + 1, '/', total, ':', jobToImport);
-      
-      // Small delay to show progress
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (error) {
-      results.skipped++;
-      results.errors.push(`Job ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.error('ExportUtils: Error processing job', i + 1, error);
+      importData = JSON.parse(jsonString);
+      console.log('ExportUtils: Successfully parsed JSON');
+    } catch (parseError) {
+      console.error('ExportUtils: JSON parse error:', parseError);
+      throw new Error('Invalid JSON file format. Please ensure the file is a valid TechTimes backup.');
     }
+    
+    // Validate the JSON structure
+    if (!importData) {
+      throw new Error('Empty JSON file');
+    }
+    
+    if (!importData.jobs) {
+      throw new Error('Invalid JSON format: missing "jobs" array');
+    }
+    
+    if (!Array.isArray(importData.jobs)) {
+      throw new Error('Invalid JSON format: "jobs" must be an array');
+    }
+    
+    console.log('ExportUtils: Found', importData.jobs.length, 'jobs in import file');
+    console.log('ExportUtils: Export date:', importData.exportDate);
+    console.log('ExportUtils: Version:', importData.version);
+    
+    const results = {
+      imported: 0,
+      skipped: 0,
+      errors: [] as string[],
+      jobs: [] as any[],
+    };
+    
+    const total = importData.jobs.length;
+    
+    if (total === 0) {
+      console.log('ExportUtils: No jobs to import');
+      return results;
+    }
+    
+    // Process each job
+    for (let i = 0; i < importData.jobs.length; i++) {
+      const job = importData.jobs[i];
+      
+      try {
+        // Report progress
+        onProgress(i + 1, total, job);
+        
+        // Map the JSON format to our internal format
+        // JSON format: wipNumber, vehicleReg, vhcStatus, description, aws, jobDateTime
+        // Internal format: wipNumber, vehicleReg, vhcStatus, notes, aw, createdAt
+        
+        const wipNumber = job.wipNumber;
+        const vehicleReg = job.vehicleReg;
+        const awValue = job.aws !== undefined ? job.aws : job.aw;
+        const notes = job.description !== undefined ? job.description : (job.notes || '');
+        const createdAt = job.jobDateTime !== undefined ? job.jobDateTime : job.createdAt;
+        const vhcStatus = job.vhcStatus || 'NONE';
+        
+        // Validate required fields
+        if (!wipNumber) {
+          results.skipped++;
+          results.errors.push(`Job ${i + 1}: Missing wipNumber`);
+          console.warn('ExportUtils: Skipping job', i + 1, '- missing wipNumber');
+          continue;
+        }
+        
+        if (!vehicleReg) {
+          results.skipped++;
+          results.errors.push(`Job ${i + 1}: Missing vehicleReg`);
+          console.warn('ExportUtils: Skipping job', i + 1, '- missing vehicleReg');
+          continue;
+        }
+        
+        if (awValue === undefined || awValue === null) {
+          results.skipped++;
+          results.errors.push(`Job ${i + 1}: Missing aws/aw value`);
+          console.warn('ExportUtils: Skipping job', i + 1, '- missing aws/aw value');
+          continue;
+        }
+        
+        if (!createdAt) {
+          results.skipped++;
+          results.errors.push(`Job ${i + 1}: Missing jobDateTime/createdAt`);
+          console.warn('ExportUtils: Skipping job', i + 1, '- missing jobDateTime/createdAt');
+          continue;
+        }
+        
+        // Validate vhcStatus
+        const validVhcStatuses = ['NONE', 'GREEN', 'ORANGE', 'RED', 'AMBER'];
+        let normalizedVhcStatus = vhcStatus.toUpperCase();
+        
+        // Handle AMBER -> ORANGE conversion
+        if (normalizedVhcStatus === 'AMBER') {
+          normalizedVhcStatus = 'ORANGE';
+        }
+        
+        if (!validVhcStatuses.includes(normalizedVhcStatus)) {
+          results.skipped++;
+          results.errors.push(`Job ${i + 1}: Invalid vhcStatus "${vhcStatus}". Must be one of: NONE, GREEN, ORANGE/AMBER, RED`);
+          console.warn('ExportUtils: Skipping job', i + 1, '- invalid vhcStatus:', vhcStatus);
+          continue;
+        }
+        
+        // Validate AW value
+        const awNumber = Number(awValue);
+        if (isNaN(awNumber) || awNumber < 0) {
+          results.skipped++;
+          results.errors.push(`Job ${i + 1}: Invalid aws value "${awValue}". Must be a positive number`);
+          console.warn('ExportUtils: Skipping job', i + 1, '- invalid aws value:', awValue);
+          continue;
+        }
+        
+        // Create the job object in the format expected by the API
+        const jobToImport = {
+          wipNumber: String(wipNumber).trim(),
+          vehicleReg: String(vehicleReg).trim().toUpperCase(),
+          aw: awNumber,
+          notes: String(notes || '').trim(),
+          vhcStatus: normalizedVhcStatus as 'NONE' | 'GREEN' | 'ORANGE' | 'RED',
+          createdAt: createdAt,
+        };
+        
+        results.jobs.push(jobToImport);
+        results.imported++;
+        
+        console.log('ExportUtils: Prepared job', i + 1, '/', total, ':', {
+          wipNumber: jobToImport.wipNumber,
+          vehicleReg: jobToImport.vehicleReg,
+          aw: jobToImport.aw,
+          vhcStatus: jobToImport.vhcStatus,
+        });
+        
+        // Small delay to show progress
+        await new Promise(resolve => setTimeout(resolve, 50));
+      } catch (error) {
+        results.skipped++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.errors.push(`Job ${i + 1}: ${errorMessage}`);
+        console.error('ExportUtils: Error processing job', i + 1, ':', error);
+      }
+    }
+    
+    console.log('ExportUtils: Import parsing complete -', results.imported, 'prepared,', results.skipped, 'skipped');
+    
+    if (results.errors.length > 0) {
+      console.log('ExportUtils: Import errors:', results.errors);
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('ExportUtils: Fatal import error:', error);
+    throw error;
   }
-  
-  console.log('ExportUtils: Import parsing complete -', results.imported, 'prepared,', results.skipped, 'skipped');
-  return results;
 }

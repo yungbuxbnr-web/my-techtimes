@@ -244,16 +244,21 @@ export default function SettingsScreen() {
 
   const handleImportJobs = async () => {
     console.log('SettingsScreen: User starting import process');
+    
     try {
+      // Pick the JSON file
+      console.log('SettingsScreen: Opening document picker');
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
         copyToCacheDirectory: true,
       });
       
-      console.log('SettingsScreen: DocumentPicker result:', result);
+      console.log('SettingsScreen: DocumentPicker result:', JSON.stringify(result, null, 2));
       
+      // Check if user cancelled
       if (result.canceled) {
         console.log('SettingsScreen: User cancelled import');
+        toastManager.show('Import cancelled', 'info');
         return;
       }
       
@@ -265,7 +270,8 @@ export default function SettingsScreen() {
       }
       
       const fileUri = result.assets[0].uri;
-      console.log('SettingsScreen: Selected file:', fileUri);
+      const fileName = result.assets[0].name;
+      console.log('SettingsScreen: Selected file:', fileName, 'URI:', fileUri);
       
       // Validate file URI
       if (!fileUri) {
@@ -274,8 +280,28 @@ export default function SettingsScreen() {
         return;
       }
       
+      // Check if file exists
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        console.log('SettingsScreen: File info:', fileInfo);
+        
+        if (!fileInfo.exists) {
+          console.error('SettingsScreen: File does not exist at URI:', fileUri);
+          Alert.alert('Error', 'Selected file could not be accessed. Please try again.');
+          return;
+        }
+      } catch (fileCheckError) {
+        console.error('SettingsScreen: Error checking file:', fileCheckError);
+        Alert.alert('Error', 'Could not access the selected file. Please try again.');
+        return;
+      }
+      
+      // Start import process
       setIsImporting(true);
       setShowImportModal(false);
+      setImportProgress({ current: 0, total: 0, job: null });
+      
+      console.log('SettingsScreen: Starting JSON parsing');
       
       let importResults;
       try {
@@ -286,54 +312,89 @@ export default function SettingsScreen() {
             setImportProgress({ current, total, job });
           }
         );
+        
+        console.log('SettingsScreen: Import parsing complete:', importResults);
       } catch (parseError) {
         console.error('SettingsScreen: Error parsing JSON file:', parseError);
         setIsImporting(false);
+        
+        const errorMessage = parseError instanceof Error ? parseError.message : 'Invalid JSON format';
         Alert.alert(
           'Import Error',
-          `Failed to parse JSON file: ${parseError instanceof Error ? parseError.message : 'Invalid JSON format'}\n\nPlease ensure the file is a valid TechTimes backup file.`
+          `Failed to parse JSON file: ${errorMessage}\n\nPlease ensure the file is a valid TechTimes backup file.`
         );
         return;
       }
-      
-      console.log('SettingsScreen: Import results:', importResults);
       
       // Validate import results
       if (!importResults || !importResults.jobs || importResults.jobs.length === 0) {
         setIsImporting(false);
+        
+        const errorInfo = importResults && importResults.errors.length > 0
+          ? `\n\nErrors:\n${importResults.errors.slice(0, 3).join('\n')}`
+          : '';
+        
         Alert.alert(
           'Import Error',
-          'No valid jobs found in the file. Please check the file format and try again.'
+          `No valid jobs found in the file.${errorInfo}\n\nPlease check the file format and try again.`
         );
         return;
       }
       
+      console.log('SettingsScreen: Starting to create jobs in database');
+      
       // Now import the jobs to the API
       let successCount = 0;
       let failCount = 0;
+      const failedJobs = [];
       
       for (let i = 0; i < importResults.jobs.length; i++) {
         const job = importResults.jobs[i];
+        
         try {
-          console.log('SettingsScreen: Creating job', i + 1, '/', importResults.jobs.length, ':', job);
+          console.log('SettingsScreen: Creating job', i + 1, '/', importResults.jobs.length, ':', {
+            wipNumber: job.wipNumber,
+            vehicleReg: job.vehicleReg,
+            aw: job.aw,
+          });
+          
           await api.createJob(job);
           successCount++;
-        } catch (error) {
-          console.error('SettingsScreen: Error creating job:', error);
+          
+          // Update progress
+          setImportProgress({ 
+            current: i + 1, 
+            total: importResults.jobs.length, 
+            job: job 
+          });
+          
+        } catch (createError) {
+          console.error('SettingsScreen: Error creating job:', createError);
           failCount++;
+          failedJobs.push({
+            job: job,
+            error: createError instanceof Error ? createError.message : 'Unknown error',
+          });
         }
       }
       
       setIsImporting(false);
       
-      if (importResults.errors.length > 0 || failCount > 0) {
-        const errorMessage = importResults.errors.length > 0 
-          ? `\n\nParsing Errors:\n${importResults.errors.slice(0, 5).join('\n')}${importResults.errors.length > 5 ? '\n...' : ''}`
+      console.log('SettingsScreen: Import complete - Success:', successCount, 'Failed:', failCount);
+      
+      // Show results
+      if (failCount > 0 || importResults.skipped > 0) {
+        const failedInfo = failedJobs.length > 0
+          ? `\n\nFailed jobs:\n${failedJobs.slice(0, 3).map(f => `${f.job.wipNumber}: ${f.error}`).join('\n')}`
+          : '';
+        
+        const skippedInfo = importResults.errors.length > 0
+          ? `\n\nSkipped (parsing errors):\n${importResults.errors.slice(0, 3).join('\n')}`
           : '';
         
         Alert.alert(
           'Import Complete with Warnings',
-          `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped: ${importResults.skipped}${errorMessage}`,
+          `Successfully imported: ${successCount}\nFailed to create: ${failCount}\nSkipped (invalid): ${importResults.skipped}${failedInfo}${skippedInfo}`,
           [{ text: 'OK' }]
         );
       } else {
@@ -344,13 +405,18 @@ export default function SettingsScreen() {
         );
       }
       
-      toastManager.show(`Imported ${successCount} jobs successfully`, 'success');
+      if (successCount > 0) {
+        toastManager.show(`Imported ${successCount} jobs successfully`, 'success');
+      }
+      
     } catch (error) {
-      console.error('SettingsScreen: Error importing:', error);
+      console.error('SettingsScreen: Fatal import error:', error);
       setIsImporting(false);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       Alert.alert(
         'Import Error', 
-        `Failed to import data: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease ensure you selected a valid JSON backup file.`
+        `Failed to import data: ${errorMessage}\n\nPlease ensure you selected a valid JSON backup file.`
       );
     }
   };
@@ -424,6 +490,10 @@ export default function SettingsScreen() {
       ]
     );
   };
+
+  const progressMessage = importProgress.total > 0
+    ? `Importing job ${importProgress.current} of ${importProgress.total}`
+    : 'Preparing import...';
 
   return (
     <AppBackground>
@@ -934,8 +1004,8 @@ export default function SettingsScreen() {
       {isImporting && (
         <ProcessNotification
           visible={isImporting}
-          message={`Importing job ${importProgress.current} of ${importProgress.total}`}
-          progress={importProgress.current / importProgress.total}
+          message={progressMessage}
+          progress={importProgress.total > 0 ? importProgress.current / importProgress.total : 0}
         />
       )}
     </AppBackground>
