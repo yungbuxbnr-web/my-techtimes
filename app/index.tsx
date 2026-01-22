@@ -3,10 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { SplashScreen } from '@/components/SplashScreen';
 
 export default function Index() {
   const { isAuthenticated, setupComplete, loading } = useAuth();
   const [ready, setReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     console.log('Index: Auth state - loading:', loading, 'setupComplete:', setupComplete, 'isAuthenticated:', isAuthenticated);
@@ -14,6 +16,16 @@ export default function Index() {
       setReady(true);
     }
   }, [loading, setupComplete, isAuthenticated]);
+
+  const handleSplashComplete = () => {
+    console.log('Index: Splash screen animation complete');
+    setShowSplash(false);
+  };
+
+  // Show splash screen on first load
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} />;
+  }
 
   if (!ready || loading) {
     console.log('Index: Showing loading screen');

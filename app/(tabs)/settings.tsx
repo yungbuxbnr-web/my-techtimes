@@ -296,7 +296,7 @@ export default function SettingsScreen() {
         return;
       }
       
-      // Start import process
+      // Start import process with animation
       setIsImporting(true);
       setShowImportModal(false);
       setImportProgress({ current: 0, total: 0, job: null });
@@ -361,12 +361,15 @@ export default function SettingsScreen() {
           await api.createJob(job);
           successCount++;
           
-          // Update progress
+          // Update progress with animation
           setImportProgress({ 
             current: i + 1, 
             total: importResults.jobs.length, 
             job: job 
           });
+          
+          // Small delay to show animation
+          await new Promise(resolve => setTimeout(resolve, 100));
           
         } catch (createError) {
           console.error('SettingsScreen: Error creating job:', createError);
@@ -491,8 +494,9 @@ export default function SettingsScreen() {
     );
   };
 
+  const progressTitle = 'Importing Jobs';
   const progressMessage = importProgress.total > 0
-    ? `Importing job ${importProgress.current} of ${importProgress.total}`
+    ? `Processing job ${importProgress.current} of ${importProgress.total}`
     : 'Preparing import...';
 
   return (
@@ -623,6 +627,25 @@ export default function SettingsScreen() {
               color={theme.primary}
             />
             <Text style={[styles.linkButtonText, { color: theme.text }]}>Work Schedule</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.linkButton, { backgroundColor: theme.background }]}
+            onPress={() => router.push('/absence-logger')}
+          >
+            <IconSymbol
+              ios_icon_name="calendar.badge.exclamationmark"
+              android_material_icon_name="event-busy"
+              size={24}
+              color={theme.primary}
+            />
+            <Text style={[styles.linkButtonText, { color: theme.text }]}>Absence Logger</Text>
             <IconSymbol
               ios_icon_name="chevron.right"
               android_material_icon_name="arrow-forward"
@@ -1004,8 +1027,11 @@ export default function SettingsScreen() {
       {isImporting && (
         <ProcessNotification
           visible={isImporting}
+          title={progressTitle}
           message={progressMessage}
-          progress={importProgress.total > 0 ? importProgress.current / importProgress.total : 0}
+          progress={importProgress.current}
+          total={importProgress.total}
+          type="loading"
         />
       )}
     </AppBackground>
