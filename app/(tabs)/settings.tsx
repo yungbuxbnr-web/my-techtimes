@@ -250,32 +250,72 @@ export default function SettingsScreen() {
         copyToCacheDirectory: true,
       });
       
+      console.log('SettingsScreen: DocumentPicker result:', result);
+      
       if (result.canceled) {
         console.log('SettingsScreen: User cancelled import');
+        return;
+      }
+      
+      // Validate that we have assets
+      if (!result.assets || result.assets.length === 0) {
+        console.error('SettingsScreen: No file selected or assets array is empty');
+        Alert.alert('Error', 'No file was selected. Please try again.');
         return;
       }
       
       const fileUri = result.assets[0].uri;
       console.log('SettingsScreen: Selected file:', fileUri);
       
+      // Validate file URI
+      if (!fileUri) {
+        console.error('SettingsScreen: File URI is empty');
+        Alert.alert('Error', 'Invalid file selected. Please try again.');
+        return;
+      }
+      
       setIsImporting(true);
       setShowImportModal(false);
       
-      const importResults = await importFromJson(
-        fileUri,
-        (current, total, job) => {
-          setImportProgress({ current, total, job });
-        }
-      );
+      let importResults;
+      try {
+        importResults = await importFromJson(
+          fileUri,
+          (current, total, job) => {
+            console.log('SettingsScreen: Import progress:', current, '/', total);
+            setImportProgress({ current, total, job });
+          }
+        );
+      } catch (parseError) {
+        console.error('SettingsScreen: Error parsing JSON file:', parseError);
+        setIsImporting(false);
+        Alert.alert(
+          'Import Error',
+          `Failed to parse JSON file: ${parseError instanceof Error ? parseError.message : 'Invalid JSON format'}\n\nPlease ensure the file is a valid TechTimes backup file.`
+        );
+        return;
+      }
       
       console.log('SettingsScreen: Import results:', importResults);
+      
+      // Validate import results
+      if (!importResults || !importResults.jobs || importResults.jobs.length === 0) {
+        setIsImporting(false);
+        Alert.alert(
+          'Import Error',
+          'No valid jobs found in the file. Please check the file format and try again.'
+        );
+        return;
+      }
       
       // Now import the jobs to the API
       let successCount = 0;
       let failCount = 0;
       
-      for (const job of importResults.jobs) {
+      for (let i = 0; i < importResults.jobs.length; i++) {
+        const job = importResults.jobs[i];
         try {
+          console.log('SettingsScreen: Creating job', i + 1, '/', importResults.jobs.length, ':', job);
           await api.createJob(job);
           successCount++;
         } catch (error) {
@@ -286,10 +326,14 @@ export default function SettingsScreen() {
       
       setIsImporting(false);
       
-      if (importResults.errors.length > 0) {
+      if (importResults.errors.length > 0 || failCount > 0) {
+        const errorMessage = importResults.errors.length > 0 
+          ? `\n\nParsing Errors:\n${importResults.errors.slice(0, 5).join('\n')}${importResults.errors.length > 5 ? '\n...' : ''}`
+          : '';
+        
         Alert.alert(
           'Import Complete with Warnings',
-          `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped: ${importResults.skipped}\n\nErrors:\n${importResults.errors.slice(0, 5).join('\n')}${importResults.errors.length > 5 ? '\n...' : ''}`,
+          `Successfully imported: ${successCount}\nFailed: ${failCount}\nSkipped: ${importResults.skipped}${errorMessage}`,
           [{ text: 'OK' }]
         );
       } else {
@@ -304,7 +348,10 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('SettingsScreen: Error importing:', error);
       setIsImporting(false);
-      Alert.alert('Error', `Failed to import data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      Alert.alert(
+        'Import Error', 
+        `Failed to import data: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease ensure you selected a valid JSON backup file.`
+      );
     }
   };
 

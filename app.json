@@ -31,7 +31,7 @@
         "backgroundColor": "#ff6b35"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.brcarszw.techtimes",
+      "package": "Com.brcarszw.techtracer",
       "permissions": [
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",
