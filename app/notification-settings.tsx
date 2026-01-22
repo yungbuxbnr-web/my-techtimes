@@ -18,7 +18,7 @@ import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { offlineStorage } from '@/utils/offlineStorage';
 import { scheduleAllNotifications, sendTestNotification } from '@/utils/notificationScheduler';
-import { requestNotificationPermissions } from '@/utils/permissions';
+import { requestNotificationPermissions, openNotificationSettings } from '@/utils/permissions';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -134,6 +134,11 @@ export default function NotificationSettingsScreen() {
     }
   };
 
+  const handleOpenDeviceNotificationSettings = async () => {
+    console.log('NotificationSettingsScreen: User tapped Open Device Notification Settings');
+    await openNotificationSettings();
+  };
+
   const handleSave = async () => {
     console.log('NotificationSettingsScreen: Saving notification settings');
     
@@ -152,11 +157,17 @@ export default function NotificationSettingsScreen() {
         Alert.alert(
           'Permission Required',
           'Notifications are disabled. Please enable them in your device settings to receive alerts.',
-          [{ text: 'OK' }]
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: openNotificationSettings },
+          ]
         );
+        setSaving(false);
+        return;
       }
       
-      await offlineStorage.updateNotificationSettings({
+      // Save settings to storage
+      const settingsToSave = {
         dailyReminder,
         dailyReminderTime,
         weeklyReport,
@@ -172,11 +183,16 @@ export default function NotificationSettingsScreen() {
         notificationSound,
         vibrationEnabled,
         vibrationPattern,
-      });
+      };
+      
+      console.log('NotificationSettingsScreen: Saving settings:', settingsToSave);
+      await offlineStorage.updateNotificationSettings(settingsToSave);
+      console.log('NotificationSettingsScreen: Settings saved to storage');
       
       // Reschedule all notifications with new settings
       console.log('NotificationSettingsScreen: Rescheduling notifications');
       await scheduleAllNotifications();
+      console.log('NotificationSettingsScreen: Notifications rescheduled');
       
       Alert.alert(
         'Success',
@@ -185,7 +201,7 @@ export default function NotificationSettingsScreen() {
       );
     } catch (error) {
       console.error('NotificationSettingsScreen: Error saving settings:', error);
-      Alert.alert('Error', 'Failed to save notification settings');
+      Alert.alert('Error', `Failed to save notification settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -238,6 +254,33 @@ export default function NotificationSettingsScreen() {
               Customize which notifications you receive and when. All notifications are automatically synced with your work schedule.
             </Text>
           </View>
+
+          {/* Device Notification Settings */}
+          <TouchableOpacity
+            style={[styles.deviceSettingsButton, { backgroundColor: theme.card }]}
+            onPress={handleOpenDeviceNotificationSettings}
+          >
+            <IconSymbol
+              ios_icon_name="gear"
+              android_material_icon_name="settings"
+              size={24}
+              color={theme.primary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.deviceSettingsTitle, { color: theme.text }]}>
+                Device Notification Settings
+              </Text>
+              <Text style={[styles.deviceSettingsSubtitle, { color: theme.textSecondary }]}>
+                Open system settings to manage notification sounds and permissions
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
 
           {/* Work Schedule Notifications */}
           <View style={[styles.section, { backgroundColor: theme.card }]}>
@@ -690,6 +733,27 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+  },
+  deviceSettingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  deviceSettingsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deviceSettingsSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
   section: {
     padding: 20,

@@ -137,8 +137,22 @@ export default function PinLoginScreen() {
     try {
       console.log('PinLogin: Attempting biometric authentication');
       
+      // Check if biometrics are available on native platforms
+      if (Platform.OS === 'web') {
+        console.log('PinLogin: Biometrics not available on web');
+        Alert.alert('Not Available', 'Biometric authentication is not available on web');
+        return;
+      }
+      
       if (!biometricsAvailable) {
-        console.log('PinLogin: Biometrics not available');
+        console.log('PinLogin: Biometrics not available on device');
+        Alert.alert('Not Available', 'Biometric authentication is not available on this device');
+        return;
+      }
+      
+      if (!biometricsEnabled) {
+        console.log('PinLogin: Biometrics not enabled in settings');
+        Alert.alert('Not Enabled', 'Biometric authentication is not enabled. Enable it in Settings.');
         return;
       }
       
@@ -146,16 +160,21 @@ export default function PinLoginScreen() {
         promptMessage: 'Authenticate to access TechTimes',
         fallbackLabel: 'Use PIN',
         cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
       });
 
       if (result.success) {
         console.log('PinLogin: Biometric authentication successful');
         router.replace('/(tabs)');
       } else {
-        console.log('PinLogin: Biometric authentication failed');
+        console.log('PinLogin: Biometric authentication failed or cancelled');
+        if (result.error) {
+          console.error('PinLogin: Biometric error:', result.error);
+        }
       }
     } catch (error) {
       console.error('PinLogin: Error with biometric authentication:', error);
+      Alert.alert('Error', 'Failed to authenticate with biometrics. Please use your PIN.');
     }
   };
 

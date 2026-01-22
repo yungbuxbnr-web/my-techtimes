@@ -1,6 +1,6 @@
 
 import * as Notifications from 'expo-notifications';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, Linking } from 'react-native';
 
 // Request notification permissions
 export async function requestNotificationPermissions(): Promise<boolean> {
@@ -39,6 +39,64 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   } catch (error) {
     console.error('Permissions: Error requesting notification permissions:', error);
     return false;
+  }
+}
+
+// Request background permissions for live clock and work schedule
+export async function requestBackgroundPermissions(): Promise<boolean> {
+  console.log('Permissions: Requesting background permissions');
+  
+  if (Platform.OS !== 'android') {
+    console.log('Permissions: Background permissions only needed on Android');
+    return true;
+  }
+  
+  try {
+    // Show alert explaining why we need background permissions
+    return new Promise((resolve) => {
+      Alert.alert(
+        'Background Permissions Required',
+        'TechTimes needs permission to run in the background to keep the live clock and work schedule progression active. This ensures accurate time tracking even when the app is minimized.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              console.log('Permissions: User cancelled background permission request');
+              resolve(false);
+            },
+          },
+          {
+            text: 'Grant Permission',
+            onPress: () => {
+              console.log('Permissions: User granted background permission');
+              // On Android, background execution is allowed by default
+              // The user can disable it in system settings if needed
+              resolve(true);
+            },
+          },
+        ]
+      );
+    });
+  } catch (error) {
+    console.error('Permissions: Error requesting background permissions:', error);
+    return false;
+  }
+}
+
+// Open device notification settings
+export async function openNotificationSettings(): Promise<void> {
+  console.log('Permissions: Opening device notification settings');
+  
+  try {
+    if (Platform.OS === 'android') {
+      await Linking.openSettings();
+    } else if (Platform.OS === 'ios') {
+      await Linking.openURL('app-settings:');
+    }
+  } catch (error) {
+    console.error('Permissions: Error opening notification settings:', error);
+    Alert.alert('Error', 'Could not open notification settings');
   }
 }
 

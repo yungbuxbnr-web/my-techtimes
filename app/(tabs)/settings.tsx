@@ -168,29 +168,66 @@ export default function SettingsScreen() {
     setShowExportModal(true);
   };
 
-  const handleExport = async (format: 'pdf' | 'json') => {
-    console.log('SettingsScreen: Exporting as', format);
+  const [exportType, setExportType] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('json');
+
+  const handleExport = async () => {
+    console.log('SettingsScreen: Exporting as', exportFormat, 'type:', exportType);
     try {
-      const jobs = await api.getAllJobs();
       const profile = await api.getTechnicianProfile();
       const settings = await api.getSettings();
       const schedule = await api.getSchedule();
       
-      // Get current month for stats
+      // Get current date info
       const now = new Date();
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const monthlyStats = await api.getMonthlyStats(currentMonth);
+      const currentDay = now.toISOString().split('T')[0];
       
-      if (format === 'pdf') {
-        await exportToPdf(jobs, profile.name, {
-          type: 'all',
-          targetHours: settings.monthlyTarget,
-          availableHours: monthlyStats.availableHours,
+      // Get jobs based on export type
+      let jobs = [];
+      let exportOptions: ExportOptions = {
+        type: exportType,
+        targetHours: settings.monthlyTarget,
+        availableHours: 0,
+      };
+      
+      if (exportType === 'daily') {
+        jobs = await api.getJobsForDay(currentDay);
+        exportOptions.day = currentDay;
+        const dayStats = await api.getDayStats(currentDay);
+        exportOptions.availableHours = dayStats.availableHours;
+      } else if (exportType === 'weekly') {
+        // Get current week jobs
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 5); // Saturday
+        
+        jobs = await api.getAllJobs();
+        jobs = jobs.filter(job => {
+          const jobDate = new Date(job.createdAt);
+          return jobDate >= weekStart && jobDate <= weekEnd;
         });
-        toastManager.show('PDF exported successfully with efficiency bars', 'success');
+        
+        const weekStats = await api.getWeekStats(weekStart.toISOString().split('T')[0]);
+        exportOptions.availableHours = weekStats.availableHours;
+      } else if (exportType === 'monthly') {
+        jobs = await api.getJobsForMonth(currentMonth);
+        exportOptions.month = currentMonth;
+        const monthlyStats = await api.getMonthlyStats(currentMonth);
+        exportOptions.availableHours = monthlyStats.availableHours;
+      } else {
+        jobs = await api.getAllJobs();
+        const monthlyStats = await api.getMonthlyStats(currentMonth);
+        exportOptions.availableHours = monthlyStats.availableHours;
+      }
+      
+      if (exportFormat === 'pdf') {
+        await exportToPdf(jobs, profile.name, exportOptions);
+        toastManager.show(`${exportType.toUpperCase()} PDF exported successfully with efficiency bars`, 'success');
       } else {
         await exportToJson(jobs);
-        toastManager.show('JSON exported successfully (priority format)', 'success');
+        toastManager.show(`${exportType.toUpperCase()} JSON exported successfully (priority format)`, 'success');
       }
       
       setShowExportModal(false);
@@ -727,40 +764,121 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
             
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary, marginBottom: 20 }]}>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary, marginBottom: 12 }]}>
+              Choose export period
+            </Text>
+            
+            <View style={styles.exportTypeContainer}>
+              {[
+                { id: 'daily', label: 'Daily', icon: 'calendar-today' },
+                { id: 'weekly', label: 'Weekly', icon: 'date-range' },
+                { id: 'monthly', label: 'Monthly', icon: 'event' },
+                { id: 'all', label: 'All Time', icon: 'history' },
+              ].map((type) => (
+                <TouchableOpacity
+                  key={type.id}
+                  style={[
+                    styles.exportTypeButton,
+                    { borderColor: theme.border },
+                    exportType === type.id && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}
+                  onPress={() => setExportType(type.id as any)}
+                >
+                  <IconSymbol
+                    ios_icon_name="calendar"
+                    android_material_icon_name={type.icon}
+                    size={20}
+                    color={exportType === type.id ? '#ffffff' : theme.text}
+                  />
+                  <Text
+                    style={[
+                      styles.exportTypeText,
+                      { color: exportType === type.id ? '#ffffff' : theme.text },
+                    ]}
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary, marginTop: 20, marginBottom: 12 }]}>
               Choose export format
             </Text>
             
             <TouchableOpacity
-              style={[styles.exportOption, { backgroundColor: theme.secondary }]}
-              onPress={() => handleExport('json')}
+              style={[
+                styles.exportOption,
+                { backgroundColor: exportFormat === 'json' ? theme.secondary : theme.background },
+              ]}
+              onPress={() => setExportFormat('json')}
             >
               <IconSymbol
                 ios_icon_name="doc.fill"
                 android_material_icon_name="insert-drive-file"
                 size={24}
-                color="#ffffff"
+                color={exportFormat === 'json' ? '#ffffff' : theme.text}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.exportOptionText}>Export as JSON (Priority)</Text>
-                <Text style={styles.exportOptionSubtext}>Best for backup & restore</Text>
+                <Text style={[styles.exportOptionText, { color: exportFormat === 'json' ? '#ffffff' : theme.text }]}>
+                  Export as JSON (Priority)
+                </Text>
+                <Text style={[styles.exportOptionSubtext, { color: exportFormat === 'json' ? '#ffffff' : theme.textSecondary }]}>
+                  Best for backup & restore
+                </Text>
               </View>
+              {exportFormat === 'json' && (
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={24}
+                  color="#ffffff"
+                />
+              )}
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={[styles.exportOption, { backgroundColor: theme.primary }]}
-              onPress={() => handleExport('pdf')}
+              style={[
+                styles.exportOption,
+                { backgroundColor: exportFormat === 'pdf' ? theme.primary : theme.background },
+              ]}
+              onPress={() => setExportFormat('pdf')}
             >
               <IconSymbol
                 ios_icon_name="doc.text.fill"
                 android_material_icon_name="description"
                 size={24}
-                color="#ffffff"
+                color={exportFormat === 'pdf' ? '#ffffff' : theme.text}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.exportOptionText}>Export as PDF</Text>
-                <Text style={styles.exportOptionSubtext}>With efficiency progress bars</Text>
+                <Text style={[styles.exportOptionText, { color: exportFormat === 'pdf' ? '#ffffff' : theme.text }]}>
+                  Export as PDF
+                </Text>
+                <Text style={[styles.exportOptionSubtext, { color: exportFormat === 'pdf' ? '#ffffff' : theme.textSecondary }]}>
+                  With efficiency progress bars
+                </Text>
               </View>
+              {exportFormat === 'pdf' && (
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={24}
+                  color="#ffffff"
+                />
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.exportButton, { backgroundColor: theme.primary }]}
+              onPress={handleExport}
+            >
+              <IconSymbol
+                ios_icon_name="square.and.arrow.up"
+                android_material_icon_name="share"
+                size={20}
+                color="#ffffff"
+              />
+              <Text style={styles.exportButtonText}>Export {exportType.toUpperCase()}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -952,6 +1070,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  exportTypeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  exportTypeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    gap: 6,
+  },
+  exportTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   exportOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -961,14 +1097,25 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   exportOptionText: {
-    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },
   exportOptionSubtext: {
-    color: '#ffffff',
     fontSize: 12,
-    opacity: 0.8,
     marginTop: 2,
+  },
+  exportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    gap: 8,
+  },
+  exportButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

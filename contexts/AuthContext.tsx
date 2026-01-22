@@ -284,8 +284,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('AuthContext: Attempting biometric authentication');
       
+      // Check if biometrics are available on native platforms
+      if (Platform.OS === 'web') {
+        console.log('AuthContext: Biometrics not available on web');
+        return false;
+      }
+      
       if (!biometricsAvailable) {
-        console.error('AuthContext: Biometrics not available');
+        console.error('AuthContext: Biometrics not available on device');
+        return false;
+      }
+      
+      // Check if biometrics are enabled in settings
+      if (!biometricsEnabled) {
+        console.log('AuthContext: Biometrics not enabled in settings');
         return false;
       }
       
@@ -293,6 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         promptMessage: 'Authenticate to access TechTimes',
         fallbackLabel: 'Use PIN',
         cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
       });
 
       if (result.success) {
@@ -301,13 +314,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
       
-      console.log('AuthContext: Biometric authentication failed');
+      console.log('AuthContext: Biometric authentication failed or cancelled');
       return false;
     } catch (error) {
       console.error('AuthContext: Error with biometric authentication:', error);
       return false;
     }
-  }, [biometricsAvailable]);
+  }, [biometricsAvailable, biometricsEnabled]);
 
   return (
     <AuthContext.Provider
