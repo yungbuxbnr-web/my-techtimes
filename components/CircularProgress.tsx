@@ -13,6 +13,7 @@ interface CircularProgressProps {
   value: string;
   subtitle?: string;
   onPress?: () => void;
+  percentage?: number; // For calendar view compatibility
 }
 
 export default function CircularProgress({
@@ -25,10 +26,11 @@ export default function CircularProgress({
   value,
   subtitle,
   onPress,
+  percentage,
 }: CircularProgressProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
-  const progressValue = Math.min(Math.max(progress, 0), 100);
+  const progressValue = Math.min(Math.max(percentage !== undefined ? percentage : progress, 0), 100);
   const strokeDashoffset = circumference - (progressValue / 100) * circumference;
 
   const content = (

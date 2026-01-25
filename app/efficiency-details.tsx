@@ -45,6 +45,12 @@ export default function EfficiencyDetailsScreen() {
     return theme.chartRed;
   };
 
+  const getEfficiencyColorName = (efficiency: number) => {
+    if (efficiency >= 65) return 'green';
+    if (efficiency >= 31) return 'yellow';
+    return 'red';
+  };
+
   if (!details) {
     return (
       <>
@@ -75,6 +81,7 @@ export default function EfficiencyDetailsScreen() {
   });
 
   const efficiencyColor = getEfficiencyColor(details.efficiency);
+  const efficiencyColorName = getEfficiencyColorName(details.efficiency);
 
   return (
     <>
@@ -105,7 +112,7 @@ export default function EfficiencyDetailsScreen() {
               </Text>
               <View style={[styles.badge, { backgroundColor: efficiencyColor + '20' }]}>
                 <Text style={[styles.badgeText, { color: efficiencyColor }]}>
-                  {details.efficiencyColor.toUpperCase()}
+                  {efficiencyColorName.toUpperCase()}
                 </Text>
               </View>
             </View>

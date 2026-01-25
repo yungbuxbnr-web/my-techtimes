@@ -168,9 +168,9 @@ export default function CalendarScreen() {
   };
 
   const getEfficiencyColor = (efficiency: number): string => {
-    if (efficiency >= 90) return '#4CAF50';
-    if (efficiency >= 75) return '#FFC107';
-    return '#F44336';
+    if (efficiency >= 65) return theme.chartGreen || '#4CAF50';
+    if (efficiency >= 31) return theme.chartYellow || '#FFC107';
+    return theme.chartRed || '#F44336';
   };
 
   const getProgressColor = (): string => {

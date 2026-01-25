@@ -67,6 +67,7 @@ export default function AbsenceLoggerScreen() {
     const hours = isHalfDay ? schedule.dailyWorkingHours / 2 : schedule.dailyWorkingHours;
     
     try {
+      // Create two absences: one for available hours, one for target hours
       await api.createAbsence({
         month: monthStr,
         absenceDate: dateStr,
@@ -75,13 +76,24 @@ export default function AbsenceLoggerScreen() {
         customHours: hours,
         deductionType: 'available',
         absenceType,
-        note: `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} - ${isHalfDay ? 'Half Day' : 'Full Day'}`,
+        note: `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} - ${isHalfDay ? 'Half Day' : 'Full Day'} (Available Hours)`,
+      });
+      
+      await api.createAbsence({
+        month: monthStr,
+        absenceDate: dateStr,
+        daysCount: 1,
+        isHalfDay,
+        customHours: hours,
+        deductionType: 'target',
+        absenceType,
+        note: `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} - ${isHalfDay ? 'Half Day' : 'Full Day'} (Target Hours)`,
       });
       
       console.log('AbsenceLoggerScreen: Absence logged successfully');
       Alert.alert(
         'Success',
-        `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n${hours.toFixed(2)} hours will be deducted from available hours.`,
+        `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n${hours.toFixed(2)} hours will be deducted from both available hours and monthly target hours.`,
         [
           {
             text: 'OK',
@@ -154,7 +166,7 @@ export default function AbsenceLoggerScreen() {
             color={theme.primary}
           />
           <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-            Log absences to automatically deduct hours from your expected monthly total and available hours for the specific day.
+            Log absences to automatically deduct hours from both your available hours and monthly target hours.
           </Text>
         </View>
 

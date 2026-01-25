@@ -186,6 +186,13 @@ export default function DashboardScreen() {
     return theme.chartRed;
   };
 
+  const getProgressColor = (progress: number) => {
+    // Apply same color ranges to progress circles
+    if (progress >= 65) return theme.chartGreen;
+    if (progress >= 31) return theme.chartYellow;
+    return theme.chartRed;
+  };
+
   const getEfficiencyLabel = (efficiency: number) => {
     if (efficiency >= 65) return 'Excellent';
     if (efficiency >= 31) return 'Good';
@@ -486,7 +493,7 @@ export default function DashboardScreen() {
               size={140}
               strokeWidth={10}
               progress={targetProgress}
-              color={theme.primary}
+              color={getProgressColor(targetProgress)}
               title="Monthly Target"
               value={`${targetProgress.toFixed(1)}%`}
               subtitle={`${monthlyStats.soldHours.toFixed(1)}h / ${monthlyStats.targetHours.toFixed(1)}h`}
@@ -495,7 +502,7 @@ export default function DashboardScreen() {
                 router.push(`/target-details?month=${getCurrentMonth()}`);
               }}
             />
-            <Text style={[styles.ringLabel, { color: theme.textSecondary }]}>
+            <Text style={[styles.ringLabel, { color: getProgressColor(targetProgress) }]}>
               {targetProgress.toFixed(0)}% Complete
             </Text>
           </View>
@@ -831,7 +838,7 @@ export default function DashboardScreen() {
                   
                   {calendarDays.map((dayInfo) => {
                     const isToday = dayInfo.dateString === new Date().toISOString().split('T')[0];
-                    const efficiencyColor = getEfficiencyColor(dayInfo.efficiency);
+                    const dayEfficiencyColor = getEfficiencyColor(dayInfo.efficiency);
                     
                     return (
                       <TouchableOpacity
@@ -857,16 +864,16 @@ export default function DashboardScreen() {
                         {(dayInfo.isWorkingDay || dayInfo.isOvertime || dayInfo.isCompensation) && (
                           <View style={styles.dayCircles}>
                             {/* Efficiency circle (outer) */}
-                            <View style={[styles.miniCircle, { borderColor: efficiencyColor }]}>
+                            <View style={[styles.miniCircle, { borderColor: dayEfficiencyColor }]}>
                               <View style={[styles.miniCircleFill, { 
-                                backgroundColor: efficiencyColor,
+                                backgroundColor: dayEfficiencyColor,
                                 height: `${dayInfo.efficiency}%`,
                               }]} />
                             </View>
                             
                             {/* Jobs count */}
                             {dayInfo.jobs.length > 0 && (
-                              <Text style={[styles.jobCount, { color: theme.primary }]}>
+                              <Text style={[styles.jobCount, { color: dayEfficiencyColor }]}>
                                 {dayInfo.jobs.length}
                               </Text>
                             )}
