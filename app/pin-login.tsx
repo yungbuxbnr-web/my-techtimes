@@ -10,42 +10,32 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/utils/api';
 import AppBackground from '@/components/AppBackground';
-
-const PIN_KEY = 'user_pin';
-const BIOMETRICS_KEY = 'biometrics_enabled';
-
-// Helper functions for cross-platform storage
-async function getSecureItem(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem(key);
-  } else {
-    return await SecureStore.getItemAsync(key);
-  }
-}
 
 export default function PinLoginScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
+  const { 
+    login, 
+    authenticateWithBiometrics, 
+    biometricsEnabled, 
+    biometricsAvailable,
+    pinAuthEnabled 
+  } = useAuth();
   
   const [pin, setPin] = useState('');
   const [technicianName, setTechnicianName] = useState('');
-  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
-  const [pinAuthEnabled, setPinAuthEnabled] = useState(true);
-  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
 
   useEffect(() => {
     loadTechnicianName();
-    checkBiometrics();
   }, []);
 
   useEffect(() => {
-    // Auto-trigger biometric auth if PIN is disabled
+    // Auto-trigger biometric auth if PIN is disabled and biometrics are enabled
     if (biometricsEnabled && !pinAuthEnabled && biometricsAvailable) {
       console.log('PinLogin: PIN disabled, auto-triggering biometric auth');
       handleBiometricAuth();
@@ -62,31 +52,6 @@ export default function PinLoginScreen() {
       }
     } catch (error) {
       console.error('PinLogin: Error loading technician name:', error);
-    }
-  };
-
-  const checkBiometrics = async () => {
-    try {
-      // Biometrics only available on native platforms
-      if (Platform.OS === 'web') {
-        console.log('PinLogin: Biometrics not available on web');
-        setBiometricsAvailable(false);
-        return;
-      }
-      
-      const enabled = await getSecureItem(BIOMETRICS_KEY);
-      const pinAuth = await getSecureItem('pin_auth_enabled');
-      const compatible = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      
-      const available = compatible && enrolled;
-      setBiometricsAvailable(available);
-      setBiometricsEnabled(enabled === 'true' && available);
-      setPinAuthEnabled(pinAuth !== 'false'); // Default to true
-      
-      console.log('PinLogin: Biometrics - enabled:', enabled === 'true', 'available:', available, 'pinAuth:', pinAuth !== 'false');
-    } catch (error) {
-      console.error('PinLogin: Error checking biometrics:', error);
     }
   };
 
@@ -110,15 +75,9 @@ export default function PinLoginScreen() {
   const verifyPin = async (enteredPin: string) => {
     try {
       console.log('PinLogin: Verifying PIN');
-      const storedPin = await getSecureItem(PIN_KEY);
+      const success = await login(enteredPin);
       
-      if (!storedPin) {
-        console.error('PinLogin: No stored PIN found');
-        Alert.alert('Error', 'No PIN found. Please reset the app.');
-        return;
-      }
-      
-      if (storedPin === enteredPin) {
+      if (success) {
         console.log('PinLogin: PIN correct, navigating to app');
         router.replace('/(tabs)');
       } else {
@@ -135,7 +94,7 @@ export default function PinLoginScreen() {
 
   const handleBiometricAuth = async () => {
     try {
-      console.log('PinLogin: Attempting biometric authentication');
+      console.log('PinLogin: User tapped biometric authentication button');
       
       // Check if biometrics are available on native platforms
       if (Platform.OS === 'web') {
@@ -146,7 +105,10 @@ export default function PinLoginScreen() {
       
       if (!biometricsAvailable) {
         console.log('PinLogin: Biometrics not available on device');
-        Alert.alert('Not Available', 'Biometric authentication is not available on this device');
+        Alert.alert(
+          'Not Available', 
+          'Biometric authentication is not available on this device. Please ensure you have enrolled fingerprint or face recognition in your device settings.'
+        );
         return;
       }
       
@@ -156,21 +118,13 @@ export default function PinLoginScreen() {
         return;
       }
       
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Authenticate to access TechTimes',
-        fallbackLabel: 'Use PIN',
-        cancelLabel: 'Cancel',
-        disableDeviceFallback: false,
-      });
-
-      if (result.success) {
-        console.log('PinLogin: Biometric authentication successful');
+      const success = await authenticateWithBiometrics();
+      
+      if (success) {
+        console.log('PinLogin: Biometric authentication successful, navigating to app');
         router.replace('/(tabs)');
       } else {
         console.log('PinLogin: Biometric authentication failed or cancelled');
-        if (result.error) {
-          console.error('PinLogin: Biometric error:', result.error);
-        }
       }
     } catch (error) {
       console.error('PinLogin: Error with biometric authentication:', error);
@@ -284,6 +238,26 @@ export default function PinLoginScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        {!pinAuthEnabled && biometricsEnabled && (
+          <View style={styles.biometricOnlyContainer}>
+            <IconSymbol
+              ios_icon_name="faceid"
+              android_material_icon_name="fingerprint"
+              size={64}
+              color="#2196F3"
+            />
+            <Text style={[styles.biometricOnlyText, isDarkMode ? styles.textLight : styles.textDark]}>
+              Biometric Authentication Required
+            </Text>
+            <TouchableOpacity
+              style={[styles.biometricOnlyButton, { backgroundColor: '#2196F3' }]}
+              onPress={handleBiometricAuth}
+            >
+              <Text style={styles.biometricOnlyButtonText}>Authenticate</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </AppBackground>
   );
@@ -372,6 +346,25 @@ const styles = StyleSheet.create({
   },
   biometricText: {
     fontSize: 16,
+  },
+  biometricOnlyContainer: {
+    alignItems: 'center',
+    gap: 24,
+  },
+  biometricOnlyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  biometricOnlyButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  biometricOnlyButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   textLight: {
     color: '#fff',

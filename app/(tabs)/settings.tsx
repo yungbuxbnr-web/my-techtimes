@@ -1,5 +1,11 @@
 
+import { toastManager } from '@/utils/toastManager';
+import * as Sharing from 'expo-sharing';
+import { api } from '@/utils/api';
 import React, { useState, useEffect } from 'react';
+import { offlineStorage } from '@/utils/offlineStorage';
+import * as DocumentPicker from 'expo-document-picker';
+import { ProcessNotification } from '@/components/ProcessNotification';
 import {
   View,
   Text,
@@ -12,32 +18,34 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { useThemeContext } from '@/contexts/ThemeContext';
-import { IconSymbol } from '@/components/IconSymbol';
-import { toastManager } from '@/utils/toastManager';
-import Slider from '@react-native-community/slider';
-import { router } from 'expo-router';
-import { api } from '@/utils/api';
-import { offlineStorage } from '@/utils/offlineStorage';
-import * as DocumentPicker from 'expo-document-picker';
-import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
-import { ProcessNotification } from '@/components/ProcessNotification';
+import { IconSymbol } from '@/components/IconSymbol';
+import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
+import { router } from 'expo-router';
 import { requestAllPermissions, checkPermissions, showPermissionsInfo } from '@/utils/permissions';
+import Slider from '@react-native-community/slider';
+import * as Haptics from 'expo-haptics';
 import AppBackground from '@/components/AppBackground';
 import * as FileSystem from 'expo-file-system/legacy';
-import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
-import * as Sharing from 'expo-sharing';
+import { useThemeContext } from '@/contexts/ThemeContext';
 
 export default function SettingsScreen() {
   console.log('SettingsScreen: Rendering settings screen');
   const { theme, isDarkMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
-  const { logout } = useAuth();
+  const { 
+    logout, 
+    biometricsEnabled, 
+    biometricsAvailable, 
+    pinAuthEnabled,
+    lockOnResume,
+    setBiometricsEnabled: setAuthBiometrics,
+    setPinAuthEnabled: setAuthPinAuth,
+    setLockOnResume: setAuthLockOnResume,
+    changePin,
+  } = useAuth();
   
   const [technicianName, setTechnicianName] = useState('');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
-  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
-  const [pinAuthEnabled, setPinAuthEnabled] = useState(true);
   const [showChangePinModal, setShowChangePinModal] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -63,7 +71,7 @@ export default function SettingsScreen() {
       setTechnicianName(profile.name);
       setMonthlyTarget(settings.monthlyTarget.toString());
       
-      console.log('SettingsScreen: Settings loaded');
+      console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);
     } catch (error) {
       console.error('SettingsScreen: Error loading settings:', error);
     }
@@ -124,11 +132,6 @@ export default function SettingsScreen() {
   const handleSubmitPinChange = async () => {
     console.log('SettingsScreen: Submitting PIN change');
     
-    if (currentPin !== '3101') {
-      Alert.alert('Error', 'Current PIN is incorrect');
-      return;
-    }
-    
     if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
       Alert.alert('Error', 'New PIN must be exactly 4 digits');
       return;
@@ -139,17 +142,37 @@ export default function SettingsScreen() {
       return;
     }
     
-    Alert.alert('Success', 'PIN changed successfully');
-    setShowChangePinModal(false);
-    setCurrentPin('');
-    setNewPin('');
-    setConfirmPin('');
+    const success = await changePin(currentPin, newPin);
+    
+    if (success) {
+      Alert.alert('Success', 'PIN changed successfully');
+      setShowChangePinModal(false);
+      setCurrentPin('');
+      setNewPin('');
+      setConfirmPin('');
+    } else {
+      Alert.alert('Error', 'Current PIN is incorrect');
+    }
   };
 
   const handleToggleBiometrics = async (value: boolean) => {
     console.log('SettingsScreen: Toggling biometrics to', value);
-    setBiometricsEnabled(value);
-    toastManager.show(value ? 'Biometrics enabled' : 'Biometrics disabled', 'success');
+    
+    if (value && !biometricsAvailable) {
+      Alert.alert(
+        'Not Available',
+        'Biometric authentication is not available on this device. Please ensure you have enrolled fingerprint or face recognition in your device settings.'
+      );
+      return;
+    }
+    
+    const success = await setAuthBiometrics(value);
+    
+    if (success) {
+      toastManager.show(value ? 'Biometrics enabled' : 'Biometrics disabled', 'success');
+    } else {
+      Alert.alert('Error', 'Failed to update biometrics setting');
+    }
   };
 
   const handleTogglePinAuth = async (value: boolean) => {
@@ -160,8 +183,19 @@ export default function SettingsScreen() {
       return;
     }
     
-    setPinAuthEnabled(value);
-    toastManager.show(value ? 'PIN authentication enabled' : 'PIN authentication disabled', 'success');
+    const success = await setAuthPinAuth(value);
+    
+    if (success) {
+      toastManager.show(value ? 'PIN authentication enabled' : 'PIN authentication disabled', 'success');
+    } else {
+      Alert.alert('Error', 'Cannot disable PIN without biometrics enabled');
+    }
+  };
+
+  const handleToggleLockOnResume = async (value: boolean) => {
+    console.log('SettingsScreen: Toggling lock on resume to', value);
+    await setAuthLockOnResume(value);
+    toastManager.show(value ? 'Lock on resume enabled' : 'Lock on resume disabled', 'success');
   };
 
   const handleOpenExportModal = () => {
@@ -289,7 +323,6 @@ export default function SettingsScreen() {
         return;
       }
       
-      // Start import process with animation
       setIsImporting(true);
       setShowImportModal(false);
       setImportPhase('parsing');
@@ -337,11 +370,9 @@ export default function SettingsScreen() {
       
       console.log('SettingsScreen: Starting to create jobs in database');
       
-      // Switch to creating phase
       setImportPhase('creating');
       setImportProgress({ current: 0, total: importResults.jobs.length, job: null });
       
-      // Now import the jobs to the API
       let successCount = 0;
       let failCount = 0;
       const failedJobs = [];
@@ -356,7 +387,6 @@ export default function SettingsScreen() {
             aw: job.aw,
           });
           
-          // Update progress BEFORE creating the job
           setImportProgress({ 
             current: i + 1, 
             total: importResults.jobs.length, 
@@ -368,7 +398,6 @@ export default function SettingsScreen() {
           
           console.log('SettingsScreen: Job created successfully:', i + 1, '/', importResults.jobs.length);
           
-          // Small delay to show animation
           await new Promise(resolve => setTimeout(resolve, 150));
           
         } catch (createError) {
@@ -385,7 +414,6 @@ export default function SettingsScreen() {
       
       console.log('SettingsScreen: Import complete - Success:', successCount, 'Failed:', failCount);
       
-      // Show results
       if (failCount > 0 || importResults.skipped > 0) {
         const failedInfo = failedJobs.length > 0
           ? `\n\nFailed jobs:\n${failedJobs.slice(0, 3).map(f => `${f.job.wipNumber}: ${f.error}`).join('\n')}`
@@ -709,7 +737,14 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
           
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>PIN Authentication</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>PIN Authentication</Text>
+              {!pinAuthEnabled && biometricsEnabled && (
+                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                  Using biometrics only
+                </Text>
+              )}
+            </View>
             <Switch
               value={pinAuthEnabled}
               onValueChange={handleTogglePinAuth}
@@ -718,10 +753,37 @@ export default function SettingsScreen() {
           </View>
           
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>Biometric Login</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Biometric Login</Text>
+              {!biometricsAvailable && (
+                <Text style={[styles.settingHint, { color: theme.chartRed }]}>
+                  Not available on this device
+                </Text>
+              )}
+              {biometricsAvailable && biometricsEnabled && (
+                <Text style={[styles.settingHint, { color: theme.chartGreen }]}>
+                  Fingerprint/Face unlock enabled
+                </Text>
+              )}
+            </View>
             <Switch
               value={biometricsEnabled}
               onValueChange={handleToggleBiometrics}
+              trackColor={{ false: theme.border, true: theme.primary }}
+              disabled={!biometricsAvailable}
+            />
+          </View>
+          
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Lock on Resume</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                Require authentication when returning to app
+              </Text>
+            </View>
+            <Switch
+              value={lockOnResume}
+              onValueChange={handleToggleLockOnResume}
               trackColor={{ false: theme.border, true: theme.primary }}
             />
           </View>
@@ -1148,6 +1210,10 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: 16,
+  },
+  settingHint: {
+    fontSize: 12,
+    marginTop: 4,
   },
   slider: {
     width: '100%',
