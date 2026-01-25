@@ -674,10 +674,10 @@ export default function AddJobModal() {
               
               <View style={styles.formGroup}>
                 <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>VHC Status</Text>
-                <View style={styles.vhcTickBoxes}>
+                <View style={styles.vhcButtonsRow}>
                   <TouchableOpacity
                     style={[
-                      styles.vhcTickBox,
+                      styles.vhcButton,
                       { borderColor: '#4CAF50' },
                       vhcStatus === 'GREEN' && { backgroundColor: '#4CAF50' },
                     ]}
@@ -691,23 +691,23 @@ export default function AddJobModal() {
                       <IconSymbol
                         ios_icon_name="checkmark"
                         android_material_icon_name="check"
-                        size={24}
+                        size={20}
                         color="#ffffff"
                       />
                     )}
-                    <Text style={[styles.vhcTickLabel, { color: vhcStatus === 'GREEN' ? '#ffffff' : '#4CAF50' }]}>
+                    <Text style={[styles.vhcButtonText, { color: vhcStatus === 'GREEN' ? '#ffffff' : '#4CAF50' }]}>
                       Green
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
-                      styles.vhcTickBox,
+                      styles.vhcButton,
                       { borderColor: '#FF9800' },
                       vhcStatus === 'ORANGE' && { backgroundColor: '#FF9800' },
                     ]}
                     onPress={() => {
-                      console.log('AddJobModal: User selected VHC AMBER');
+                      console.log('AddJobModal: User selected VHC ORANGE');
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setVhcStatus(vhcStatus === 'ORANGE' ? 'NONE' : 'ORANGE');
                     }}
@@ -716,18 +716,18 @@ export default function AddJobModal() {
                       <IconSymbol
                         ios_icon_name="checkmark"
                         android_material_icon_name="check"
-                        size={24}
+                        size={20}
                         color="#ffffff"
                       />
                     )}
-                    <Text style={[styles.vhcTickLabel, { color: vhcStatus === 'ORANGE' ? '#ffffff' : '#FF9800' }]}>
-                      Amber
+                    <Text style={[styles.vhcButtonText, { color: vhcStatus === 'ORANGE' ? '#ffffff' : '#FF9800' }]}>
+                      Orange
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
-                      styles.vhcTickBox,
+                      styles.vhcButton,
                       { borderColor: '#f44336' },
                       vhcStatus === 'RED' && { backgroundColor: '#f44336' },
                     ]}
@@ -741,11 +741,11 @@ export default function AddJobModal() {
                       <IconSymbol
                         ios_icon_name="checkmark"
                         android_material_icon_name="check"
-                        size={24}
+                        size={20}
                         color="#ffffff"
                       />
                     )}
-                    <Text style={[styles.vhcTickLabel, { color: vhcStatus === 'RED' ? '#ffffff' : '#f44336' }]}>
+                    <Text style={[styles.vhcButtonText, { color: vhcStatus === 'RED' ? '#ffffff' : '#f44336' }]}>
                       Red
                     </Text>
                   </TouchableOpacity>
@@ -907,7 +907,7 @@ export default function AddJobModal() {
                   color="#ffffff"
                 />
                 <Text style={styles.saveButtonText}>
-                  {saving ? 'Saving...' : 'Save Job'}
+                  {saving ? 'Saving...' : 'Save Record'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1204,21 +1204,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  vhcTickBoxes: {
+  vhcButtonsRow: {
     flexDirection: 'row',
     gap: 12,
   },
-  vhcTickBox: {
+  vhcButton: {
     flex: 1,
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
     borderRadius: 12,
     borderWidth: 3,
-    gap: 4,
+    gap: 6,
   },
-  vhcTickLabel: {
+  vhcButtonText: {
     fontSize: 14,
     fontWeight: '600',
   },
