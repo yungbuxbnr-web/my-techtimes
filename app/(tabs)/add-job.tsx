@@ -15,6 +15,7 @@ import {
   Modal,
   Animated,
   FlatList,
+  Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -45,6 +46,7 @@ export default function AddJobScreen() {
   const [jobDateTime, setJobDateTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [jobCardImageUri, setJobCardImageUri] = useState<string | undefined>(undefined);
   
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
@@ -206,6 +208,7 @@ export default function AddJobScreen() {
         notes: notes.trim() || undefined,
         vhcStatus,
         createdAt: jobDateTime.toISOString(),
+        imageUri: jobCardImageUri,
       };
       
       console.log('AddJobScreen: Saving job:', jobData);
@@ -242,6 +245,7 @@ export default function AddJobScreen() {
       setNotes('');
       setVhcStatus('NONE');
       setJobDateTime(new Date());
+      setJobCardImageUri(undefined);
     } catch (error) {
       console.error('AddJobScreen: Error saving job:', error);
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save job. Please try again.');
@@ -335,6 +339,39 @@ export default function AddJobScreen() {
       console.error('AddJobScreen: Error scanning job card:', error);
       Alert.alert('Error', 'Failed to scan job card. Please try again.');
     }
+  };
+
+  const handleTakeJobCardPhoto = async (source: 'camera' | 'gallery') => {
+    console.log('AddJobScreen: User taking job card photo from', source);
+
+    try {
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.8,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.8,
+          });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('AddJobScreen: Job card photo selected:', result.assets[0].uri);
+        setJobCardImageUri(result.assets[0].uri);
+        Alert.alert('Success', 'Job card photo attached!');
+      }
+    } catch (error) {
+      console.error('AddJobScreen: Error taking job card photo:', error);
+      Alert.alert('Error', 'Failed to attach photo');
+    }
+  };
+
+  const handleRemoveJobCardPhoto = () => {
+    console.log('AddJobScreen: User removed job card photo');
+    setJobCardImageUri(undefined);
+    Alert.alert('Info', 'Job card photo removed');
   };
 
   const calculatedMinutes = awToMinutes(aw);
@@ -621,6 +658,64 @@ export default function AddJobScreen() {
                   placeholder="Add any additional notes..."
                   placeholderTextColor={theme.textSecondary}
                 />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: theme.text }]}>Job Card Photo (Optional)</Text>
+                {jobCardImageUri ? (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image
+                      source={{ uri: jobCardImageUri }}
+                      style={styles.imagePreview}
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity
+                      style={[styles.removeImageButton, { backgroundColor: '#f44336' }]}
+                      onPress={handleRemoveJobCardPhoto}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash.fill"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.removeImageText}>Remove Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.imageButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.imageButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                      onPress={() => {
+                        console.log('AddJobScreen: User tapped Take Photo button');
+                        handleTakeJobCardPhoto('camera');
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="camera.fill"
+                        android_material_icon_name="camera"
+                        size={24}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.imageButtonText}>Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.imageButton, { backgroundColor: theme.secondary, borderColor: theme.secondary }]}
+                      onPress={() => {
+                        console.log('AddJobScreen: User tapped Choose from Gallery button');
+                        handleTakeJobCardPhoto('gallery');
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="photo.fill"
+                        android_material_icon_name="image"
+                        size={24}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.imageButtonText}>Choose Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
               <View style={styles.buttonRow}>
@@ -1049,6 +1144,46 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dateTimeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    gap: 8,
+  },
+  imageButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  imagePreviewContainer: {
+    gap: 12,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  removeImageText: {
+    color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
   },

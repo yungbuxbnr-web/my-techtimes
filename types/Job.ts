@@ -7,6 +7,7 @@ export interface Job {
   notes?: string;
   vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   createdAt: string;
+  imageUri?: string; // Optional job card image attachment
 }
 
 export interface JobStats {

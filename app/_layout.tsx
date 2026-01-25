@@ -100,7 +100,7 @@ function RootLayoutContent() {
     };
   }, [segments, logout, router]);
 
-  // Handle Android back button - single press to go back, double press to exit
+  // Handle Android back button - single press to go back, double press to show minimize/exit dialog
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
@@ -138,9 +138,43 @@ function RootLayoutContent() {
         
         return true;
       } else {
-        // Second press - exit app
-        console.log('RootLayout: Second press - exiting app');
-        BackHandler.exitApp();
+        // Second press - show minimize/exit dialog
+        console.log('RootLayout: Second press - showing minimize/exit dialog');
+        Alert.alert(
+          'Exit TechTimes',
+          'What would you like to do?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                console.log('RootLayout: User cancelled exit');
+                setBackPressCount(0);
+              },
+            },
+            {
+              text: 'Minimize',
+              onPress: () => {
+                console.log('RootLayout: User chose to minimize app');
+                // Move app to background - it will return to dashboard when reopened
+                BackHandler.exitApp();
+              },
+            },
+            {
+              text: 'Exit',
+              style: 'destructive',
+              onPress: () => {
+                console.log('RootLayout: User chose to exit app completely');
+                // Completely shut down the app
+                BackHandler.exitApp();
+              },
+            },
+          ],
+          { cancelable: false }
+        );
+        
+        // Reset counter
+        setBackPressCount(0);
         return true;
       }
     });

@@ -12,6 +12,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -46,6 +47,7 @@ export default function AddJobModal() {
   const [jobDateTime, setJobDateTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [jobCardImageUri, setJobCardImageUri] = useState<string | undefined>(undefined);
   
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
@@ -207,6 +209,7 @@ export default function AddJobModal() {
         notes: notes.trim() || undefined,
         vhcStatus,
         createdAt: jobDateTime.toISOString(),
+        imageUri: jobCardImageUri,
       };
       
       console.log('AddJobModal: Saving job:', jobData);
@@ -232,6 +235,7 @@ export default function AddJobModal() {
           setNotes('');
           setVhcStatus('NONE');
           setJobDateTime(new Date());
+          setJobCardImageUri(undefined);
         } else {
           router.back();
         }
@@ -343,6 +347,42 @@ export default function AddJobModal() {
       console.error('AddJobModal: Error scanning job card:', error);
       toastManager.error('Failed to scan job card');
     }
+  };
+
+  const handleTakeJobCardPhoto = async (source: 'camera' | 'gallery') => {
+    console.log('AddJobModal: User taking job card photo from', source);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.8,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.8,
+          });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('AddJobModal: Job card photo selected:', result.assets[0].uri);
+        setJobCardImageUri(result.assets[0].uri);
+        toastManager.success('Job card photo attached!');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('AddJobModal: Error taking job card photo:', error);
+      toastManager.error('Failed to attach photo');
+    }
+  };
+
+  const handleRemoveJobCardPhoto = () => {
+    console.log('AddJobModal: User removed job card photo');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setJobCardImageUri(undefined);
+    toastManager.info('Job card photo removed');
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -792,6 +832,66 @@ export default function AddJobModal() {
                 />
               </View>
 
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Job Card Photo (Optional)</Text>
+                {jobCardImageUri ? (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image
+                      source={{ uri: jobCardImageUri }}
+                      style={styles.imagePreview}
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity
+                      style={[styles.removeImageButton, { backgroundColor: '#f44336' }]}
+                      onPress={handleRemoveJobCardPhoto}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash.fill"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.removeImageText}>Remove Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.imageButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.imageButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                      onPress={() => {
+                        console.log('AddJobModal: User tapped Take Photo button');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        handleTakeJobCardPhoto('camera');
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="camera.fill"
+                        android_material_icon_name="camera"
+                        size={24}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.imageButtonText}>Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.imageButton, { backgroundColor: theme.secondary, borderColor: theme.secondary }]}
+                      onPress={() => {
+                        console.log('AddJobModal: User tapped Choose from Gallery button');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        handleTakeJobCardPhoto('gallery');
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="photo.fill"
+                        android_material_icon_name="image"
+                        size={24}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.imageButtonText}>Choose Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
               <TouchableOpacity
                 style={[styles.saveButton, { backgroundColor: theme.primary }]}
                 onPress={() => {
@@ -1119,6 +1219,46 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   vhcTickLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    gap: 8,
+  },
+  imageButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  imagePreviewContainer: {
+    gap: 12,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  removeImageText: {
+    color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
   },

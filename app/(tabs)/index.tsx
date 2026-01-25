@@ -27,6 +27,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [technicianName, setTechnicianName] = useState('Buckston Rugge');
+  const [workSchedule, setWorkSchedule] = useState<any>(null);
   
   // Monthly stats
   const [monthlyStats, setMonthlyStats] = useState<any>(null);
@@ -60,6 +61,7 @@ export default function DashboardScreen() {
       setTechnicianName(profile.name);
       setWorkingDays(schedule.workingDays || [1, 2, 3, 4, 5]);
       setDailyHours(schedule.dailyWorkingHours || 8.5);
+      setWorkSchedule(schedule);
       
       await loadCalendarData(schedule);
       
@@ -200,6 +202,61 @@ export default function DashboardScreen() {
     });
   };
 
+  const calculateWorkdayProgress = () => {
+    if (!workSchedule) {
+      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false };
+    }
+
+    const now = currentTime;
+    const dayOfWeek = now.getDay();
+    const isWorkDay = workSchedule.workingDays?.includes(dayOfWeek) || false;
+
+    if (!isWorkDay) {
+      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false };
+    }
+
+    // Parse times
+    const parseTime = (timeStr: string) => {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      const date = new Date(now);
+      date.setHours(hours, minutes, 0, 0);
+      return date;
+    };
+
+    const workStart = parseTime(workSchedule.startTime || '07:00');
+    const workEnd = parseTime(workSchedule.endTime || '18:00');
+    const lunchStart = parseTime(workSchedule.lunchStartTime || '12:00');
+    const lunchEnd = parseTime(workSchedule.lunchEndTime || '12:30');
+
+    const nowTime = now.getTime();
+    const startTime = workStart.getTime();
+    const endTime = workEnd.getTime();
+    const lunchStartTime = lunchStart.getTime();
+    const lunchEndTime = lunchEnd.getTime();
+
+    // Check if before work
+    if (nowTime < startTime) {
+      return { progress: 0, isWorkDay: true, beforeWork: true, afterWork: false, isLunch: false };
+    }
+
+    // Check if after work
+    if (nowTime > endTime) {
+      return { progress: 100, isWorkDay: true, beforeWork: false, afterWork: true, isLunch: false };
+    }
+
+    // Check if during lunch
+    const isLunch = nowTime >= lunchStartTime && nowTime <= lunchEndTime;
+
+    // Calculate progress
+    const totalWorkTime = endTime - startTime;
+    const elapsedTime = nowTime - startTime;
+    const progress = Math.min(100, Math.max(0, (elapsedTime / totalWorkTime) * 100));
+
+    return { progress, isWorkDay: true, beforeWork: false, afterWork: false, isLunch };
+  };
+
+  const workdayProgress = calculateWorkdayProgress();
+
   const handlePreviousMonth = () => {
     const newMonth = new Date(selectedMonth);
     newMonth.setMonth(newMonth.getMonth() - 1);
@@ -294,6 +351,72 @@ export default function DashboardScreen() {
             {formatDate(currentTime)}
           </Text>
         </View>
+
+        {/* Workday Progress Bar */}
+        {workSchedule && (
+          <View style={[styles.progressCard, { backgroundColor: theme.card }]}>
+            <View style={styles.progressHeader}>
+              <Text style={[styles.progressTitle, { color: theme.text }]}>Today's Workday Progress</Text>
+              {workdayProgress.isWorkDay ? (
+                <Text style={[styles.progressStatus, { color: theme.primary }]}>
+                  {workdayProgress.beforeWork ? 'Before Work' : workdayProgress.afterWork ? 'Work Complete' : workdayProgress.isLunch ? 'Lunch Break' : 'Working'}
+                </Text>
+              ) : (
+                <Text style={[styles.progressStatus, { color: theme.textSecondary }]}>Not a Work Day</Text>
+              )}
+            </View>
+            
+            {workdayProgress.isWorkDay && (
+              <>
+                <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
+                  <View 
+                    style={[
+                      styles.progressBarFill, 
+                      { 
+                        width: `${workdayProgress.progress}%`,
+                        backgroundColor: workdayProgress.isLunch ? theme.chartYellow : theme.primary,
+                      }
+                    ]} 
+                  />
+                </View>
+                
+                <View style={styles.progressTimeRow}>
+                  <View style={styles.progressTimeItem}>
+                    <Text style={[styles.progressTimeLabel, { color: theme.textSecondary }]}>Start</Text>
+                    <Text style={[styles.progressTimeValue, { color: theme.text }]}>
+                      {workSchedule.startTime || '07:00'}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.progressTimeItem}>
+                    <Text style={[styles.progressTimeLabel, { color: theme.textSecondary }]}>Lunch</Text>
+                    <Text style={[styles.progressTimeValue, { color: theme.chartYellow }]}>
+                      {workSchedule.lunchStartTime || '12:00'} - {workSchedule.lunchEndTime || '12:30'}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.progressTimeItem}>
+                    <Text style={[styles.progressTimeLabel, { color: theme.textSecondary }]}>End</Text>
+                    <Text style={[styles.progressTimeValue, { color: theme.text }]}>
+                      {workSchedule.endTime || '18:00'}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.progressLegend}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
+                    <Text style={[styles.legendText, { color: theme.textSecondary }]}>Work Time</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: theme.chartYellow }]} />
+                    <Text style={[styles.legendText, { color: theme.textSecondary }]}>Lunch Break</Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        )}
 
         {/* Progress Rings */}
         <View style={styles.ringsContainer}>
@@ -784,6 +907,78 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 14,
     marginTop: 8,
+  },
+  progressCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  progressTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  progressStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  progressBarContainer: {
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 12,
+    transition: 'width 0.3s ease',
+  },
+  progressTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  progressTimeItem: {
+    alignItems: 'center',
+  },
+  progressTimeLabel: {
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  progressTimeValue: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  progressLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    fontSize: 12,
   },
   ringsContainer: {
     flexDirection: 'row',

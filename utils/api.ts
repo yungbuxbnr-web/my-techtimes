@@ -17,6 +17,7 @@ export interface Job {
   vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   createdAt: string;
   updatedAt?: string;
+  imageUri?: string; // Optional job card image attachment
 }
 
 export interface JobStats {
@@ -233,6 +234,7 @@ export const api = {
     notes?: string;
     vhcStatus?: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
     createdAt?: string;
+    imageUri?: string;
   }): Promise<Job> {
     console.log('API: Creating job in local storage', job);
     const newJob = await offlineStorage.createJob({
@@ -242,6 +244,7 @@ export const api = {
       notes: job.notes,
       vhcStatus: job.vhcStatus || 'NONE',
       createdAt: job.createdAt || new Date().toISOString(),
+      imageUri: job.imageUri,
     });
     
     return newJob;
@@ -254,6 +257,7 @@ export const api = {
     notes: string;
     vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
     createdAt: string;
+    imageUri: string;
   }>): Promise<Job> {
     console.log('API: Updating job in local storage', id, updates);
     return await offlineStorage.updateJob(id, updates);

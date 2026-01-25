@@ -22,6 +22,7 @@ export interface Job {
   vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   createdAt: string;
   updatedAt?: string;
+  imageUri?: string; // Optional job card image attachment
 }
 
 export interface Schedule {
