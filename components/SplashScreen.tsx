@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, Dimensions } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -9,12 +9,85 @@ import Animated, {
   withSequence,
   withDelay,
   runOnJS,
+  Easing,
 } from 'react-native-reanimated';
-import { Svg, Path, Circle } from 'react-native-svg';
+import { Svg, Path, Circle, Rect } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onComplete: () => void;
+}
+
+// Animated car component
+function AnimatedCar() {
+  const translateX = useSharedValue(-200);
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    // Car drives across the screen
+    translateX.value = withTiming(SCREEN_WIDTH + 100, {
+      duration: 2000,
+      easing: Easing.inOut(Easing.ease),
+    });
+
+    // Fade out near the end
+    opacity.value = withDelay(
+      1600,
+      withTiming(0, { duration: 400 })
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: translateX.value }],
+      opacity: opacity.value,
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: 120, height: 60 }, animatedStyle]}>
+      <Svg width="120" height="60" viewBox="0 0 120 60">
+        {/* Car body */}
+        <Path
+          d="M20 35 L30 20 L70 20 L80 35 Z"
+          fill="#2196F3"
+          stroke="#1976D2"
+          strokeWidth="2"
+        />
+        <Rect
+          x="15"
+          y="35"
+          width="75"
+          height="10"
+          rx="2"
+          fill="#2196F3"
+          stroke="#1976D2"
+          strokeWidth="2"
+        />
+        
+        {/* Windows */}
+        <Path
+          d="M35 25 L40 25 L40 33 L35 33 Z"
+          fill="#64B5F6"
+        />
+        <Path
+          d="M55 25 L65 25 L65 33 L55 33 Z"
+          fill="#64B5F6"
+        />
+        
+        {/* Wheels */}
+        <Circle cx="30" cy="50" r="8" fill="#333" stroke="#000" strokeWidth="2" />
+        <Circle cx="30" cy="50" r="4" fill="#666" />
+        <Circle cx="70" cy="50" r="8" fill="#333" stroke="#000" strokeWidth="2" />
+        <Circle cx="70" cy="50" r="4" fill="#666" />
+        
+        {/* Headlight */}
+        <Circle cx="88" cy="38" r="3" fill="#FFD700" />
+      </Svg>
+    </Animated.View>
+  );
 }
 
 // Animated wrench icon
@@ -24,14 +97,17 @@ function AnimatedWrench() {
 
   useEffect(() => {
     // Scale in
-    scale.value = withSpring(1, {
-      damping: 10,
-      stiffness: 100,
-    });
+    scale.value = withDelay(
+      2200,
+      withSpring(1, {
+        damping: 10,
+        stiffness: 100,
+      })
+    );
 
     // Rotate animation
     rotation.value = withSequence(
-      withDelay(300, withSpring(15, { damping: 8 })),
+      withDelay(2500, withSpring(15, { damping: 8 })),
       withSpring(-15, { damping: 8 }),
       withSpring(10, { damping: 8 }),
       withSpring(0, { damping: 8 })
@@ -80,31 +156,31 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
   const fadeOut = useSharedValue(1);
 
   useEffect(() => {
-    console.log('SplashScreen: Starting startup animation');
+    console.log('SplashScreen: Starting startup animation with car drive-by');
 
-    // Animate title in
+    // Animate title in (after car passes)
     titleOpacity.value = withDelay(
-      500,
+      2700,
       withTiming(1, { duration: 600 })
     );
     titleTranslateY.value = withDelay(
-      500,
+      2700,
       withSpring(0, { damping: 12 })
     );
 
     // Animate subtitle in
     subtitleOpacity.value = withDelay(
-      800,
+      3000,
       withTiming(1, { duration: 600 })
     );
     subtitleTranslateY.value = withDelay(
-      800,
+      3000,
       withSpring(0, { damping: 12 })
     );
 
     // Fade out entire splash screen
     fadeOut.value = withDelay(
-      2000,
+      4200,
       withTiming(0, { duration: 500 }, (finished) => {
         if (finished) {
           runOnJS(onComplete)();
@@ -140,6 +216,11 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
         style={StyleSheet.absoluteFill}
       />
       
+      {/* Car drive-by animation at the top */}
+      <View style={styles.carContainer}>
+        <AnimatedCar />
+      </View>
+      
       <View style={styles.content}>
         <AnimatedWrench />
         
@@ -163,6 +244,14 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 10000,
+  },
+  carContainer: {
+    position: 'absolute',
+    top: 100,
+    left: 0,
+    right: 0,
+    height: 60,
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

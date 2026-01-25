@@ -16,6 +16,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { api } from '@/utils/api';
 import AppBackground from '@/components/AppBackground';
+import { SetupCompleteScreen } from '@/components/SetupCompleteScreen';
 
 const PIN_KEY = 'user_pin';
 const SETUP_COMPLETE_KEY = 'setup_complete';
@@ -43,7 +44,7 @@ export default function SetupScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
   
-  const [step, setStep] = useState<'name' | 'pin' | 'confirm'>('name');
+  const [step, setStep] = useState<'name' | 'pin' | 'confirm' | 'complete'>('name');
   const [technicianName, setTechnicianName] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -95,16 +96,30 @@ export default function SetupScreen() {
       // Mark setup as complete
       await setSecureItem(SETUP_COMPLETE_KEY, 'true');
       
-      console.log('Setup: Setup complete, navigating to login');
-      // Navigate to login screen
-      router.replace('/pin-login');
+      console.log('Setup: Setup complete, showing completion animation');
+      // Show completion animation
+      setStep('complete');
     } catch (error) {
       console.error('Setup: Error completing setup:', error);
       Alert.alert('Error', 'Failed to complete setup. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
+
+  const handleSetupComplete = () => {
+    console.log('Setup: Animation complete, navigating to login');
+    router.replace('/pin-login');
+  };
+
+  // Show setup complete animation
+  if (step === 'complete') {
+    return (
+      <SetupCompleteScreen 
+        technicianName={technicianName} 
+        onComplete={handleSetupComplete}
+      />
+    );
+  }
 
   const renderNameStep = () => (
     <View style={styles.stepContainer}>
