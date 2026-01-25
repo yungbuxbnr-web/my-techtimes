@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import { api, OCRRegResult, OCRJobCardResult, Job } from '@/utils/api';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,13 +14,20 @@ import {
   Platform,
   Modal,
   Animated,
+  FlatList,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useThemeContext } from '@/contexts/ThemeContext';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validateAW } from '@/utils/jobCalculations';
-import { api, OCRRegResult, OCRJobCardResult } from '@/utils/api';
-import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
+
+interface JobSuggestion {
+  wipNumber: string;
+  vehicleReg: string;
+  lastUsed: string;
+  usageCount: number;
+}
 
 export default function AddJobScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -37,6 +45,127 @@ export default function AddJobScreen() {
   const [jobDateTime, setJobDateTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  
+  // Suggestions state
+  const [allJobs, setAllJobs] = useState<Job[]>([]);
+  const [wipSuggestions, setWipSuggestions] = useState<JobSuggestion[]>([]);
+  const [regSuggestions, setRegSuggestions] = useState<JobSuggestion[]>([]);
+  const [showWipSuggestions, setShowWipSuggestions] = useState(false);
+  const [showRegSuggestions, setShowRegSuggestions] = useState(false);
+  const wipInputRef = useRef<TextInput>(null);
+  const regInputRef = useRef<TextInput>(null);
+  
+  // Load all jobs for suggestions
+  useEffect(() => {
+    loadJobsForSuggestions();
+  }, []);
+  
+  const loadJobsForSuggestions = async () => {
+    try {
+      console.log('AddJobScreen: Loading jobs for suggestions');
+      const jobs = await api.getAllJobs();
+      setAllJobs(jobs);
+    } catch (error) {
+      console.error('AddJobScreen: Error loading jobs for suggestions:', error);
+    }
+  };
+  
+  // Generate suggestions based on input
+  const generateSuggestions = (input: string, field: 'wip' | 'reg'): JobSuggestion[] => {
+    if (!input || input.length === 0) {
+      return [];
+    }
+    
+    const upperInput = input.toUpperCase();
+    const suggestionMap = new Map<string, JobSuggestion>();
+    
+    // Group jobs by WIP or Reg and track usage
+    allJobs.forEach(job => {
+      const key = field === 'wip' ? job.wipNumber : job.vehicleReg.toUpperCase();
+      const matchValue = field === 'wip' ? job.wipNumber : job.vehicleReg.toUpperCase();
+      
+      // Check if it matches (starts with or contains)
+      const startsWithMatch = matchValue.startsWith(upperInput);
+      const containsMatch = matchValue.includes(upperInput);
+      
+      if (startsWithMatch || containsMatch) {
+        const existing = suggestionMap.get(key);
+        if (existing) {
+          existing.usageCount++;
+          if (new Date(job.createdAt) > new Date(existing.lastUsed)) {
+            existing.lastUsed = job.createdAt;
+          }
+        } else {
+          suggestionMap.set(key, {
+            wipNumber: job.wipNumber,
+            vehicleReg: job.vehicleReg.toUpperCase(),
+            lastUsed: job.createdAt,
+            usageCount: 1,
+          });
+        }
+      }
+    });
+    
+    // Convert to array and sort: starts-with first, then by most recent
+    const suggestions = Array.from(suggestionMap.values()).sort((a, b) => {
+      const aKey = field === 'wip' ? a.wipNumber : a.vehicleReg;
+      const bKey = field === 'wip' ? b.wipNumber : b.vehicleReg;
+      const aStartsWith = aKey.startsWith(upperInput);
+      const bStartsWith = bKey.startsWith(upperInput);
+      
+      if (aStartsWith && !bStartsWith) return -1;
+      if (!aStartsWith && bStartsWith) return 1;
+      
+      // Both start with or both contain - sort by most recent
+      return new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime();
+    });
+    
+    // Limit to 10 suggestions
+    return suggestions.slice(0, 10);
+  };
+  
+  // Handle WIP input change
+  const handleWipChange = (text: string) => {
+    setWipNumber(text);
+    
+    if (text.length > 0) {
+      const suggestions = generateSuggestions(text, 'wip');
+      setWipSuggestions(suggestions);
+      setShowWipSuggestions(suggestions.length > 0);
+    } else {
+      setShowWipSuggestions(false);
+    }
+  };
+  
+  // Handle Reg input change
+  const handleRegChange = (text: string) => {
+    const upperText = text.toUpperCase();
+    setVehicleReg(upperText);
+    
+    if (upperText.length > 0) {
+      const suggestions = generateSuggestions(upperText, 'reg');
+      setRegSuggestions(suggestions);
+      setShowRegSuggestions(suggestions.length > 0);
+    } else {
+      setShowRegSuggestions(false);
+    }
+  };
+  
+  // Select WIP suggestion
+  const selectWipSuggestion = (suggestion: JobSuggestion) => {
+    console.log('AddJobScreen: Selected WIP suggestion:', suggestion.wipNumber);
+    setWipNumber(suggestion.wipNumber);
+    setVehicleReg(suggestion.vehicleReg);
+    setShowWipSuggestions(false);
+  };
+  
+  // Select Reg suggestion
+  const selectRegSuggestion = (suggestion: JobSuggestion) => {
+    console.log('AddJobScreen: Selected Reg suggestion:', suggestion.vehicleReg);
+    setVehicleReg(suggestion.vehicleReg);
+    setWipNumber(suggestion.wipNumber);
+    setShowRegSuggestions(false);
+  };
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
   const vhcOptions: ('NONE' | 'GREEN' | 'ORANGE' | 'RED')[] = ['NONE', 'GREEN', 'ORANGE', 'RED'];
@@ -81,6 +210,9 @@ export default function AddJobScreen() {
       
       console.log('AddJobScreen: Saving job:', jobData);
       await api.createJob(jobData);
+      
+      // Reload jobs for suggestions
+      await loadJobsForSuggestions();
       
       // Trigger refresh of dashboard and stats
       console.log('AddJobScreen: Job saved, triggering live update');
@@ -261,15 +393,57 @@ export default function AddJobScreen() {
                     <Text style={styles.scanButtonText}>Scan Card</Text>
                   </TouchableOpacity>
                 </View>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={wipNumber}
-                  onChangeText={setWipNumber}
-                  keyboardType="number-pad"
-                  maxLength={5}
-                  placeholder="12345"
-                  placeholderTextColor={theme.textSecondary}
-                />
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    ref={wipInputRef}
+                    style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                    value={wipNumber}
+                    onChangeText={handleWipChange}
+                    onFocus={() => {
+                      if (wipNumber.length > 0) {
+                        const suggestions = generateSuggestions(wipNumber, 'wip');
+                        setWipSuggestions(suggestions);
+                        setShowWipSuggestions(suggestions.length > 0);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay hiding to allow tap on suggestion
+                      setTimeout(() => setShowWipSuggestions(false), 200);
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    placeholder="12345"
+                    placeholderTextColor={theme.textSecondary}
+                  />
+                  {showWipSuggestions && wipSuggestions.length > 0 && (
+                    <View style={[styles.suggestionsDropdown, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                      <FlatList
+                        data={wipSuggestions}
+                        keyExtractor={(item, index) => `${item.wipNumber}-${index}`}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
+                            onPress={() => selectWipSuggestion(item)}
+                          >
+                            <View style={styles.suggestionContent}>
+                              <Text style={[styles.suggestionWip, { color: theme.primary }]}>
+                                {item.wipNumber}
+                              </Text>
+                              <Text style={[styles.suggestionReg, { color: theme.text }]}>
+                                {item.vehicleReg}
+                              </Text>
+                            </View>
+                            <Text style={[styles.suggestionDate, { color: theme.textSecondary }]}>
+                              {new Date(item.lastUsed).toLocaleDateString('en-GB')}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        scrollEnabled={false}
+                        nestedScrollEnabled={true}
+                      />
+                    </View>
+                  )}
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -295,14 +469,56 @@ export default function AddJobScreen() {
                     <Text style={styles.scanButtonText}>Scan Reg</Text>
                   </TouchableOpacity>
                 </View>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={vehicleReg}
-                  onChangeText={(text) => setVehicleReg(text.toUpperCase())}
-                  autoCapitalize="characters"
-                  placeholder="ABC123"
-                  placeholderTextColor={theme.textSecondary}
-                />
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    ref={regInputRef}
+                    style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                    value={vehicleReg}
+                    onChangeText={handleRegChange}
+                    onFocus={() => {
+                      if (vehicleReg.length > 0) {
+                        const suggestions = generateSuggestions(vehicleReg, 'reg');
+                        setRegSuggestions(suggestions);
+                        setShowRegSuggestions(suggestions.length > 0);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay hiding to allow tap on suggestion
+                      setTimeout(() => setShowRegSuggestions(false), 200);
+                    }}
+                    autoCapitalize="characters"
+                    placeholder="ABC123"
+                    placeholderTextColor={theme.textSecondary}
+                  />
+                  {showRegSuggestions && regSuggestions.length > 0 && (
+                    <View style={[styles.suggestionsDropdown, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                      <FlatList
+                        data={regSuggestions}
+                        keyExtractor={(item, index) => `${item.vehicleReg}-${index}`}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
+                            onPress={() => selectRegSuggestion(item)}
+                          >
+                            <View style={styles.suggestionContent}>
+                              <Text style={[styles.suggestionReg, { color: theme.primary }]}>
+                                {item.vehicleReg}
+                              </Text>
+                              <Text style={[styles.suggestionWip, { color: theme.text }]}>
+                                WIP: {item.wipNumber}
+                              </Text>
+                            </View>
+                            <Text style={[styles.suggestionDate, { color: theme.textSecondary }]}>
+                              {new Date(item.lastUsed).toLocaleDateString('en-GB')}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        scrollEnabled={false}
+                        nestedScrollEnabled={true}
+                      />
+                    </View>
+                  )}
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -659,12 +875,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  inputContainer: {
+    position: 'relative',
+    zIndex: 1,
+  },
   input: {
     height: 56,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
+  },
+  suggestionsDropdown: {
+    position: 'absolute',
+    top: 58,
+    left: 0,
+    right: 0,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+  },
+  suggestionContent: {
+    flex: 1,
+  },
+  suggestionWip: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  suggestionReg: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  suggestionDate: {
+    fontSize: 12,
   },
   pickerButton: {
     flexDirection: 'row',

@@ -91,13 +91,13 @@ export default function PinLoginScreen() {
   };
 
   const handleNumberPress = (num: string) => {
-    if (pin.length < 6) {
+    if (pin.length < 4) {
       const newPin = pin + num;
       setPin(newPin);
       console.log('PinLogin: PIN length:', newPin.length);
       
-      // Auto-verify when PIN reaches 4-6 digits
-      if (newPin.length >= 4) {
+      // Auto-verify when PIN reaches 4 digits
+      if (newPin.length === 4) {
         verifyPin(newPin);
       }
     }
@@ -196,7 +196,7 @@ export default function PinLoginScreen() {
           <>
             <View style={styles.pinDisplay}>
               <View style={styles.pinDots}>
-                {[0, 1, 2, 3, 4, 5].map((index) => (
+                {[0, 1, 2, 3].map((index) => (
                   <View
                     key={index}
                     style={[
