@@ -58,6 +58,25 @@ export interface Absence {
 
 export interface Settings {
   monthlyTarget: number;
+  streaksEnabled?: boolean;
+  weeklyStreakTarget?: number; // Default 5 jobs per week
+}
+
+export interface StreakData {
+  currentStreak: number;
+  bestStreak: number;
+  currentWeeklyStreak: number;
+  bestWeeklyStreak: number;
+  bestDayThisMonth: {
+    date: string;
+    aw: number;
+    jobs: number;
+  } | null;
+  mostProductiveDayThisMonth: {
+    date: string;
+    jobs: number;
+    aw: number;
+  } | null;
 }
 
 export interface NotificationSettings {
@@ -283,7 +302,11 @@ export const offlineStorage = {
   // Settings
   async getSettings(): Promise<Settings> {
     console.log('OfflineStorage: Getting settings');
-    return await getItem<Settings>(KEYS.SETTINGS, { monthlyTarget: 180 });
+    return await getItem<Settings>(KEYS.SETTINGS, { 
+      monthlyTarget: 180,
+      streaksEnabled: true,
+      weeklyStreakTarget: 5,
+    });
   },
 
   async updateSettings(settings: Partial<Settings>): Promise<Settings> {

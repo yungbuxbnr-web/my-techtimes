@@ -46,6 +46,8 @@ export default function SettingsScreen() {
   
   const [technicianName, setTechnicianName] = useState('');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
+  const [streaksEnabled, setStreaksEnabled] = useState(true);
+  const [weeklyStreakTarget, setWeeklyStreakTarget] = useState('5');
   const [showChangePinModal, setShowChangePinModal] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -70,6 +72,8 @@ export default function SettingsScreen() {
       
       setTechnicianName(profile.name);
       setMonthlyTarget(settings.monthlyTarget.toString());
+      setStreaksEnabled(settings.streaksEnabled !== false);
+      setWeeklyStreakTarget((settings.weeklyStreakTarget || 5).toString());
       
       console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);
     } catch (error) {
@@ -104,6 +108,39 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('SettingsScreen: Error updating target:', error);
       Alert.alert('Error', 'Failed to update monthly target');
+    }
+  };
+
+  const handleToggleStreaks = async (value: boolean) => {
+    console.log('SettingsScreen: Toggling streaks to', value);
+    setStreaksEnabled(value);
+    try {
+      const settings = await api.getSettings();
+      await api.updateSettings({ ...settings, streaksEnabled: value });
+      toastManager.show(value ? 'Streaks enabled' : 'Streaks disabled', 'success');
+    } catch (error) {
+      console.error('SettingsScreen: Error updating streaks setting:', error);
+      Alert.alert('Error', 'Failed to update streaks setting');
+    }
+  };
+
+  const handleUpdateWeeklyTarget = async () => {
+    console.log('SettingsScreen: Updating weekly streak target');
+    const target = parseInt(weeklyStreakTarget, 10);
+    
+    if (isNaN(target) || target <= 0) {
+      Alert.alert('Error', 'Please enter a valid weekly target (greater than 0)');
+      return;
+    }
+    
+    try {
+      const settings = await api.getSettings();
+      await api.updateSettings({ ...settings, weeklyStreakTarget: target });
+      toastManager.show('Weekly streak target updated successfully', 'success');
+      console.log('SettingsScreen: Weekly streak target updated to', target);
+    } catch (error) {
+      console.error('SettingsScreen: Error updating weekly target:', error);
+      Alert.alert('Error', 'Failed to update weekly streak target');
     }
   };
 
@@ -603,6 +640,48 @@ export default function SettingsScreen() {
               <Text style={styles.updateButtonText}>Update</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Streaks & Analytics</Text>
+          
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Streaks</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                Track daily and weekly logging streaks
+              </Text>
+            </View>
+            <Switch
+              value={streaksEnabled}
+              onValueChange={handleToggleStreaks}
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+          
+          {streaksEnabled && (
+            <>
+              <Text style={[styles.label, { color: theme.textSecondary, marginTop: 16 }]}>
+                Weekly Streak Target (jobs per week)
+              </Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                  value={weeklyStreakTarget}
+                  onChangeText={setWeeklyStreakTarget}
+                  placeholder="5"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                />
+                <TouchableOpacity
+                  style={[styles.updateButton, { backgroundColor: theme.primary }]}
+                  onPress={handleUpdateWeeklyTarget}
+                >
+                  <Text style={styles.updateButtonText}>Update</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>

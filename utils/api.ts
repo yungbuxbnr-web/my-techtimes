@@ -1,6 +1,6 @@
 
 import Constants from 'expo-constants';
-import { offlineStorage, Job as OfflineJob, Schedule, TechnicianProfile, Absence } from './offlineStorage';
+import { offlineStorage, Job as OfflineJob, Schedule, TechnicianProfile, Absence, StreakData } from './offlineStorage';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev';
 
@@ -103,7 +103,7 @@ export interface OCRJobCardResult {
   confidence: number;
 }
 
-export type { Schedule, TechnicianProfile, Absence };
+export type { Schedule, TechnicianProfile, Absence, StreakData };
 
 // Helper functions for calculations
 function calculateJobStats(jobs: Job[]): JobStats {
@@ -456,9 +456,14 @@ export const api = {
     return { value };
   },
 
-  async getSettings(): Promise<{ monthlyTarget: number }> {
+  async getSettings(): Promise<{ monthlyTarget: number; streaksEnabled?: boolean; weeklyStreakTarget?: number }> {
     console.log('API: Fetching settings from local storage');
     return await offlineStorage.getSettings();
+  },
+
+  async updateSettings(settings: Partial<{ monthlyTarget: number; streaksEnabled: boolean; weeklyStreakTarget: number }>): Promise<void> {
+    console.log('API: Updating settings in local storage', settings);
+    await offlineStorage.updateSettings(settings);
   },
 
   // OCR endpoints - These would need a backend or local ML model
@@ -509,5 +514,167 @@ export const api = {
   async getRecentJobs(limit: number = 10): Promise<Job[]> {
     console.log('API: Fetching recent jobs from local storage, limit:', limit);
     return await offlineStorage.getRecentJobs(limit);
+  },
+
+  // Streaks calculation
+  async calculateStreaks(): Promise<StreakData> {
+    console.log('API: Calculating streaks');
+    const allJobs = await offlineStorage.getAllJobs();
+    const settings = await offlineStorage.getSettings();
+    const weeklyTarget = settings.weeklyStreakTarget || 5;
+
+    // Group jobs by day
+    const jobsByDay = new Map<string, Job[]>();
+    allJobs.forEach(job => {
+      const day = job.createdAt.split('T')[0];
+      if (!jobsByDay.has(day)) {
+        jobsByDay.set(day, []);
+      }
+      jobsByDay.get(day)!.push(job);
+    });
+
+    // Sort days in descending order (most recent first)
+    const sortedDays = Array.from(jobsByDay.keys()).sort((a, b) => b.localeCompare(a));
+
+    // Calculate daily streak
+    let currentStreak = 0;
+    let bestStreak = 0;
+    let tempStreak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if there's a job today or yesterday (to maintain streak)
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    let streakDate = jobsByDay.has(todayStr) ? new Date(today) : jobsByDay.has(yesterdayStr) ? new Date(yesterday) : null;
+
+    if (streakDate) {
+      // Count consecutive days backwards from streak start
+      while (true) {
+        const dateStr = streakDate.toISOString().split('T')[0];
+        if (jobsByDay.has(dateStr)) {
+          currentStreak++;
+          streakDate.setDate(streakDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Calculate best streak (scan all days)
+    let checkDate = sortedDays.length > 0 ? new Date(sortedDays[0]) : new Date();
+    const oldestDate = sortedDays.length > 0 ? new Date(sortedDays[sortedDays.length - 1]) : new Date();
+    
+    while (checkDate >= oldestDate) {
+      const dateStr = checkDate.toISOString().split('T')[0];
+      if (jobsByDay.has(dateStr)) {
+        tempStreak++;
+        bestStreak = Math.max(bestStreak, tempStreak);
+      } else {
+        tempStreak = 0;
+      }
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    // Calculate weekly streaks
+    const jobsByWeek = new Map<string, Job[]>();
+    allJobs.forEach(job => {
+      const date = new Date(job.createdAt);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay() + 1); // Monday
+      const weekKey = weekStart.toISOString().split('T')[0];
+      if (!jobsByWeek.has(weekKey)) {
+        jobsByWeek.set(weekKey, []);
+      }
+      jobsByWeek.get(weekKey)!.push(job);
+    });
+
+    const sortedWeeks = Array.from(jobsByWeek.keys()).sort((a, b) => b.localeCompare(a));
+
+    let currentWeeklyStreak = 0;
+    let bestWeeklyStreak = 0;
+    let tempWeeklyStreak = 0;
+
+    // Get current week start
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - today.getDay() + 1);
+    const currentWeekKey = currentWeekStart.toISOString().split('T')[0];
+
+    // Check current and previous week for streak
+    let weekCheckDate = jobsByWeek.has(currentWeekKey) && jobsByWeek.get(currentWeekKey)!.length >= weeklyTarget
+      ? new Date(currentWeekStart)
+      : new Date(currentWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const prevWeekKey = new Date(currentWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    if (jobsByWeek.has(prevWeekKey) && jobsByWeek.get(prevWeekKey)!.length >= weeklyTarget) {
+      weekCheckDate = new Date(prevWeekKey);
+    }
+
+    // Count consecutive weeks
+    while (true) {
+      const weekKey = weekCheckDate.toISOString().split('T')[0];
+      if (jobsByWeek.has(weekKey) && jobsByWeek.get(weekKey)!.length >= weeklyTarget) {
+        currentWeeklyStreak++;
+        weekCheckDate.setDate(weekCheckDate.getDate() - 7);
+      } else {
+        break;
+      }
+    }
+
+    // Calculate best weekly streak
+    sortedWeeks.forEach(weekKey => {
+      const weekJobs = jobsByWeek.get(weekKey)!;
+      if (weekJobs.length >= weeklyTarget) {
+        tempWeeklyStreak++;
+        bestWeeklyStreak = Math.max(bestWeeklyStreak, tempWeeklyStreak);
+      } else {
+        tempWeeklyStreak = 0;
+      }
+    });
+
+    // Find best day this month
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const monthJobs = allJobs.filter(job => job.createdAt.startsWith(currentMonth));
+    
+    const monthDayStats = new Map<string, { aw: number; jobs: number }>();
+    monthJobs.forEach(job => {
+      const day = job.createdAt.split('T')[0];
+      if (!monthDayStats.has(day)) {
+        monthDayStats.set(day, { aw: 0, jobs: 0 });
+      }
+      const stats = monthDayStats.get(day)!;
+      stats.aw += job.aw;
+      stats.jobs += 1;
+    });
+
+    let bestDayThisMonth = null;
+    let maxAw = 0;
+    monthDayStats.forEach((stats, day) => {
+      if (stats.aw > maxAw) {
+        maxAw = stats.aw;
+        bestDayThisMonth = { date: day, aw: stats.aw, jobs: stats.jobs };
+      }
+    });
+
+    let mostProductiveDayThisMonth = null;
+    let maxJobs = 0;
+    monthDayStats.forEach((stats, day) => {
+      if (stats.jobs > maxJobs) {
+        maxJobs = stats.jobs;
+        mostProductiveDayThisMonth = { date: day, jobs: stats.jobs, aw: stats.aw };
+      }
+    });
+
+    return {
+      currentStreak,
+      bestStreak: Math.max(bestStreak, currentStreak),
+      currentWeeklyStreak,
+      bestWeeklyStreak: Math.max(bestWeeklyStreak, currentWeeklyStreak),
+      bestDayThisMonth,
+      mostProductiveDayThisMonth,
+    };
   },
 };

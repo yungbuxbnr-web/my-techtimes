@@ -42,17 +42,21 @@ export default function DashboardScreen() {
   const [showDayModal, setShowDayModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [streakData, setStreakData] = useState<any>(null);
+  const [streaksEnabled, setStreaksEnabled] = useState(true);
 
   const loadDashboardData = useCallback(async () => {
     try {
       console.log('DashboardScreen: Fetching stats from API');
       const currentMonth = getCurrentMonth();
-      const [monthly, today, week, profile, schedule] = await Promise.all([
+      const [monthly, today, week, profile, schedule, settings, streaks] = await Promise.all([
         api.getMonthlyStats(currentMonth),
         api.getTodayStats(),
         api.getWeekStats(),
         api.getTechnicianProfile().catch(() => ({ name: 'Buckston Rugge' })),
         api.getSchedule(),
+        api.getSettings(),
+        api.calculateStreaks(),
       ]);
 
       setMonthlyStats(monthly);
@@ -62,6 +66,8 @@ export default function DashboardScreen() {
       setWorkingDays(schedule.workingDays || [1, 2, 3, 4, 5]);
       setDailyHours(schedule.dailyWorkingHours || 8.5);
       setWorkSchedule(schedule);
+      setStreaksEnabled(settings.streaksEnabled !== false);
+      setStreakData(streaks);
       
       await loadCalendarData(schedule);
       
@@ -351,6 +357,61 @@ export default function DashboardScreen() {
             {formatDate(currentTime)}
           </Text>
         </View>
+
+        {/* Streaks Card */}
+        {streaksEnabled && streakData && (
+          <TouchableOpacity
+            style={[styles.streaksCard, { backgroundColor: theme.card }]}
+            onPress={() => {
+              console.log('DashboardScreen: User tapped Streaks card');
+              router.push('/streaks');
+            }}
+          >
+            <View style={styles.streaksHeader}>
+              <IconSymbol
+                ios_icon_name="flame.fill"
+                android_material_icon_name="local-fire-department"
+                size={24}
+                color={theme.primary}
+              />
+              <Text style={[styles.streaksTitle, { color: theme.text }]}>Streaks</Text>
+            </View>
+            
+            <View style={styles.streaksRow}>
+              <View style={styles.streaksItem}>
+                <Text style={[styles.streaksValue, { color: theme.primary }]}>
+                  {streakData.currentStreak}
+                </Text>
+                <Text style={[styles.streaksLabel, { color: theme.textSecondary }]}>
+                  Current streak
+                </Text>
+              </View>
+              
+              <View style={styles.streaksItem}>
+                <Text style={[styles.streaksValue, { color: theme.chartGreen }]}>
+                  {streakData.bestStreak}
+                </Text>
+                <Text style={[styles.streaksLabel, { color: theme.textSecondary }]}>
+                  Best streak
+                </Text>
+              </View>
+            </View>
+            
+            {streakData.bestDayThisMonth && (
+              <View style={styles.streaksBest}>
+                <Text style={[styles.streaksBestLabel, { color: theme.textSecondary }]}>
+                  Best day this month:
+                </Text>
+                <Text style={[styles.streaksBestValue, { color: theme.text }]}>
+                  {new Date(streakData.bestDayThisMonth.date).toLocaleDateString('en-GB', { 
+                    day: 'numeric', 
+                    month: 'short' 
+                  })} — {streakData.bestDayThisMonth.aw} AW
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
 
         {/* Workday Progress Bar */}
         {workSchedule && (
@@ -898,6 +959,55 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  streaksCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  streaksHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  streaksTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  streaksRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  streaksItem: {
+    alignItems: 'center',
+  },
+  streaksValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  streaksLabel: {
+    fontSize: 12,
+  },
+  streaksBest: {
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  streaksBestLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  streaksBestValue: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   timerText: {
     fontSize: 48,
