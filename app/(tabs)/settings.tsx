@@ -243,6 +243,14 @@ export default function SettingsScreen() {
 
   const [exportType, setExportType] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
   const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('json');
+  const [exportDate, setExportDate] = useState(new Date());
+  const [exportWeekStart, setExportWeekStart] = useState(() => {
+    const today = new Date();
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - today.getDay()); // Go back to Sunday
+    return sunday;
+  });
+  const [exportMonth, setExportMonth] = useState(new Date());
 
   const handleExport = async () => {
     console.log('SettingsScreen: Exporting as', exportFormat, 'type:', exportType);
@@ -250,10 +258,6 @@ export default function SettingsScreen() {
       const profile = await api.getTechnicianProfile();
       const settings = await api.getSettings();
       const schedule = await api.getSchedule();
-      
-      const now = new Date();
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const currentDay = now.toISOString().split('T')[0];
       
       let jobs = [];
       let exportOptions: ExportOptions = {
@@ -263,31 +267,45 @@ export default function SettingsScreen() {
       };
       
       if (exportType === 'daily') {
-        jobs = await api.getJobsForDay(currentDay);
-        exportOptions.day = currentDay;
-        const dayStats = await api.getDayStats(currentDay);
-        exportOptions.availableHours = dayStats.availableHours;
+        const dayStr = exportDate.toISOString().split('T')[0];
+        jobs = await api.getJobsInRange(dayStr, dayStr);
+        exportOptions.day = dayStr;
+        
+        // Calculate available hours for the day
+        const dayOfWeek = exportDate.getDay();
+        const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
+        const isWorkingDay = workingDays.includes(dayOfWeek);
+        exportOptions.availableHours = isWorkingDay ? schedule.dailyWorkingHours : 0;
       } else if (exportType === 'weekly') {
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay() + 1);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 5);
+        const weekEnd = new Date(exportWeekStart);
+        weekEnd.setDate(exportWeekStart.getDate() + 6); // Saturday is 6 days after Sunday
         
-        jobs = await api.getAllJobs();
-        jobs = jobs.filter(job => {
-          const jobDate = new Date(job.createdAt);
-          return jobDate >= weekStart && jobDate <= weekEnd;
-        });
+        const startStr = exportWeekStart.toISOString().split('T')[0];
+        const endStr = weekEnd.toISOString().split('T')[0];
         
-        const weekStats = await api.getWeekStats(weekStart.toISOString().split('T')[0]);
-        exportOptions.availableHours = weekStats.availableHours;
+        jobs = await api.getJobsInRange(startStr, endStr);
+        
+        // Calculate available hours for the week
+        const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
+        let weekAvailableHours = 0;
+        for (let i = 0; i < 7; i++) {
+          const day = new Date(exportWeekStart);
+          day.setDate(exportWeekStart.getDate() + i);
+          const dayOfWeek = day.getDay();
+          if (workingDays.includes(dayOfWeek)) {
+            weekAvailableHours += schedule.dailyWorkingHours;
+          }
+        }
+        exportOptions.availableHours = weekAvailableHours;
       } else if (exportType === 'monthly') {
-        jobs = await api.getJobsForMonth(currentMonth);
-        exportOptions.month = currentMonth;
-        const monthlyStats = await api.getMonthlyStats(currentMonth);
+        const monthStr = `${exportMonth.getFullYear()}-${String(exportMonth.getMonth() + 1).padStart(2, '0')}`;
+        jobs = await api.getJobsForMonth(monthStr);
+        exportOptions.month = monthStr;
+        const monthlyStats = await api.getMonthlyStats(monthStr);
         exportOptions.availableHours = monthlyStats.availableHours;
       } else {
         jobs = await api.getAllJobs();
+        const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
         const monthlyStats = await api.getMonthlyStats(currentMonth);
         exportOptions.availableHours = monthlyStats.availableHours;
       }
@@ -1095,6 +1113,125 @@ export default function SettingsScreen() {
               ))}
             </View>
             
+            {exportType === 'daily' && (
+              <View style={[styles.dateNavigator, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newDate = new Date(exportDate);
+                    newDate.setDate(newDate.getDate() - 1);
+                    setExportDate(newDate);
+                  }}
+                  style={styles.dateNavButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="chevron.left"
+                    android_material_icon_name="arrow-back"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </TouchableOpacity>
+                <Text style={[styles.dateNavText, { color: theme.text }]}>
+                  {exportDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newDate = new Date(exportDate);
+                    newDate.setDate(newDate.getDate() + 1);
+                    setExportDate(newDate);
+                  }}
+                  style={styles.dateNavButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="arrow-forward"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            {exportType === 'weekly' && (
+              <View style={[styles.dateNavigator, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newDate = new Date(exportWeekStart);
+                    newDate.setDate(newDate.getDate() - 7);
+                    setExportWeekStart(newDate);
+                  }}
+                  style={styles.dateNavButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="chevron.left"
+                    android_material_icon_name="arrow-back"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </TouchableOpacity>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={[styles.dateNavText, { color: theme.text }]}>
+                    Week: {exportWeekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - {new Date(exportWeekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Text>
+                  <Text style={[styles.dateNavSubtext, { color: theme.textSecondary }]}>
+                    Sunday to Saturday
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newDate = new Date(exportWeekStart);
+                    newDate.setDate(newDate.getDate() + 7);
+                    setExportWeekStart(newDate);
+                  }}
+                  style={styles.dateNavButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="arrow-forward"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            {exportType === 'monthly' && (
+              <View style={[styles.dateNavigator, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newDate = new Date(exportMonth);
+                    newDate.setMonth(newDate.getMonth() - 1);
+                    setExportMonth(newDate);
+                  }}
+                  style={styles.dateNavButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="chevron.left"
+                    android_material_icon_name="arrow-back"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </TouchableOpacity>
+                <Text style={[styles.dateNavText, { color: theme.text }]}>
+                  {exportMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newDate = new Date(exportMonth);
+                    newDate.setMonth(newDate.getMonth() + 1);
+                    setExportMonth(newDate);
+                  }}
+                  style={styles.dateNavButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="arrow-forward"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+            
             <Text style={[styles.modalSubtitle, { color: theme.textSecondary, marginTop: 20, marginBottom: 12 }]}>
               Choose export format
             </Text>
@@ -1417,5 +1554,27 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  dateNavigator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  dateNavButton: {
+    padding: 8,
+  },
+  dateNavText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  dateNavSubtext: {
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: 'center',
   },
 });

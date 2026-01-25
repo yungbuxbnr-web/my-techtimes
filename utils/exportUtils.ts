@@ -43,17 +43,17 @@ function getWeekNumber(date: Date): number {
   return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
 }
 
-// Get week range (Monday to Saturday)
+// Get week range (Sunday to Saturday)
 function getWeekRange(date: Date): { start: Date; end: Date } {
   const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(date.setDate(diff));
-  const saturday = new Date(monday);
-  saturday.setDate(monday.getDate() + 5);
-  return { start: monday, end: saturday };
+  const sunday = new Date(date);
+  sunday.setDate(date.getDate() - day); // Go back to Sunday
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6); // Saturday is 6 days after Sunday
+  return { start: sunday, end: saturday };
 }
 
-// Group days by week (Monday to Saturday)
+// Group days by week (Sunday to Saturday)
 function groupDaysByWeek(days: string[]): Map<string, string[]> {
   const weekGroups = new Map<string, string[]>();
   

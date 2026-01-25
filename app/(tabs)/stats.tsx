@@ -27,7 +27,12 @@ export default function StatsScreen() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [schedule, setSchedule] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedWeekStart, setSelectedWeekStart] = useState(new Date());
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => {
+    const today = new Date();
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - today.getDay()); // Go back to Sunday
+    return sunday;
+  });
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedDayStats, setSelectedDayStats] = useState<any>(null);
   const [selectedWeekStats, setSelectedWeekStats] = useState<any>(null);
@@ -80,9 +85,9 @@ export default function StatsScreen() {
 
   const loadWeekStats = useCallback(async (weekStart: Date) => {
     try {
-      console.log('StatsScreen: Loading stats for week starting:', weekStart.toLocaleDateString());
+      console.log('StatsScreen: Loading stats for week starting (Sunday):', weekStart.toLocaleDateString());
       const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setDate(weekEnd.getDate() + 6); // Saturday is 6 days after Sunday
       
       const startStr = weekStart.toISOString().split('T')[0];
       const endStr = weekEnd.toISOString().split('T')[0];

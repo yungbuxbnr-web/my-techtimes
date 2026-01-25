@@ -62,11 +62,10 @@ export default function CalendarScreen() {
         endDate = new Date(currentDate);
       } else if (viewMode === 'week') {
         const day = currentDate.getDay();
-        const diff = currentDate.getDate() - day + (day === 0 ? -6 : 1);
         startDate = new Date(currentDate);
-        startDate.setDate(diff);
+        startDate.setDate(currentDate.getDate() - day); // Go back to Sunday
         endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + 6);
+        endDate.setDate(startDate.getDate() + 6); // Saturday is 6 days after Sunday
       } else if (viewMode === 'month') {
         startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
         endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -262,14 +261,13 @@ export default function CalendarScreen() {
 
   const renderWeekView = () => {
     const day = currentDate.getDay();
-    const diff = currentDate.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(currentDate);
-    monday.setDate(diff);
+    const sunday = new Date(currentDate);
+    sunday.setDate(currentDate.getDate() - day); // Go back to Sunday
     
     const weekDays: DayData[] = [];
     for (let i = 0; i < 7; i++) {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + i);
+      const date = new Date(sunday);
+      date.setDate(sunday.getDate() + i);
       const dateStr = date.toISOString().split('T')[0];
       const dayData = calendarData.get(dateStr);
       if (dayData) {
@@ -277,10 +275,16 @@ export default function CalendarScreen() {
       }
     }
     
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    
     return (
       <View style={styles.weekViewContainer}>
         <Text style={[styles.weekViewTitle, { color: theme.text }]}>
-          Week of {monday.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+          Week: {sunday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - {saturday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+        </Text>
+        <Text style={[styles.weekViewSubtitle, { color: theme.textSecondary }]}>
+          Sunday to Saturday
         </Text>
         
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekScroll}>
@@ -339,7 +343,7 @@ export default function CalendarScreen() {
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const startDay = firstDay.getDay();
+    const startDay = firstDay.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const daysInMonth = lastDay.getDate();
     
     // Calculate month totals
@@ -401,7 +405,7 @@ export default function CalendarScreen() {
         </View>
         
         <View style={styles.weekdayHeader}>
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
             <Text key={index} style={[styles.weekdayText, { color: theme.textSecondary }]}>
               {day}
             </Text>
@@ -739,6 +743,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  weekViewSubtitle: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
   weekScroll: {
     marginVertical: 10,

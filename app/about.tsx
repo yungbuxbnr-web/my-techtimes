@@ -28,10 +28,12 @@ export default function AboutScreen() {
     setExporting(true);
     
     try {
-      const currentDate = new Date().toLocaleDateString('en-GB', { 
+      const now = new Date();
+      const currentDate = now.toLocaleDateString('en-GB', { 
         day: '2-digit', 
         month: 'long', 
         year: 'numeric',
+      }) + ' ' + now.toLocaleTimeString('en-GB', {
         hour: '2-digit',
         minute: '2-digit'
       });
@@ -1352,30 +1354,68 @@ export default function AboutScreen() {
       `;
 
       console.log('AboutScreen: Generating PDF from HTML');
-      const { uri } = await Print.printToFileAsync({ html });
+      const { uri } = await Print.printToFileAsync({ 
+        html,
+        base64: false,
+      });
       
-      const fileName = `TechTimes_Complete_User_Guide_${new Date().toISOString().split('T')[0]}.pdf`;
+      console.log('AboutScreen: PDF generated at:', uri);
+      
+      const fileName = `TechTimes_User_Guide_${new Date().toISOString().split('T')[0]}.pdf`;
       const newUri = FileSystem.documentDirectory + fileName;
       
-      console.log('AboutScreen: Moving PDF to permanent location');
-      await FileSystem.moveAsync({
-        from: uri,
-        to: newUri,
-      });
-
-      console.log('AboutScreen: Opening share menu for PDF');
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(newUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Share TechTimes Complete User Guide',
-        });
+      console.log('AboutScreen: Moving PDF to permanent location:', newUri);
+      
+      try {
+        // Check if file exists at source
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        console.log('AboutScreen: Source file info:', fileInfo);
+        
+        if (fileInfo.exists) {
+          // Delete destination if it exists
+          const destInfo = await FileSystem.getInfoAsync(newUri);
+          if (destInfo.exists) {
+            console.log('AboutScreen: Deleting existing destination file');
+            await FileSystem.deleteAsync(newUri, { idempotent: true });
+          }
+          
+          // Move the file
+          await FileSystem.moveAsync({
+            from: uri,
+            to: newUri,
+          });
+          console.log('AboutScreen: File moved successfully');
+        } else {
+          console.error('AboutScreen: Source file does not exist');
+          throw new Error('PDF generation failed - file not found');
+        }
+      } catch (moveError) {
+        console.error('AboutScreen: Error moving file:', moveError);
+        // If move fails, try to use the original URI
+        console.log('AboutScreen: Using original URI for sharing');
       }
 
-      Alert.alert('Success', 'Complete user guide exported as PDF and ready to share!');
+      console.log('AboutScreen: Opening share menu for PDF');
+      const shareUri = await FileSystem.getInfoAsync(newUri).then(info => info.exists ? newUri : uri);
+      
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(shareUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Share TechTimes Complete User Guide',
+          UTI: 'com.adobe.pdf',
+        });
+        console.log('AboutScreen: PDF shared successfully');
+        Alert.alert('Success', 'Complete user guide exported as PDF and ready to share!');
+      } else {
+        console.error('AboutScreen: Sharing not available');
+        Alert.alert('Error', 'Sharing is not available on this device');
+      }
+      
       console.log('AboutScreen: PDF export successful');
     } catch (error) {
       console.error('AboutScreen: Error exporting PDF:', error);
-      Alert.alert('Error', 'Failed to export user guide. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Export Error', `Failed to export user guide: ${errorMessage}\n\nPlease try again.`);
     } finally {
       setExporting(false);
     }
