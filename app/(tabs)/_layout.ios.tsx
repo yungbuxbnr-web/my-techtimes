@@ -1,17 +1,119 @@
+
 import React from 'react';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { Tabs } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useThemeContext } from '@/contexts/ThemeContext';
 
 export default function TabLayout() {
+  const { theme } = useThemeContext();
+
   return (
-    <NativeTabs>
-      <NativeTabs.Trigger key="home" name="(home)">
-        <Icon sf="house.fill" />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger key="profile" name="profile">
-        <Icon sf="person.fill" />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarStyle: {
+          backgroundColor: theme.card,
+          borderTopColor: theme.border,
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="chart.bar.fill"
+              android_material_icon_name="dashboard"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="jobs"
+        options={{
+          title: 'Job Records',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="list.bullet"
+              android_material_icon_name="list"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="job-store"
+        options={{
+          title: 'Job Store',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="magnifyingglass"
+              android_material_icon_name="search"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="stats"
+        options={{
+          title: 'Stats',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="chart.pie.fill"
+              android_material_icon_name="pie-chart"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="gearshape.fill"
+              android_material_icon_name="settings"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      {/* Hide these from tabs */}
+      <Tabs.Screen
+        name="add-job"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="(home)"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="profile.ios"
+        options={{
+          href: null,
+        }}
+      />
+    </Tabs>
   );
 }

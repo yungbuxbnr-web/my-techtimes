@@ -56,6 +56,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="job-store"
+        options={{
+          title: 'Job Store',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="magnifyingglass"
+              android_material_icon_name="search"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="stats"
         options={{
           title: 'Stats',
