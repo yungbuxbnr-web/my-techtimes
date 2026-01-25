@@ -46,6 +46,7 @@ export default function SettingsScreen() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, job: null as any });
   const [isImporting, setIsImporting] = useState(false);
+  const [importPhase, setImportPhase] = useState<'parsing' | 'creating'>('parsing');
   const [hasPermissions, setHasPermissions] = useState(false);
 
   useEffect(() => {
@@ -178,12 +179,10 @@ export default function SettingsScreen() {
       const settings = await api.getSettings();
       const schedule = await api.getSchedule();
       
-      // Get current date info
       const now = new Date();
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const currentDay = now.toISOString().split('T')[0];
       
-      // Get jobs based on export type
       let jobs = [];
       let exportOptions: ExportOptions = {
         type: exportType,
@@ -197,11 +196,10 @@ export default function SettingsScreen() {
         const dayStats = await api.getDayStats(currentDay);
         exportOptions.availableHours = dayStats.availableHours;
       } else if (exportType === 'weekly') {
-        // Get current week jobs
         const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
+        weekStart.setDate(now.getDate() - now.getDay() + 1);
         const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 5); // Saturday
+        weekEnd.setDate(weekStart.getDate() + 5);
         
         jobs = await api.getAllJobs();
         jobs = jobs.filter(job => {
@@ -246,7 +244,6 @@ export default function SettingsScreen() {
     console.log('SettingsScreen: User starting import process');
     
     try {
-      // Pick the JSON file
       console.log('SettingsScreen: Opening document picker');
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
@@ -255,14 +252,12 @@ export default function SettingsScreen() {
       
       console.log('SettingsScreen: DocumentPicker result:', JSON.stringify(result, null, 2));
       
-      // Check if user cancelled
       if (result.canceled) {
         console.log('SettingsScreen: User cancelled import');
         toastManager.show('Import cancelled', 'info');
         return;
       }
       
-      // Validate that we have assets
       if (!result.assets || result.assets.length === 0) {
         console.error('SettingsScreen: No file selected or assets array is empty');
         Alert.alert('Error', 'No file was selected. Please try again.');
@@ -273,14 +268,12 @@ export default function SettingsScreen() {
       const fileName = result.assets[0].name;
       console.log('SettingsScreen: Selected file:', fileName, 'URI:', fileUri);
       
-      // Validate file URI
       if (!fileUri) {
         console.error('SettingsScreen: File URI is empty');
         Alert.alert('Error', 'Invalid file selected. Please try again.');
         return;
       }
       
-      // Check if file exists
       try {
         const fileInfo = await FileSystem.getInfoAsync(fileUri);
         console.log('SettingsScreen: File info:', fileInfo);
@@ -299,6 +292,7 @@ export default function SettingsScreen() {
       // Start import process with animation
       setIsImporting(true);
       setShowImportModal(false);
+      setImportPhase('parsing');
       setImportProgress({ current: 0, total: 0, job: null });
       
       console.log('SettingsScreen: Starting JSON parsing');
@@ -308,7 +302,8 @@ export default function SettingsScreen() {
         importResults = await importFromJson(
           fileUri,
           (current, total, job) => {
-            console.log('SettingsScreen: Import progress:', current, '/', total);
+            console.log('SettingsScreen: Parsing progress:', current, '/', total);
+            setImportPhase('parsing');
             setImportProgress({ current, total, job });
           }
         );
@@ -326,7 +321,6 @@ export default function SettingsScreen() {
         return;
       }
       
-      // Validate import results
       if (!importResults || !importResults.jobs || importResults.jobs.length === 0) {
         setIsImporting(false);
         
@@ -343,6 +337,10 @@ export default function SettingsScreen() {
       
       console.log('SettingsScreen: Starting to create jobs in database');
       
+      // Switch to creating phase
+      setImportPhase('creating');
+      setImportProgress({ current: 0, total: importResults.jobs.length, job: null });
+      
       // Now import the jobs to the API
       let successCount = 0;
       let failCount = 0;
@@ -358,18 +356,20 @@ export default function SettingsScreen() {
             aw: job.aw,
           });
           
-          await api.createJob(job);
-          successCount++;
-          
-          // Update progress with animation
+          // Update progress BEFORE creating the job
           setImportProgress({ 
             current: i + 1, 
             total: importResults.jobs.length, 
             job: job 
           });
           
+          await api.createJob(job);
+          successCount++;
+          
+          console.log('SettingsScreen: Job created successfully:', i + 1, '/', importResults.jobs.length);
+          
           // Small delay to show animation
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 150));
           
         } catch (createError) {
           console.error('SettingsScreen: Error creating job:', createError);
@@ -494,9 +494,11 @@ export default function SettingsScreen() {
     );
   };
 
-  const progressTitle = 'Importing Jobs';
+  const progressTitle = importPhase === 'parsing' ? 'Parsing Import File' : 'Creating Jobs';
   const progressMessage = importProgress.total > 0
-    ? `Processing job ${importProgress.current} of ${importProgress.total}`
+    ? importPhase === 'parsing'
+      ? `Validating job ${importProgress.current} of ${importProgress.total}`
+      : `Creating job ${importProgress.current} of ${importProgress.total}`
     : 'Preparing import...';
 
   return (
