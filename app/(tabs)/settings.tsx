@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { offlineStorage } from '@/utils/offlineStorage';
 import * as DocumentPicker from 'expo-document-picker';
 import { ProcessNotification } from '@/components/ProcessNotification';
+import { updateWidgetData, updateLastBackupTimestamp } from '@/utils/widgetManager';
 import {
   View,
   Text,
@@ -475,6 +476,10 @@ export default function SettingsScreen() {
       
       if (successCount > 0) {
         toastManager.show(`Imported ${successCount} jobs successfully`, 'success');
+        
+        // Update widget data after import
+        console.log('SettingsScreen: Updating widget data after import');
+        await updateWidgetData();
       }
       
     } catch (error) {
@@ -494,6 +499,11 @@ export default function SettingsScreen() {
     try {
       const jobs = await api.getAllJobs();
       await exportToJson(jobs);
+      
+      // Update last backup timestamp for widget
+      console.log('SettingsScreen: Updating last backup timestamp for widget');
+      await updateLastBackupTimestamp();
+      
       toastManager.show('Backup created successfully', 'success');
     } catch (error) {
       console.error('SettingsScreen: Error creating backup:', error);

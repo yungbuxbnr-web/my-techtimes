@@ -8,6 +8,7 @@ import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { scheduleAllNotifications } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
+import { updateWidgetData, scheduleDailyWidgetRefresh } from '@/utils/widgetManager';
 
 function RootLayoutContent() {
   const router = useRouter();
@@ -45,6 +46,14 @@ function RootLayoutContent() {
           // The app will continue running in background with WAKE_LOCK and FOREGROUND_SERVICE permissions
         } else {
           console.log('RootLayout: Background permissions not granted');
+        }
+
+        // Initialize widget data and schedule daily refresh
+        if (Platform.OS === 'android') {
+          console.log('RootLayout: Initializing Android widget');
+          await updateWidgetData();
+          scheduleDailyWidgetRefresh();
+          console.log('RootLayout: Widget initialized and daily refresh scheduled');
         }
       } catch (error) {
         console.error('RootLayout: Error initializing app:', error);

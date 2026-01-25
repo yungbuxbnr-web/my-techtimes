@@ -20,6 +20,7 @@ import { router } from 'expo-router';
 import { api, Job } from '@/utils/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { exportToPdf } from '@/utils/exportUtils';
+import { updateWidgetData } from '@/utils/widgetManager';
 
 export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -141,6 +142,11 @@ export default function JobRecordsScreen() {
         vhcStatus: editVhc,
         createdAt: editDate.toISOString(),
       });
+      
+      // Update widget data
+      console.log('JobRecordsScreen: Updating widget data after edit');
+      await updateWidgetData();
+      
       setShowEditModal(false);
       await loadJobs();
       Alert.alert('Success', 'Job updated successfully');
@@ -163,6 +169,11 @@ export default function JobRecordsScreen() {
             console.log('JobRecordsScreen: User confirmed delete job:', jobId);
             try {
               await api.deleteJob(jobId);
+              
+              // Update widget data
+              console.log('JobRecordsScreen: Updating widget data after delete');
+              await updateWidgetData();
+              
               await loadJobs();
             } catch (error) {
               console.error('JobRecordsScreen: Error deleting job:', error);

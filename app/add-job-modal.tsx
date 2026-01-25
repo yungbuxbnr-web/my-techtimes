@@ -24,6 +24,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import * as Haptics from 'expo-haptics';
+import { updateWidgetData } from '@/utils/widgetManager';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -217,6 +218,10 @@ export default function AddJobModal() {
       
       // Reload jobs for suggestions
       await loadJobsForSuggestions();
+      
+      // Update widget data
+      console.log('AddJobModal: Updating widget data');
+      await updateWidgetData();
       
       // Show success notification
       setSaveNotificationType('success');

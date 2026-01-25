@@ -22,6 +22,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validateAW } from '@/utils/jobCalculations';
+import { updateWidgetData } from '@/utils/widgetManager';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -214,6 +215,10 @@ export default function AddJobScreen() {
       
       // Reload jobs for suggestions
       await loadJobsForSuggestions();
+      
+      // Update widget data
+      console.log('AddJobScreen: Updating widget data');
+      await updateWidgetData();
       
       // Trigger refresh of dashboard and stats
       console.log('AddJobScreen: Job saved, triggering live update');
