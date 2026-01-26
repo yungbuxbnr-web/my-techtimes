@@ -29,18 +29,25 @@ export default function PinLoginScreen() {
   
   const [pin, setPin] = useState('');
   const [technicianName, setTechnicianName] = useState('');
+  const [hasAutoTriggered, setHasAutoTriggered] = useState(false);
 
   useEffect(() => {
     loadTechnicianName();
   }, []);
 
   useEffect(() => {
-    // Auto-trigger biometric auth if PIN is disabled and biometrics are enabled
-    if (biometricsEnabled && !pinAuthEnabled && biometricsAvailable) {
-      console.log('PinLogin: PIN disabled, auto-triggering biometric auth');
-      handleBiometricAuth();
+    // Auto-trigger biometric auth when biometrics are enabled and available
+    // Only trigger once per mount to avoid repeated prompts
+    if (biometricsEnabled && biometricsAvailable && !hasAutoTriggered) {
+      console.log('PinLogin: Auto-triggering biometric authentication');
+      setHasAutoTriggered(true);
+      
+      // Small delay to ensure UI is ready
+      setTimeout(() => {
+        handleBiometricAuth();
+      }, 300);
     }
-  }, [biometricsEnabled, pinAuthEnabled, biometricsAvailable]);
+  }, [biometricsEnabled, biometricsAvailable, hasAutoTriggered]);
 
   const loadTechnicianName = async () => {
     try {
@@ -94,7 +101,7 @@ export default function PinLoginScreen() {
 
   const handleBiometricAuth = async () => {
     try {
-      console.log('PinLogin: User tapped biometric authentication button');
+      console.log('PinLogin: Biometric authentication triggered');
       
       // Check if biometrics are available on native platforms
       if (Platform.OS === 'web') {

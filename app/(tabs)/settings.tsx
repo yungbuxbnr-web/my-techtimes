@@ -989,6 +989,19 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={[styles.appSignature, { backgroundColor: theme.card }]}>
+          <View style={styles.signatureDivider} />
+          <Text style={[styles.signatureText, { color: theme.textSecondary }]}>
+            Created by
+          </Text>
+          <Text style={[styles.signatureName, { color: theme.text }]}>
+            b.rugge
+          </Text>
+          <Text style={[styles.signatureRole, { color: theme.textSecondary }]}>
+            Owner & Creator
+          </Text>
+        </View>
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -1461,6 +1474,40 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  appSignature: {
+    padding: 24,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  signatureDivider: {
+    width: 60,
+    height: 2,
+    backgroundColor: 'rgba(128, 128, 128, 0.3)',
+    marginBottom: 16,
+    borderRadius: 1,
+  },
+  signatureText: {
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  signatureName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  signatureRole: {
+    fontSize: 14,
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
