@@ -48,6 +48,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="chart.bar.fill"
+              android_material_icon_name="bar-chart"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="job-store"
         options={{
           title: 'Job Store',
