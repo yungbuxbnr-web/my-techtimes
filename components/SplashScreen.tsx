@@ -10,113 +10,51 @@ import Animated, {
   withDelay,
   runOnJS,
   Easing,
+  withRepeat,
 } from 'react-native-reanimated';
-import { Svg, Path, Circle, Rect } from 'react-native-svg';
+import { Svg, Path, Circle, Rect, Line, Polygon, G } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onComplete: () => void;
 }
 
-// Animated car component
-function AnimatedCar() {
-  const translateX = useSharedValue(-200);
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    // Car drives across the screen
-    translateX.value = withTiming(SCREEN_WIDTH + 100, {
-      duration: 2000,
-      easing: Easing.inOut(Easing.ease),
-    });
-
-    // Fade out near the end
-    opacity.value = withDelay(
-      1600,
-      withTiming(0, { duration: 400 })
-    );
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value }],
-      opacity: opacity.value,
-    };
-  });
-
-  return (
-    <Animated.View style={[{ width: 120, height: 60 }, animatedStyle]}>
-      <Svg width="120" height="60" viewBox="0 0 120 60">
-        {/* Car body */}
-        <Path
-          d="M20 35 L30 20 L70 20 L80 35 Z"
-          fill="#2196F3"
-          stroke="#1976D2"
-          strokeWidth="2"
-        />
-        <Rect
-          x="15"
-          y="35"
-          width="75"
-          height="10"
-          rx="2"
-          fill="#2196F3"
-          stroke="#1976D2"
-          strokeWidth="2"
-        />
-        
-        {/* Windows */}
-        <Path
-          d="M35 25 L40 25 L40 33 L35 33 Z"
-          fill="#64B5F6"
-        />
-        <Path
-          d="M55 25 L65 25 L65 33 L55 33 Z"
-          fill="#64B5F6"
-        />
-        
-        {/* Wheels */}
-        <Circle cx="30" cy="50" r="8" fill="#333" stroke="#000" strokeWidth="2" />
-        <Circle cx="30" cy="50" r="4" fill="#666" />
-        <Circle cx="70" cy="50" r="8" fill="#333" stroke="#000" strokeWidth="2" />
-        <Circle cx="70" cy="50" r="4" fill="#666" />
-        
-        {/* Headlight */}
-        <Circle cx="88" cy="38" r="3" fill="#FFD700" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// Animated wrench icon
-function AnimatedWrench() {
+// Animated rotating gear
+function AnimatedGear({ delay = 0, size = 80, x = 0, y = 0 }: { delay?: number; size?: number; x?: number; y?: number }) {
   const rotation = useSharedValue(0);
   const scale = useSharedValue(0);
 
   useEffect(() => {
     // Scale in
     scale.value = withDelay(
-      2200,
+      delay,
       withSpring(1, {
         damping: 10,
         stiffness: 100,
       })
     );
 
-    // Rotate animation
-    rotation.value = withSequence(
-      withDelay(2500, withSpring(15, { damping: 8 })),
-      withSpring(-15, { damping: 8 }),
-      withSpring(10, { damping: 8 }),
-      withSpring(0, { damping: 8 })
+    // Continuous rotation
+    rotation.value = withDelay(
+      delay + 300,
+      withRepeat(
+        withTiming(360, {
+          duration: 3000,
+          easing: Easing.linear,
+        }),
+        -1,
+        false
+      )
     );
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
+        { translateX: x },
+        { translateY: y },
         { rotate: `${rotation.value}deg` },
         { scale: scale.value },
       ],
@@ -124,23 +62,84 @@ function AnimatedWrench() {
   });
 
   return (
-    <Animated.View style={[{ width: 120, height: 120 }, animatedStyle]}>
-      <Svg width="120" height="120" viewBox="0 0 120 120">
-        {/* Wrench body */}
+    <Animated.View style={[{ width: size, height: size, position: 'absolute' }, animatedStyle]}>
+      <Svg width={size} height={size} viewBox="0 0 100 100">
+        {/* Gear teeth */}
         <Path
-          d="M40 30 L40 70 L50 80 L60 70 L60 30 Z"
+          d="M50 10 L55 15 L55 25 L45 25 L45 15 Z
+             M75 15 L80 20 L75 30 L65 25 Z
+             M90 40 L90 50 L80 50 L80 40 Z
+             M75 70 L80 80 L70 80 L65 75 Z
+             M50 90 L55 85 L55 75 L45 75 L45 85 Z
+             M25 70 L30 80 L20 80 L15 75 Z
+             M10 40 L10 50 L20 50 L20 40 Z
+             M25 15 L30 20 L25 30 L15 25 Z"
+          fill="#FF6B35"
+          stroke="#D84315"
+          strokeWidth="1"
+        />
+        {/* Center circle */}
+        <Circle cx="50" cy="50" r="25" fill="#FF6B35" stroke="#D84315" strokeWidth="2" />
+        <Circle cx="50" cy="50" r="15" fill="#2c2c2c" stroke="#D84315" strokeWidth="2" />
+        <Circle cx="50" cy="50" r="8" fill="#FF6B35" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Animated wrench that swings in
+function AnimatedWrench({ delay = 0 }: { delay?: number }) {
+  const rotation = useSharedValue(-90);
+  const translateY = useSharedValue(-100);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    opacity.value = withDelay(delay, withTiming(1, { duration: 200 }));
+    
+    translateY.value = withDelay(
+      delay,
+      withSpring(0, {
+        damping: 8,
+        stiffness: 80,
+      })
+    );
+
+    rotation.value = withDelay(
+      delay,
+      withSequence(
+        withSpring(15, { damping: 8 }),
+        withSpring(-10, { damping: 8 }),
+        withSpring(5, { damping: 8 }),
+        withSpring(0, { damping: 10 })
+      )
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateY: translateY.value },
+        { rotate: `${rotation.value}deg` },
+      ],
+      opacity: opacity.value,
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: 60, height: 60, position: 'absolute', left: -80, top: -20 }, animatedStyle]}>
+      <Svg width="60" height="60" viewBox="0 0 60 60">
+        <Path
+          d="M20 10 L20 35 L25 40 L30 35 L30 10 Z"
           fill="#2196F3"
-          stroke="#1976D2"
+          stroke="#1565C0"
           strokeWidth="2"
         />
-        {/* Wrench head */}
-        <Circle cx="50" cy="25" r="15" fill="#2196F3" stroke="#1976D2" strokeWidth="2" />
-        <Circle cx="50" cy="25" r="8" fill="none" stroke="#1976D2" strokeWidth="2" />
-        {/* Wrench handle */}
+        <Circle cx="25" cy="8" r="8" fill="#2196F3" stroke="#1565C0" strokeWidth="2" />
+        <Circle cx="25" cy="8" r="4" fill="none" stroke="#1565C0" strokeWidth="2" />
         <Path
-          d="M45 80 L45 95 L55 95 L55 80 Z"
+          d="M22 40 L22 50 L28 50 L28 40 Z"
           fill="#2196F3"
-          stroke="#1976D2"
+          stroke="#1565C0"
           strokeWidth="2"
         />
       </Svg>
@@ -148,39 +147,187 @@ function AnimatedWrench() {
   );
 }
 
+// Animated screwdriver
+function AnimatedScrewdriver({ delay = 0 }: { delay?: number }) {
+  const translateX = useSharedValue(100);
+  const rotation = useSharedValue(45);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    opacity.value = withDelay(delay, withTiming(1, { duration: 200 }));
+    
+    translateX.value = withDelay(
+      delay,
+      withSpring(0, {
+        damping: 8,
+        stiffness: 80,
+      })
+    );
+
+    rotation.value = withDelay(
+      delay,
+      withSequence(
+        withSpring(-15, { damping: 8 }),
+        withSpring(10, { damping: 8 }),
+        withSpring(-5, { damping: 8 }),
+        withSpring(0, { damping: 10 })
+      )
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { rotate: `${rotation.value}deg` },
+      ],
+      opacity: opacity.value,
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: 60, height: 60, position: 'absolute', right: -80, top: -20 }, animatedStyle]}>
+      <Svg width="60" height="60" viewBox="0 0 60 60">
+        <Rect x="22" y="5" width="6" height="30" rx="1" fill="#FFC107" stroke="#F57C00" strokeWidth="1.5" />
+        <Path
+          d="M20 35 L20 50 L30 50 L30 35 Z"
+          fill="#D84315"
+          stroke="#BF360C"
+          strokeWidth="1.5"
+        />
+        <Rect x="23" y="48" width="4" height="8" fill="#BF360C" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Animated spark particles
+function AnimatedSpark({ delay = 0, x = 0, y = 0 }: { delay?: number; x?: number; y?: number }) {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    scale.value = withDelay(
+      delay,
+      withSequence(
+        withTiming(1.5, { duration: 200 }),
+        withTiming(0, { duration: 300 })
+      )
+    );
+
+    opacity.value = withDelay(
+      delay,
+      withSequence(
+        withTiming(1, { duration: 100 }),
+        withTiming(0, { duration: 400 })
+      )
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: x },
+        { translateY: y },
+        { scale: scale.value },
+      ],
+      opacity: opacity.value,
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: 20, height: 20, position: 'absolute' }, animatedStyle]}>
+      <Svg width="20" height="20" viewBox="0 0 20 20">
+        <Circle cx="10" cy="10" r="3" fill="#FFD700" />
+        <Line x1="10" y1="2" x2="10" y2="6" stroke="#FFD700" strokeWidth="2" />
+        <Line x1="10" y1="14" x2="10" y2="18" stroke="#FFD700" strokeWidth="2" />
+        <Line x1="2" y1="10" x2="6" y2="10" stroke="#FFD700" strokeWidth="2" />
+        <Line x1="14" y1="10" x2="18" y2="10" stroke="#FFD700" strokeWidth="2" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Animated piston
+function AnimatedPiston({ delay = 0 }: { delay?: number }) {
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(0);
+
+  useEffect(() => {
+    scale.value = withDelay(
+      delay,
+      withSpring(1, {
+        damping: 10,
+        stiffness: 100,
+      })
+    );
+
+    translateY.value = withDelay(
+      delay + 500,
+      withRepeat(
+        withSequence(
+          withTiming(-15, { duration: 400, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0, { duration: 400, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      )
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateY: translateY.value },
+        { scale: scale.value },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: 40, height: 80, position: 'absolute', bottom: -100 }, animatedStyle]}>
+      <Svg width="40" height="80" viewBox="0 0 40 80">
+        <Rect x="12" y="0" width="16" height="50" rx="2" fill="#9E9E9E" stroke="#616161" strokeWidth="2" />
+        <Circle cx="20" cy="55" r="12" fill="#424242" stroke="#212121" strokeWidth="2" />
+        <Circle cx="20" cy="55" r="6" fill="#9E9E9E" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
 export function SplashScreen({ onComplete }: SplashScreenProps) {
   const titleOpacity = useSharedValue(0);
-  const titleTranslateY = useSharedValue(20);
+  const titleScale = useSharedValue(0.8);
   const subtitleOpacity = useSharedValue(0);
   const subtitleTranslateY = useSharedValue(20);
   const fadeOut = useSharedValue(1);
 
   useEffect(() => {
-    console.log('SplashScreen: Starting startup animation with car drive-by');
+    console.log('SplashScreen: Starting mechanic-themed startup animation');
 
-    // Animate title in (after car passes)
+    // Animate title in (after gears and tools appear)
     titleOpacity.value = withDelay(
-      2700,
+      1800,
       withTiming(1, { duration: 600 })
     );
-    titleTranslateY.value = withDelay(
-      2700,
-      withSpring(0, { damping: 12 })
+    titleScale.value = withDelay(
+      1800,
+      withSpring(1, { damping: 10, stiffness: 100 })
     );
 
     // Animate subtitle in
     subtitleOpacity.value = withDelay(
-      3000,
+      2200,
       withTiming(1, { duration: 600 })
     );
     subtitleTranslateY.value = withDelay(
-      3000,
+      2200,
       withSpring(0, { damping: 12 })
     );
 
     // Fade out entire splash screen
     fadeOut.value = withDelay(
-      4200,
+      3800,
       withTiming(0, { duration: 500 }, (finished) => {
         if (finished) {
           runOnJS(onComplete)();
@@ -192,7 +339,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
   const titleStyle = useAnimatedStyle(() => {
     return {
       opacity: titleOpacity.value,
-      transform: [{ translateY: titleTranslateY.value }],
+      transform: [{ scale: titleScale.value }],
     };
   });
 
@@ -216,15 +363,27 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
         style={StyleSheet.absoluteFill}
       />
       
-      {/* Car drive-by animation at the top */}
-      <View style={styles.carContainer}>
-        <AnimatedCar />
-      </View>
-      
       <View style={styles.content}>
-        <AnimatedWrench />
+        {/* Central gear cluster */}
+        <View style={styles.gearCluster}>
+          <AnimatedGear delay={200} size={100} x={0} y={0} />
+          <AnimatedGear delay={400} size={70} x={60} y={-30} />
+          <AnimatedGear delay={600} size={60} x={-50} y={40} />
+          
+          {/* Tools */}
+          <AnimatedWrench delay={800} />
+          <AnimatedScrewdriver delay={1000} />
+          
+          {/* Piston */}
+          <AnimatedPiston delay={1200} />
+          
+          {/* Sparks */}
+          <AnimatedSpark delay={1400} x={-40} y={-50} />
+          <AnimatedSpark delay={1500} x={50} y={-40} />
+          <AnimatedSpark delay={1600} x={0} y={60} />
+        </View>
         
-        <Animated.View style={titleStyle}>
+        <Animated.View style={[styles.titleContainer, titleStyle]}>
           <Text style={styles.title}>TechTimes</Text>
         </Animated.View>
         
@@ -245,29 +404,34 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 10000,
   },
-  carContainer: {
-    position: 'absolute',
-    top: 100,
-    left: 0,
-    right: 0,
-    height: 60,
-    justifyContent: 'center',
-  },
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 24,
+  },
+  gearCluster: {
+    width: 200,
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  titleContainer: {
+    marginTop: 20,
   },
   title: {
     fontSize: 48,
     fontWeight: 'bold',
     color: '#ffffff',
     letterSpacing: 2,
+    textShadowColor: '#FF6B35',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   subtitle: {
     fontSize: 16,
     color: '#cccccc',
     letterSpacing: 1,
+    marginTop: 12,
   },
 });
