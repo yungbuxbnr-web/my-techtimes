@@ -1,0 +1,82 @@
+{
+  "expo": {
+    "name": "Tech Times",
+    "slug": "Tech Times",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.techtimes.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "TechTimes uses Face ID to securely unlock the app and protect your job data.",
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification",
+          "processing"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
+        "backgroundColor": "#ff6b35"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.brcarszw.techtimes",
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "SCHEDULE_EXACT_ALARM",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-web-browser",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "TechTimes uses Face ID to securely unlock the app and protect your job data."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
+          "color": "#ff6b35",
+          "sounds": [],
+          "mode": "production"
+        }
+      ]
+    ],
+    "scheme": "Tech Times",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "backendUrl": "https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev"
+    }
+  },
+  "scheme": "Tech Times"
+}
