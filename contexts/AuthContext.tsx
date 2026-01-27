@@ -29,6 +29,11 @@ const BIOMETRICS_KEY = 'biometrics_enabled';
 const PIN_AUTH_KEY = 'pin_auth_enabled';
 const LOCK_ON_RESUME_KEY = 'lock_on_resume';
 const SETUP_COMPLETE_KEY = 'setup_complete';
+const LAST_BACKGROUND_TIME_KEY = 'last_background_time';
+
+// Lock timeout thresholds in milliseconds
+const LOCK_TIMEOUT = 60 * 60 * 1000; // 1 hour
+const RESUME_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
 // Helper functions for cross-platform storage
 async function setSecureItem(key: string, value: string) {
@@ -68,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Use refs to track current values without causing re-renders
   const isAuthenticatedRef = useRef(isAuthenticated);
   const lockOnResumeRef = useRef(lockOnResume);
+  const lastBackgroundTimeRef = useRef<number | null>(null);
   
   // Update refs when state changes
   useEffect(() => {
@@ -162,15 +168,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializeAuth();
   }, [initializeAuth]);
 
-  // Handle app state changes using refs to avoid dependency issues
+  // Handle app state changes with time-based locking
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       const currentAppState = AppState.currentState;
       
+      // App going to background - record the time
+      if (currentAppState === 'active' && nextAppState.match(/inactive|background/)) {
+        const now = Date.now();
+        lastBackgroundTimeRef.current = now;
+        await setSecureItem(LAST_BACKGROUND_TIME_KEY, now.toString());
+        console.log('AuthContext: App going to background at', new Date(now).toISOString());
+      }
+      
+      // App coming back to foreground - check time elapsed
       if (currentAppState.match(/inactive|background/) && nextAppState === 'active') {
-        if (lockOnResumeRef.current && isAuthenticatedRef.current) {
-          console.log('AuthContext: App resumed, locking due to lockOnResume setting');
+        console.log('AuthContext: App resuming from background');
+        
+        if (!isAuthenticatedRef.current) {
+          console.log('AuthContext: User not authenticated, no action needed');
+          return;
+        }
+        
+        // Get the time when app went to background
+        const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
+        const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
+        
+        if (!lastBackgroundTime) {
+          console.log('AuthContext: No background time recorded, locking as precaution');
           setIsAuthenticated(false);
+          return;
+        }
+        
+        const now = Date.now();
+        const timeElapsed = now - lastBackgroundTime;
+        const minutesElapsed = Math.floor(timeElapsed / 60000);
+        
+        console.log('AuthContext: Time elapsed since background:', minutesElapsed, 'minutes');
+        
+        // If more than 1 hour, lock and return to home
+        if (timeElapsed >= LOCK_TIMEOUT) {
+          console.log('AuthContext: More than 1 hour elapsed, locking and returning to home');
+          setIsAuthenticated(false);
+          // The app will redirect to pin-login, and after login will go to home
+        }
+        // If between 30 minutes and 1 hour, lock but allow resume to current page
+        else if (timeElapsed >= RESUME_TIMEOUT && lockOnResumeRef.current) {
+          console.log('AuthContext: Between 30 min and 1 hour elapsed, locking (will resume to current page)');
+          setIsAuthenticated(false);
+          // The app will redirect to pin-login, but will resume to current page after login
+        }
+        // If less than 30 minutes, allow resume without lock
+        else {
+          console.log('AuthContext: Less than 30 minutes elapsed, allowing resume without lock');
+          // No action needed, user stays authenticated
         }
       }
     };
@@ -195,6 +246,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedPin === pin) {
         console.log('AuthContext: PIN verified successfully');
         setIsAuthenticated(true);
+        // Clear the background time on successful login
+        await setSecureItem(LAST_BACKGROUND_TIME_KEY, '');
+        lastBackgroundTimeRef.current = null;
         return true;
       }
       
@@ -311,6 +365,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.success) {
         console.log('AuthContext: Biometric authentication successful');
         setIsAuthenticated(true);
+        // Clear the background time on successful login
+        await setSecureItem(LAST_BACKGROUND_TIME_KEY, '');
+        lastBackgroundTimeRef.current = null;
         return true;
       }
       

@@ -9,15 +9,47 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { scheduleAllNotifications } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
 import { updateWidgetData, scheduleDailyWidgetRefresh } from '@/utils/widgetManager';
+import * as SecureStore from 'expo-secure-store';
+
+const LAST_ROUTE_KEY = 'last_route';
+const LAST_BACKGROUND_TIME_KEY = 'last_background_time';
+const LOCK_TIMEOUT = 60 * 60 * 1000; // 1 hour
+
+// Helper functions for cross-platform storage
+async function setSecureItem(key: string, value: string) {
+  try {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  } catch (error) {
+    console.error('RootLayout: Error setting secure item:', key, error);
+  }
+}
+
+async function getSecureItem(key: string): Promise<string | null> {
+  try {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    } else {
+      return await SecureStore.getItemAsync(key);
+    }
+  } catch (error) {
+    console.error('RootLayout: Error getting secure item:', key, error);
+    return null;
+  }
+}
 
 function RootLayoutContent() {
   const router = useRouter();
   const segments = useSegments();
-  const { logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const [isReady, setIsReady] = useState(false);
   const [backPressCount, setBackPressCount] = useState(0);
   const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef(AppState.currentState);
+  const lastRouteRef = useRef<string | null>(null);
 
   useEffect(() => {
     console.log('RootLayout: App initializing');
@@ -42,8 +74,6 @@ function RootLayoutContent() {
         
         if (hasBackgroundPermission) {
           console.log('RootLayout: Background permissions granted');
-          // Background execution is handled by Android system
-          // The app will continue running in background with WAKE_LOCK and FOREGROUND_SERVICE permissions
         } else {
           console.log('RootLayout: Background permissions not granted');
         }
@@ -64,38 +94,44 @@ function RootLayoutContent() {
     setIsReady(true);
   }, []);
 
-  // Handle app state changes - require PIN when app comes back from background
+  // Save current route when navigating
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+    const currentRoute = segments.join('/');
+    if (currentRoute && currentRoute !== 'pin-login' && currentRoute !== 'setup' && currentRoute !== 'index') {
+      lastRouteRef.current = currentRoute;
+      setSecureItem(LAST_ROUTE_KEY, currentRoute);
+      console.log('RootLayout: Saved current route:', currentRoute);
+    }
+  }, [segments]);
+
+  // Handle app state changes with time-based navigation
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       console.log('RootLayout: App state changed from', appStateRef.current, 'to', nextAppState);
       
-      // When app comes back to foreground from background, require PIN
+      // App coming back to foreground from background
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('RootLayout: App resumed from background, requiring PIN login');
+        console.log('RootLayout: App resumed from background');
         
-        // Check if user is in the app (not on login/setup screens)
-        const inApp = segments[0] === '(tabs)' || 
-                      segments[0] === 'calendar' || 
-                      segments[0] === 'edit-work-schedule' ||
-                      segments[0] === 'work-calendar' ||
-                      segments[0] === 'absence-logger' ||
-                      segments[0] === 'notification-settings' ||
-                      segments[0] === 'target-details' ||
-                      segments[0] === 'efficiency-details' ||
-                      segments[0] === 'about' ||
-                      segments[0] === 'formulas' ||
-                      segments[0] === 'job-stats' ||
-                      segments[0] === 'total-aws-details' ||
-                      segments[0] === 'time-logged-details' ||
-                      segments[0] === 'jobs-done-details' ||
-                      segments[0] === 'hours-remaining-details' ||
-                      segments[0] === 'today-details' ||
-                      segments[0] === 'week-details';
+        // Get the time when app went to background
+        const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
+        const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
         
-        if (inApp) {
-          console.log('RootLayout: User was in app, logging out and requiring PIN');
-          logout();
-          router.replace('/pin-login');
+        if (lastBackgroundTime) {
+          const now = Date.now();
+          const timeElapsed = now - lastBackgroundTime;
+          const minutesElapsed = Math.floor(timeElapsed / 60000);
+          
+          console.log('RootLayout: Time elapsed since background:', minutesElapsed, 'minutes');
+          
+          // If more than 1 hour, return to home screen after login
+          if (timeElapsed >= LOCK_TIMEOUT) {
+            console.log('RootLayout: More than 1 hour elapsed, will return to home after login');
+            // Clear the saved route so user goes to home
+            await setSecureItem(LAST_ROUTE_KEY, '');
+            lastRouteRef.current = null;
+          }
+          // Otherwise, the saved route will be used to resume
         }
       }
       
@@ -107,7 +143,38 @@ function RootLayoutContent() {
     return () => {
       subscription.remove();
     };
-  }, [segments, logout, router]);
+  }, []);
+
+  // Handle navigation after authentication
+  useEffect(() => {
+    if (!isReady) return;
+    
+    const handleNavigation = async () => {
+      if (isAuthenticated) {
+        // Check if we should resume to a saved route
+        const savedRoute = await getSecureItem(LAST_ROUTE_KEY);
+        const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
+        const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
+        
+        if (savedRoute && lastBackgroundTime) {
+          const timeElapsed = Date.now() - lastBackgroundTime;
+          
+          // If less than 1 hour, resume to saved route
+          if (timeElapsed < LOCK_TIMEOUT) {
+            console.log('RootLayout: Resuming to saved route:', savedRoute);
+            router.replace(`/${savedRoute}` as any);
+            return;
+          }
+        }
+        
+        // Otherwise go to home
+        console.log('RootLayout: Going to home screen');
+        router.replace('/(tabs)');
+      }
+    };
+    
+    handleNavigation();
+  }, [isAuthenticated, isReady, router]);
 
   // Handle Android back button - single press to go back, double press to show minimize/exit dialog
   useEffect(() => {

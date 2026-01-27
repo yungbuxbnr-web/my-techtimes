@@ -883,9 +883,11 @@ export default function SettingsScreen() {
           
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Lock on Resume</Text>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Smart Lock Timeout</Text>
               <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
-                Require authentication when returning to app
+                • Less than 30 min: Resume without lock{'\n'}
+                • 30 min - 1 hour: Lock but resume to current page{'\n'}
+                • More than 1 hour: Lock and return to home
               </Text>
             </View>
             <Switch

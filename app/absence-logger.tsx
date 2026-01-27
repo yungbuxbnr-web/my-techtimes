@@ -31,7 +31,7 @@ export default function AbsenceLoggerScreen() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedDate]);
 
   const loadData = async () => {
     try {
@@ -44,6 +44,20 @@ export default function AbsenceLoggerScreen() {
     } catch (error) {
       console.error('AbsenceLoggerScreen: Error loading data:', error);
     }
+  };
+
+  const getHoursForDate = (date: Date): number => {
+    if (!schedule) return 0;
+    
+    const dayOfWeek = date.getDay();
+    
+    // Check if it's Saturday and has custom hours
+    if (dayOfWeek === 6 && schedule.saturdayDailyHours !== undefined) {
+      return schedule.saturdayDailyHours;
+    }
+    
+    // Otherwise use regular daily hours
+    return schedule.dailyWorkingHours;
   };
 
   const handleLogAbsence = async () => {
@@ -64,10 +78,16 @@ export default function AbsenceLoggerScreen() {
       return;
     }
     
-    const hours = isHalfDay ? schedule.dailyWorkingHours / 2 : schedule.dailyWorkingHours;
+    // Get the hours for this specific day (might be Saturday with different hours)
+    const dailyHours = getHoursForDate(selectedDate);
+    const hours = isHalfDay ? dailyHours / 2 : dailyHours;
+    
+    const absenceTypeName = absenceType.charAt(0).toUpperCase() + absenceType.slice(1);
+    const durationName = isHalfDay ? 'Half Day' : 'Full Day';
     
     try {
-      // Create two absences: one for available hours, one for target hours
+      // Create absence that deducts from BOTH available and target hours
+      // This is a single day absence, but it affects both calculations
       await api.createAbsence({
         month: monthStr,
         absenceDate: dateStr,
@@ -76,7 +96,7 @@ export default function AbsenceLoggerScreen() {
         customHours: hours,
         deductionType: 'available',
         absenceType,
-        note: `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} - ${isHalfDay ? 'Half Day' : 'Full Day'} (Available Hours)`,
+        note: `${absenceTypeName} - ${durationName} (Available Hours)`,
       });
       
       await api.createAbsence({
@@ -87,13 +107,13 @@ export default function AbsenceLoggerScreen() {
         customHours: hours,
         deductionType: 'target',
         absenceType,
-        note: `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} - ${isHalfDay ? 'Half Day' : 'Full Day'} (Target Hours)`,
+        note: `${absenceTypeName} - ${durationName} (Target Hours)`,
       });
       
       console.log('AbsenceLoggerScreen: Absence logged successfully');
       Alert.alert(
         'Success',
-        `${absenceType.charAt(0).toUpperCase() + absenceType.slice(1)} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n${hours.toFixed(2)} hours will be deducted from both available hours and monthly target hours.`,
+        `${absenceTypeName} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n✅ 1 Day Absence\n\n${hours.toFixed(2)} hours will be deducted from:\n• Available Hours (for efficiency calculation)\n• Monthly Target Hours\n\nThis is a single day absence that affects both calculations.`,
         [
           {
             text: 'OK',
@@ -112,9 +132,16 @@ export default function AbsenceLoggerScreen() {
   const handleDeleteAbsence = async (absence: Absence) => {
     console.log('AbsenceLoggerScreen: Deleting absence:', absence.id);
     
+    // Find the paired absence (available/target)
+    const pairedAbsence = absences.find(a => 
+      a.absenceDate === absence.absenceDate && 
+      a.id !== absence.id &&
+      a.deductionType !== absence.deductionType
+    );
+    
     Alert.alert(
       'Delete Absence',
-      `Remove ${absence.absenceType} on ${new Date(absence.absenceDate).toLocaleDateString('en-GB')}?`,
+      `Remove ${absence.absenceType} on ${new Date(absence.absenceDate).toLocaleDateString('en-GB')}?\n\nThis will restore hours to both available and target calculations.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -122,7 +149,11 @@ export default function AbsenceLoggerScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Delete both the absence and its pair
               await api.deleteAbsence(absence.id);
+              if (pairedAbsence) {
+                await api.deleteAbsence(pairedAbsence.id);
+              }
               console.log('AbsenceLoggerScreen: Absence deleted');
               loadData();
             } catch (error) {
@@ -144,6 +175,16 @@ export default function AbsenceLoggerScreen() {
     }
   };
 
+  // Group absences by date to show only one entry per day
+  const groupedAbsences = absences.reduce((acc, absence) => {
+    if (!acc[absence.absenceDate]) {
+      acc[absence.absenceDate] = absence;
+    }
+    return acc;
+  }, {} as Record<string, Absence>);
+
+  const uniqueAbsences = Object.values(groupedAbsences);
+
   return (
     <AppBackground>
       <Stack.Screen
@@ -158,15 +199,15 @@ export default function AbsenceLoggerScreen() {
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, Platform.OS === 'android' && { paddingTop: 16 }]}
       >
-        <View style={[styles.infoCard, { backgroundColor: theme.card }]}>
+        <View style={[styles.infoCard, { backgroundColor: theme.primary }]}>
           <IconSymbol
-            ios_icon_name="info.circle.fill"
-            android_material_icon_name="info"
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
             size={24}
-            color={theme.primary}
+            color="#ffffff"
           />
-          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-            Log absences to automatically deduct hours from both your available hours and monthly target hours.
+          <Text style={[styles.infoText, { color: '#ffffff' }]}>
+            ⚠️ Each absence = 1 DAY. Hours are deducted from BOTH available hours (efficiency) AND monthly target hours.
           </Text>
         </View>
 
@@ -254,7 +295,7 @@ export default function AbsenceLoggerScreen() {
                       { color: !isHalfDay ? '#ffffff' : theme.textSecondary },
                     ]}
                   >
-                    {schedule.dailyWorkingHours.toFixed(2)}h
+                    {getHoursForDate(selectedDate).toFixed(2)}h
                   </Text>
                 )}
               </TouchableOpacity>
@@ -285,11 +326,26 @@ export default function AbsenceLoggerScreen() {
                       { color: isHalfDay ? '#ffffff' : theme.textSecondary },
                     ]}
                   >
-                    {(schedule.dailyWorkingHours / 2).toFixed(2)}h
+                    {(getHoursForDate(selectedDate) / 2).toFixed(2)}h
                   </Text>
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+
+          <View style={[styles.deductionInfo, { backgroundColor: theme.background }]}>
+            <Text style={[styles.deductionTitle, { color: theme.text }]}>
+              Hours will be deducted from:
+            </Text>
+            <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+              ✓ Available Hours (for efficiency %)
+            </Text>
+            <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+              ✓ Monthly Target Hours
+            </Text>
+            <Text style={[styles.deductionNote, { color: theme.textSecondary }]}>
+              This is a single day absence affecting both calculations
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -302,19 +358,19 @@ export default function AbsenceLoggerScreen() {
               size={24}
               color="#ffffff"
             />
-            <Text style={styles.logButtonText}>Log Absence</Text>
+            <Text style={styles.logButtonText}>Log 1 Day Absence</Text>
           </TouchableOpacity>
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Logged Absences</Text>
           
-          {absences.length === 0 ? (
+          {uniqueAbsences.length === 0 ? (
             <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
               No absences logged for this month
             </Text>
           ) : (
-            absences
+            uniqueAbsences
               .sort((a, b) => new Date(b.absenceDate).getTime() - new Date(a.absenceDate).getTime())
               .map((absence) => (
                 <View
@@ -334,6 +390,9 @@ export default function AbsenceLoggerScreen() {
                     </Text>
                     <Text style={[styles.absenceDuration, { color: theme.textSecondary }]}>
                       {absence.isHalfDay ? 'Half Day' : 'Full Day'} • {absence.customHours?.toFixed(2)}h
+                    </Text>
+                    <Text style={[styles.absenceDeduction, { color: theme.textSecondary }]}>
+                      Deducted from available & target hours
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -364,12 +423,6 @@ export default function AbsenceLoggerScreen() {
             setShowDatePicker(false);
             if (date) {
               setSelectedDate(date);
-              // Reload absences for new month if month changed
-              const newMonthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-              const currentMonthStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}`;
-              if (newMonthStr !== currentMonthStr) {
-                loadData();
-              }
             }
           }}
         />
@@ -397,6 +450,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: '600',
   },
   section: {
     padding: 20,
@@ -466,6 +520,27 @@ const styles = StyleSheet.create({
   durationHours: {
     fontSize: 12,
   },
+  deductionInfo: {
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  deductionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  deductionItem: {
+    fontSize: 13,
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  deductionNote: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
+    paddingLeft: 8,
+  },
   logButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -509,6 +584,11 @@ const styles = StyleSheet.create({
   },
   absenceDuration: {
     fontSize: 12,
+    marginBottom: 2,
+  },
+  absenceDeduction: {
+    fontSize: 11,
+    fontStyle: 'italic',
   },
   deleteButton: {
     padding: 8,

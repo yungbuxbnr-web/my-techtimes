@@ -48,6 +48,12 @@ export default function EditWorkScheduleScreen() {
   const [lunchStartTime, setLunchStartTime] = useState('12:00');
   const [lunchEndTime, setLunchEndTime] = useState('12:30');
   const [lunchBreakMinutes, setLunchBreakMinutes] = useState('30');
+  
+  // Saturday-specific hours
+  const [saturdayStartTime, setSaturdayStartTime] = useState('07:00');
+  const [saturdayEndTime, setSaturdayEndTime] = useState('13:00');
+  const [saturdayLunchBreakMinutes, setSaturdayLunchBreakMinutes] = useState('0');
+  
   const [saturdayFrequency, setSaturdayFrequency] = useState<string>('none');
   const [nextWorkingSaturday, setNextWorkingSaturday] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -84,6 +90,17 @@ export default function EditWorkScheduleScreen() {
       
       if (schedule.lunchEndTime) {
         setLunchEndTime(schedule.lunchEndTime);
+      }
+      
+      // Load Saturday-specific hours
+      if (schedule.saturdayStartTime) {
+        setSaturdayStartTime(schedule.saturdayStartTime);
+      }
+      if (schedule.saturdayEndTime) {
+        setSaturdayEndTime(schedule.saturdayEndTime);
+      }
+      if (schedule.saturdayLunchBreakMinutes !== undefined) {
+        setSaturdayLunchBreakMinutes(schedule.saturdayLunchBreakMinutes.toString());
       }
       
       if (schedule.saturdayFrequency) {
@@ -138,6 +155,22 @@ export default function EditWorkScheduleScreen() {
     }
   };
 
+  const calculateSaturdayHours = (): number => {
+    try {
+      const [startHour, startMin] = saturdayStartTime.split(':').map(Number);
+      const [endHour, endMin] = saturdayEndTime.split(':').map(Number);
+      const lunchMinutes = parseInt(saturdayLunchBreakMinutes) || 0;
+      
+      const startMinutes = startHour * 60 + startMin;
+      const endMinutes = endHour * 60 + endMin;
+      const workMinutes = endMinutes - startMinutes - lunchMinutes;
+      
+      return workMinutes / 60;
+    } catch (error) {
+      return 0;
+    }
+  };
+
   const validateTime = (time: string): boolean => {
     const regex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     return regex.test(time);
@@ -180,6 +213,18 @@ export default function EditWorkScheduleScreen() {
       return;
     }
     
+    if (saturdayFrequency !== 'none') {
+      if (!validateTime(saturdayStartTime)) {
+        Alert.alert('Error', 'Invalid Saturday start time format. Use HH:MM (e.g., 07:00)');
+        return;
+      }
+      
+      if (!validateTime(saturdayEndTime)) {
+        Alert.alert('Error', 'Invalid Saturday end time format. Use HH:MM (e.g., 13:00)');
+        return;
+      }
+    }
+    
     const dailyHours = calculateDailyHours();
     if (dailyHours <= 0) {
       Alert.alert('Error', 'End time must be after start time, and total hours must be positive');
@@ -191,9 +236,21 @@ export default function EditWorkScheduleScreen() {
       return;
     }
     
+    const saturdayHours = calculateSaturdayHours();
+    if (saturdayFrequency !== 'none' && saturdayHours <= 0) {
+      Alert.alert('Error', 'Saturday end time must be after start time');
+      return;
+    }
+    
     const lunchMinutes = parseInt(lunchBreakMinutes) || 0;
     if (lunchMinutes < 0 || lunchMinutes > 180) {
       Alert.alert('Error', 'Lunch break must be between 0 and 180 minutes');
+      return;
+    }
+    
+    const saturdayLunchMinutes = parseInt(saturdayLunchBreakMinutes) || 0;
+    if (saturdayLunchMinutes < 0 || saturdayLunchMinutes > 180) {
+      Alert.alert('Error', 'Saturday lunch break must be between 0 and 180 minutes');
       return;
     }
     
@@ -211,6 +268,10 @@ export default function EditWorkScheduleScreen() {
         lunchEndTime,
         lunchBreakMinutes: lunchMinutes,
         dailyWorkingHours: dailyHours,
+        saturdayStartTime,
+        saturdayEndTime,
+        saturdayLunchBreakMinutes: saturdayLunchMinutes,
+        saturdayDailyHours: saturdayHours,
         saturdayWorking: finalWorkingDays.includes(6),
         saturdayFrequency,
         nextWorkingSaturday: nextWorkingSaturday ? nextWorkingSaturday.toISOString() : undefined,
@@ -220,14 +281,14 @@ export default function EditWorkScheduleScreen() {
       if (saturdayFrequency === 'none') {
         saturdayInfo = '\nSaturdays: Not working';
       } else if (saturdayFrequency === 'every') {
-        saturdayInfo = '\nSaturdays: Every Saturday';
+        saturdayInfo = `\nSaturdays: Every Saturday (${saturdayHours.toFixed(2)}h)`;
       } else if (nextWorkingSaturday) {
-        saturdayInfo = `\nSaturdays: ${saturdayFrequency}\nNext: ${nextWorkingSaturday.toLocaleDateString('en-GB')}`;
+        saturdayInfo = `\nSaturdays: ${saturdayFrequency} (${saturdayHours.toFixed(2)}h)\nNext: ${nextWorkingSaturday.toLocaleDateString('en-GB')}`;
       }
       
       Alert.alert(
         'Success',
-        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.length}\nDaily Hours: ${dailyHours.toFixed(2)}h${saturdayInfo}\n\nThe work calendar has been updated to reflect these changes.`,
+        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.filter(d => d !== 6).length} weekdays\nWeekday Hours: ${dailyHours.toFixed(2)}h${saturdayInfo}\n\n✅ These hours are now the default for ALL app calculations including:\n• Available hours tracker\n• Efficiency calculations\n• Monthly targets\n• Hour-by-hour tracking\n• Absence deductions`,
         [
           {
             text: 'OK',
@@ -258,6 +319,9 @@ export default function EditWorkScheduleScreen() {
             setLunchStartTime('12:00');
             setLunchEndTime('12:30');
             setLunchBreakMinutes('30');
+            setSaturdayStartTime('07:00');
+            setSaturdayEndTime('13:00');
+            setSaturdayLunchBreakMinutes('0');
             setSaturdayFrequency('none');
             setNextWorkingSaturday(null);
           },
@@ -286,6 +350,7 @@ export default function EditWorkScheduleScreen() {
   };
 
   const dailyHours = calculateDailyHours();
+  const saturdayHours = calculateSaturdayHours();
 
   if (loading) {
     return (
@@ -319,15 +384,15 @@ export default function EditWorkScheduleScreen() {
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, Platform.OS === 'android' && { paddingTop: 16 }]}
       >
-        <View style={[styles.infoCard, { backgroundColor: theme.card }]}>
+        <View style={[styles.infoCard, { backgroundColor: theme.primary }]}>
           <IconSymbol
-            ios_icon_name="info.circle.fill"
-            android_material_icon_name="info"
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
             size={24}
-            color={theme.primary}
+            color="#ffffff"
           />
-          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-            Customize your work schedule. Changes will automatically update the work calendar for the entire year.
+          <Text style={[styles.infoText, { color: '#ffffff' }]}>
+            ⚠️ IMPORTANT: The hours you set here become the DEFAULT for ALL calculations across the entire app, including available hours, efficiency, targets, and absence deductions.
           </Text>
         </View>
 
@@ -379,101 +444,9 @@ export default function EditWorkScheduleScreen() {
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Saturday Schedule</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekday Working Hours</Text>
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
-            Configure how often you work on Saturdays
-          </Text>
-          
-          <View style={styles.frequencyGrid}>
-            {SATURDAY_FREQUENCIES.map((freq) => {
-              const isSelected = saturdayFrequency === freq.id;
-              return (
-                <TouchableOpacity
-                  key={freq.id}
-                  style={[
-                    styles.frequencyButton,
-                    { borderColor: theme.border },
-                    isSelected && { backgroundColor: theme.primary, borderColor: theme.primary },
-                  ]}
-                  onPress={() => {
-                    console.log('EditWorkScheduleScreen: Setting Saturday frequency to', freq.id);
-                    setSaturdayFrequency(freq.id);
-                    if (freq.id === 'none') {
-                      setNextWorkingSaturday(null);
-                    } else if (freq.id === 'every') {
-                      setNextWorkingSaturday(null);
-                    } else if (!nextWorkingSaturday) {
-                      setNextWorkingSaturday(getNextSaturday());
-                    }
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.frequencyButtonText,
-                      { color: isSelected ? '#ffffff' : theme.text },
-                    ]}
-                  >
-                    {freq.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          
-          {saturdayFrequency !== 'none' && saturdayFrequency !== 'every' && (
-            <View style={styles.saturdayDateSection}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Next Working Saturday</Text>
-              <TouchableOpacity
-                style={[styles.datePickerButton, { backgroundColor: theme.background }]}
-                onPress={() => {
-                  console.log('EditWorkScheduleScreen: User tapped Next Working Saturday picker');
-                  setShowSaturdayPicker(true);
-                }}
-              >
-                <IconSymbol
-                  ios_icon_name="calendar"
-                  android_material_icon_name="calendar-today"
-                  size={20}
-                  color={theme.primary}
-                />
-                <Text style={[styles.datePickerText, { color: theme.text }]}>
-                  {nextWorkingSaturday 
-                    ? nextWorkingSaturday.toLocaleDateString('en-GB', { 
-                        weekday: 'short', 
-                        day: 'numeric', 
-                        month: 'short', 
-                        year: 'numeric' 
-                      })
-                    : 'Select Date'}
-                </Text>
-              </TouchableOpacity>
-              <Text style={[styles.hint, { color: theme.textSecondary }]}>
-                Select from Saturdays in the current month
-              </Text>
-            </View>
-          )}
-          
-          {saturdayFrequency === 'every' && (
-            <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
-              <Text style={[styles.summaryText, { color: theme.text }]}>
-                ✅ Working every Saturday
-              </Text>
-            </View>
-          )}
-          
-          {saturdayFrequency === 'none' && (
-            <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
-              <Text style={[styles.summaryText, { color: theme.text }]}>
-                ❌ Not working Saturdays
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Working Hours</Text>
-          <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
-            Set your daily start and end times
+            Set your daily start and end times for Monday-Friday
           </Text>
           
           <View style={styles.timeRow}>
@@ -519,46 +492,188 @@ export default function EditWorkScheduleScreen() {
             </Text>
           </View>
           
-          <View style={styles.timeRow}>
-            <View style={styles.timeInput}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Start</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                value={lunchStartTime}
-                onChangeText={setLunchStartTime}
-                placeholder="12:00"
-                placeholderTextColor={theme.textSecondary}
-                keyboardType="numbers-and-punctuation"
-              />
-              <Text style={[styles.hint, { color: theme.textSecondary }]}>24-hour format</Text>
-            </View>
-            
-            <View style={styles.timeInput}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch End</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                value={lunchEndTime}
-                onChangeText={setLunchEndTime}
-                placeholder="12:30"
-                placeholderTextColor={theme.textSecondary}
-                keyboardType="numbers-and-punctuation"
-              />
-              <Text style={[styles.hint, { color: theme.textSecondary }]}>24-hour format</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Calculation Summary</Text>
-          
-          <View style={styles.calculationRow}>
+          <View style={[styles.calculationBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
-              Daily Working Hours:
+              Weekday Daily Hours:
             </Text>
             <Text style={[styles.calculationValue, { color: theme.primary }]}>
               {dailyHours.toFixed(2)}h
             </Text>
           </View>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Saturday Schedule</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+            Configure how often you work on Saturdays
+          </Text>
+          
+          <View style={styles.frequencyGrid}>
+            {SATURDAY_FREQUENCIES.map((freq) => {
+              const isSelected = saturdayFrequency === freq.id;
+              return (
+                <TouchableOpacity
+                  key={freq.id}
+                  style={[
+                    styles.frequencyButton,
+                    { borderColor: theme.border },
+                    isSelected && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}
+                  onPress={() => {
+                    console.log('EditWorkScheduleScreen: Setting Saturday frequency to', freq.id);
+                    setSaturdayFrequency(freq.id);
+                    if (freq.id === 'none') {
+                      setNextWorkingSaturday(null);
+                    } else if (freq.id === 'every') {
+                      setNextWorkingSaturday(null);
+                    } else if (!nextWorkingSaturday) {
+                      setNextWorkingSaturday(getNextSaturday());
+                    }
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.frequencyButtonText,
+                      { color: isSelected ? '#ffffff' : theme.text },
+                    ]}
+                  >
+                    {freq.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          
+          {saturdayFrequency !== 'none' && (
+            <>
+              <Text style={[styles.sectionSubtitle, { color: theme.textSecondary, marginTop: 16 }]}>
+                Saturday Working Hours
+              </Text>
+              
+              <View style={styles.timeRow}>
+                <View style={styles.timeInput}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>Start Time</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                    value={saturdayStartTime}
+                    onChangeText={setSaturdayStartTime}
+                    placeholder="07:00"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="numbers-and-punctuation"
+                  />
+                </View>
+                
+                <View style={styles.timeInput}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>End Time</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                    value={saturdayEndTime}
+                    onChangeText={setSaturdayEndTime}
+                    placeholder="13:00"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="numbers-and-punctuation"
+                  />
+                </View>
+              </View>
+              
+              <View style={styles.lunchBreakInput}>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Saturday Lunch Break (minutes)</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                  value={saturdayLunchBreakMinutes}
+                  onChangeText={setSaturdayLunchBreakMinutes}
+                  placeholder="0"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+              
+              <View style={[styles.calculationBox, { backgroundColor: theme.background }]}>
+                <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
+                  Saturday Daily Hours:
+                </Text>
+                <Text style={[styles.calculationValue, { color: theme.primary }]}>
+                  {saturdayHours.toFixed(2)}h
+                </Text>
+              </View>
+            </>
+          )}
+          
+          {saturdayFrequency !== 'none' && saturdayFrequency !== 'every' && (
+            <View style={styles.saturdayDateSection}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Next Working Saturday</Text>
+              <TouchableOpacity
+                style={[styles.datePickerButton, { backgroundColor: theme.background }]}
+                onPress={() => {
+                  console.log('EditWorkScheduleScreen: User tapped Next Working Saturday picker');
+                  setShowSaturdayPicker(true);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="calendar"
+                  android_material_icon_name="calendar-today"
+                  size={20}
+                  color={theme.primary}
+                />
+                <Text style={[styles.datePickerText, { color: theme.text }]}>
+                  {nextWorkingSaturday 
+                    ? nextWorkingSaturday.toLocaleDateString('en-GB', { 
+                        weekday: 'short', 
+                        day: 'numeric', 
+                        month: 'short', 
+                        year: 'numeric' 
+                      })
+                    : 'Select Date'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.hint, { color: theme.textSecondary }]}>
+                Select from Saturdays in the current month
+              </Text>
+            </View>
+          )}
+          
+          {saturdayFrequency === 'every' && (
+            <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
+              <Text style={[styles.summaryText, { color: theme.text }]}>
+                ✅ Working every Saturday ({saturdayHours.toFixed(2)}h)
+              </Text>
+            </View>
+          )}
+          
+          {saturdayFrequency === 'none' && (
+            <View style={[styles.summaryBox, { backgroundColor: theme.background }]}>
+              <Text style={[styles.summaryText, { color: theme.text }]}>
+                ❌ Not working Saturdays
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Calculation Summary</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.chartGreen }]}>
+            ✅ These hours are used for ALL app calculations
+          </Text>
+          
+          <View style={styles.calculationRow}>
+            <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
+              Weekday Daily Hours:
+            </Text>
+            <Text style={[styles.calculationValue, { color: theme.primary }]}>
+              {dailyHours.toFixed(2)}h
+            </Text>
+          </View>
+          
+          {saturdayFrequency !== 'none' && (
+            <View style={styles.calculationRow}>
+              <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
+                Saturday Daily Hours:
+              </Text>
+              <Text style={[styles.calculationValue, { color: theme.primary }]}>
+                {saturdayHours.toFixed(2)}h
+              </Text>
+            </View>
+          )}
           
           <View style={styles.calculationRow}>
             <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
@@ -569,31 +684,14 @@ export default function EditWorkScheduleScreen() {
             </Text>
           </View>
           
-          <View style={styles.calculationRow}>
-            <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
-              Weekly Working Hours:
-            </Text>
-            <Text style={[styles.calculationValue, { color: theme.primary }]}>
-              {(dailyHours * workingDays.length).toFixed(2)}h
-            </Text>
-          </View>
-          
-          <View style={styles.calculationRow}>
-            <Text style={[styles.calculationLabel, { color: theme.textSecondary }]}>
-              Approx. Monthly Hours:
-            </Text>
-            <Text style={[styles.calculationValue, { color: theme.primary }]}>
-              {(dailyHours * workingDays.length * 4.33).toFixed(2)}h
-            </Text>
-          </View>
-          
           <View style={[styles.formulaBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.formulaTitle, { color: theme.text }]}>How it works:</Text>
             <Text style={[styles.formulaText, { color: theme.textSecondary }]}>
               • Available Hours = Working Days × Daily Hours{'\n'}
               • Efficiency % = (Sold Hours ÷ Available Hours) × 100{'\n'}
               • Only selected working days count toward available hours{'\n'}
-              • Saturday schedule is tracked separately based on frequency{'\n'}
+              • Saturday uses separate hours if configured{'\n'}
+              • Absences deduct from both available and target hours{'\n'}
               • 1 AW = 5 minutes = 0.0833 hours
             </Text>
           </View>
@@ -729,6 +827,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: '600',
   },
   section: {
     padding: 20,
@@ -851,6 +950,14 @@ const styles = StyleSheet.create({
   calculationValue: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  calculationBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
   },
   formulaBox: {
     padding: 12,
