@@ -45,8 +45,8 @@ export default function EditWorkScheduleScreen() {
   const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [startTime, setStartTime] = useState('07:00');
   const [endTime, setEndTime] = useState('18:00');
-  const [lunchStartTime, setLunchStartTime] = useState('12:00');
-  const [lunchEndTime, setLunchEndTime] = useState('12:30');
+  const [lunchStartTime, setLunchStartTime] = useState('13:00');
+  const [lunchEndTime, setLunchEndTime] = useState('13:30');
   const [lunchBreakMinutes, setLunchBreakMinutes] = useState('30');
   
   // Saturday-specific hours
@@ -143,11 +143,16 @@ export default function EditWorkScheduleScreen() {
     try {
       const [startHour, startMin] = startTime.split(':').map(Number);
       const [endHour, endMin] = endTime.split(':').map(Number);
-      const lunchMinutes = parseInt(lunchBreakMinutes) || 0;
+      const [lunchStartHour, lunchStartMin] = lunchStartTime.split(':').map(Number);
+      const [lunchEndHour, lunchEndMin] = lunchEndTime.split(':').map(Number);
       
       const startMinutes = startHour * 60 + startMin;
       const endMinutes = endHour * 60 + endMin;
-      const workMinutes = endMinutes - startMinutes - lunchMinutes;
+      const lunchStartMinutes = lunchStartHour * 60 + lunchStartMin;
+      const lunchEndMinutes = lunchEndHour * 60 + lunchEndMin;
+      
+      const lunchDuration = lunchEndMinutes - lunchStartMinutes;
+      const workMinutes = endMinutes - startMinutes - lunchDuration;
       
       return workMinutes / 60;
     } catch (error) {
@@ -213,6 +218,16 @@ export default function EditWorkScheduleScreen() {
       return;
     }
     
+    if (!validateTime(lunchStartTime)) {
+      Alert.alert('Error', 'Invalid lunch start time format. Use HH:MM (e.g., 13:00)');
+      return;
+    }
+    
+    if (!validateTime(lunchEndTime)) {
+      Alert.alert('Error', 'Invalid lunch end time format. Use HH:MM (e.g., 13:30)');
+      return;
+    }
+    
     if (saturdayFrequency !== 'none') {
       if (!validateTime(saturdayStartTime)) {
         Alert.alert('Error', 'Invalid Saturday start time format. Use HH:MM (e.g., 07:00)');
@@ -254,19 +269,58 @@ export default function EditWorkScheduleScreen() {
       return;
     }
     
+    // Validate lunch times are within work hours
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    const [lunchStartHour, lunchStartMin] = lunchStartTime.split(':').map(Number);
+    const [lunchEndHour, lunchEndMin] = lunchEndTime.split(':').map(Number);
+    
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    const lunchStartMinutes = lunchStartHour * 60 + lunchStartMin;
+    const lunchEndMinutes = lunchEndHour * 60 + lunchEndMin;
+    
+    if (lunchStartMinutes < startMinutes || lunchStartMinutes > endMinutes) {
+      Alert.alert('Error', 'Lunch start time must be within work hours');
+      return;
+    }
+    
+    if (lunchEndMinutes < startMinutes || lunchEndMinutes > endMinutes) {
+      Alert.alert('Error', 'Lunch end time must be within work hours');
+      return;
+    }
+    
+    if (lunchEndMinutes <= lunchStartMinutes) {
+      Alert.alert('Error', 'Lunch end time must be after lunch start time');
+      return;
+    }
+    
+    const lunchDuration = lunchEndMinutes - lunchStartMinutes;
+    if (lunchDuration > 180) {
+      Alert.alert('Error', 'Lunch break cannot exceed 3 hours (180 minutes)');
+      return;
+    }
+    
     if (saturdayFrequency !== 'none' && saturdayFrequency !== 'every' && !nextWorkingSaturday) {
       Alert.alert('Error', 'Please set the date of your next working Saturday');
       return;
     }
     
     try {
+      // Calculate lunch break minutes from lunch times
+      const [lunchStartHour, lunchStartMin] = lunchStartTime.split(':').map(Number);
+      const [lunchEndHour, lunchEndMin] = lunchEndTime.split(':').map(Number);
+      const lunchStartMinutes = lunchStartHour * 60 + lunchStartMin;
+      const lunchEndMinutes = lunchEndHour * 60 + lunchEndMin;
+      const calculatedLunchMinutes = lunchEndMinutes - lunchStartMinutes;
+      
       await api.updateSchedule({
         workingDays: finalWorkingDays,
         startTime,
         endTime,
         lunchStartTime,
         lunchEndTime,
-        lunchBreakMinutes: lunchMinutes,
+        lunchBreakMinutes: calculatedLunchMinutes,
         dailyWorkingHours: dailyHours,
         saturdayStartTime,
         saturdayEndTime,
@@ -286,9 +340,11 @@ export default function EditWorkScheduleScreen() {
         saturdayInfo = `\nSaturdays: ${saturdayFrequency} (${saturdayHours.toFixed(2)}h)\nNext: ${nextWorkingSaturday.toLocaleDateString('en-GB')}`;
       }
       
+      const lunchDurationMinutes = lunchEndMinutes - lunchStartMinutes;
+      
       Alert.alert(
         'Success',
-        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.filter(d => d !== 6).length} weekdays\nWeekday Hours: ${dailyHours.toFixed(2)}h${saturdayInfo}\n\n✅ These hours are now the default for ALL app calculations including:\n• Available hours tracker\n• Efficiency calculations\n• Monthly targets\n• Hour-by-hour tracking\n• Absence deductions`,
+        `Work schedule updated!\n\nWorking Days: ${finalWorkingDays.filter(d => d !== 6).length} weekdays\nWeekday Hours: ${dailyHours.toFixed(2)}h\nLunch: ${lunchStartTime} - ${lunchEndTime} (${lunchDurationMinutes} min)${saturdayInfo}\n\n✅ These hours are now the default for ALL app calculations including:\n• Available hours tracker\n• Efficiency calculations\n• Monthly targets\n• Hour-by-hour tracking\n• Absence deductions`,
         [
           {
             text: 'OK',
@@ -316,8 +372,8 @@ export default function EditWorkScheduleScreen() {
             setWorkingDays([1, 2, 3, 4, 5]);
             setStartTime('07:00');
             setEndTime('18:00');
-            setLunchStartTime('12:00');
-            setLunchEndTime('12:30');
+            setLunchStartTime('13:00');
+            setLunchEndTime('13:30');
             setLunchBreakMinutes('30');
             setSaturdayStartTime('07:00');
             setSaturdayEndTime('13:00');
@@ -477,18 +533,35 @@ export default function EditWorkScheduleScreen() {
             </View>
           </View>
           
-          <View style={styles.lunchBreakInput}>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Break Duration (minutes)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-              value={lunchBreakMinutes}
-              onChangeText={setLunchBreakMinutes}
-              placeholder="30"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="numeric"
-            />
+          <View style={styles.lunchSection}>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Break Times</Text>
+            <View style={styles.timeRow}>
+              <View style={styles.timeInput}>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Start</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                  value={lunchStartTime}
+                  onChangeText={setLunchStartTime}
+                  placeholder="13:00"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+              
+              <View style={styles.timeInput}>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>End</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+                  value={lunchEndTime}
+                  onChangeText={setLunchEndTime}
+                  placeholder="13:30"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+            </View>
             <Text style={[styles.hint, { color: theme.textSecondary }]}>
-              Unpaid break time deducted from daily hours
+              Lunch break time (unpaid, deducted from daily hours)
             </Text>
           </View>
           
@@ -922,6 +995,9 @@ const styles = StyleSheet.create({
   },
   lunchBreakInput: {
     marginBottom: 8,
+  },
+  lunchSection: {
+    marginBottom: 16,
   },
   label: {
     fontSize: 14,

@@ -157,7 +157,7 @@ export default function EfficiencyDetailsScreen() {
                     {details.availableHours.toFixed(1)} hours
                   </Text>
                   <Text style={[styles.detailSubtext, { color: theme.textSecondary }]}>
-                    {details.weekdaysInMonth} weekdays × 8.5h
+                    Based on work schedule editor hours
                     {details.absenceDays > 0 && ` - ${details.absenceDays} absence days`}
                   </Text>
                 </View>
