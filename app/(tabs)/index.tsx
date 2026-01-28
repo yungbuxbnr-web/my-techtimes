@@ -497,15 +497,47 @@ export default function DashboardScreen() {
                   {workdayProgress.isWorkDay && (
                     <>
                       <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
+                        {/* Main progress fill */}
                         <View 
                           style={[
                             styles.progressBarFill, 
                             { 
                               width: `${workdayProgress.progress}%`,
-                              backgroundColor: workdayProgress.isLunch ? theme.chartYellow : theme.primary,
+                              backgroundColor: theme.primary,
                             }
                           ]} 
                         />
+                        
+                        {/* Lunch zone overlay */}
+                        {(() => {
+                          const parseTime = (timeStr: string) => {
+                            const [hours, minutes] = timeStr.split(':').map(Number);
+                            return hours * 60 + minutes;
+                          };
+                          
+                          const startMinutes = parseTime(workSchedule.startTime || '07:00');
+                          const endMinutes = parseTime(workSchedule.endTime || '18:00');
+                          const lunchStartMinutes = parseTime(workSchedule.lunchStartTime || '12:00');
+                          const lunchEndMinutes = parseTime(workSchedule.lunchEndTime || '12:30');
+                          
+                          const totalWorkMinutes = endMinutes - startMinutes;
+                          const lunchStartPercent = ((lunchStartMinutes - startMinutes) / totalWorkMinutes) * 100;
+                          const lunchDurationPercent = ((lunchEndMinutes - lunchStartMinutes) / totalWorkMinutes) * 100;
+                          
+                          return (
+                            <View 
+                              style={[
+                                styles.lunchZone, 
+                                { 
+                                  left: `${lunchStartPercent}%`,
+                                  width: `${lunchDurationPercent}%`,
+                                  backgroundColor: theme.chartYellow,
+                                  opacity: 0.6,
+                                }
+                              ]} 
+                            />
+                          );
+                        })()}
                       </View>
                       
                       <View style={styles.progressTimeRow}>
@@ -707,15 +739,47 @@ export default function DashboardScreen() {
                 {workdayProgress.isWorkDay && (
                   <>
                     <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
+                      {/* Main progress fill */}
                       <View 
                         style={[
                           styles.progressBarFill, 
                           { 
                             width: `${workdayProgress.progress}%`,
-                            backgroundColor: workdayProgress.isLunch ? theme.chartYellow : theme.primary,
+                            backgroundColor: theme.primary,
                           }
                         ]} 
                       />
+                      
+                      {/* Lunch zone overlay */}
+                      {(() => {
+                        const parseTime = (timeStr: string) => {
+                          const [hours, minutes] = timeStr.split(':').map(Number);
+                          return hours * 60 + minutes;
+                        };
+                        
+                        const startMinutes = parseTime(workSchedule.startTime || '07:00');
+                        const endMinutes = parseTime(workSchedule.endTime || '18:00');
+                        const lunchStartMinutes = parseTime(workSchedule.lunchStartTime || '12:00');
+                        const lunchEndMinutes = parseTime(workSchedule.lunchEndTime || '12:30');
+                        
+                        const totalWorkMinutes = endMinutes - startMinutes;
+                        const lunchStartPercent = ((lunchStartMinutes - startMinutes) / totalWorkMinutes) * 100;
+                        const lunchDurationPercent = ((lunchEndMinutes - lunchStartMinutes) / totalWorkMinutes) * 100;
+                        
+                        return (
+                          <View 
+                            style={[
+                              styles.lunchZone, 
+                              { 
+                                left: `${lunchStartPercent}%`,
+                                width: `${lunchDurationPercent}%`,
+                                backgroundColor: theme.chartYellow,
+                                opacity: 0.6,
+                              }
+                            ]} 
+                          />
+                        );
+                      })()}
                     </View>
                     
                     <View style={styles.progressTimeRow}>
@@ -1183,11 +1247,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 16,
+    position: 'relative',
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 12,
     transition: 'width 0.3s ease',
+  },
+  lunchZone: {
+    position: 'absolute',
+    top: 0,
+    height: '100%',
+    borderRadius: 4,
   },
   progressTimeRow: {
     flexDirection: 'row',
