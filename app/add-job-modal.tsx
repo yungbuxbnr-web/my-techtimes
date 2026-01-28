@@ -13,6 +13,7 @@ import {
   Modal,
   FlatList,
   Image,
+  Keyboard,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -126,8 +127,8 @@ export default function AddJobModal() {
       return new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime();
     });
     
-    // Limit to 10 suggestions
-    return suggestions.slice(0, 10);
+    // Limit to 5 suggestions for better UX
+    return suggestions.slice(0, 5);
   };
   
   // Handle WIP input change
@@ -164,6 +165,7 @@ export default function AddJobModal() {
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
     setShowWipSuggestions(false);
+    Keyboard.dismiss();
     toastManager.info(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg}`);
   };
   
@@ -174,6 +176,7 @@ export default function AddJobModal() {
     setVehicleReg(suggestion.vehicleReg);
     setWipNumber(suggestion.wipNumber);
     setShowRegSuggestions(false);
+    Keyboard.dismiss();
     toastManager.info(`Auto-filled: ${suggestion.vehicleReg} - ${suggestion.wipNumber}`);
   };
 
@@ -448,6 +451,10 @@ export default function AddJobModal() {
     }
   };
 
+  // Determine which suggestions to show
+  const activeSuggestions = showWipSuggestions ? wipSuggestions : showRegSuggestions ? regSuggestions : [];
+  const showSuggestions = showWipSuggestions || showRegSuggestions;
+
   return (
     <>
       <Stack.Screen
@@ -471,6 +478,7 @@ export default function AddJobModal() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
           <ScrollView
             style={styles.scrollView}
@@ -502,61 +510,31 @@ export default function AddJobModal() {
                     <Text style={styles.scanButtonText}>Scan Card</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    ref={wipInputRef}
-                    style={[styles.input, { 
-                      backgroundColor: isDarkMode ? '#000' : '#fff',
-                      color: isDarkMode ? '#fff' : '#000',
-                      borderColor: theme.primary
-                    }]}
-                    value={wipNumber}
-                    onChangeText={handleWipChange}
-                    onFocus={() => {
-                      if (wipNumber.length > 0) {
-                        const suggestions = generateSuggestions(wipNumber, 'wip');
-                        setWipSuggestions(suggestions);
-                        setShowWipSuggestions(suggestions.length > 0);
-                      }
-                    }}
-                    onBlur={() => {
-                      // Delay hiding to allow tap on suggestion
-                      setTimeout(() => setShowWipSuggestions(false), 200);
-                    }}
-                    keyboardType="number-pad"
-                    maxLength={5}
-                    placeholder="12345"
-                    placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                  />
-                  {showWipSuggestions && wipSuggestions.length > 0 && (
-                    <View style={[styles.suggestionsDropdown, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff', borderColor: theme.primary }]}>
-                      <FlatList
-                        data={wipSuggestions}
-                        keyExtractor={(item, index) => `${item.wipNumber}-${index}`}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity
-                            style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#333' : '#eee' }]}
-                            onPress={() => selectWipSuggestion(item)}
-                          >
-                            <View style={styles.suggestionContent}>
-                              <Text style={[styles.suggestionWip, { color: theme.primary }]}>
-                                {item.wipNumber}
-                              </Text>
-                              <Text style={[styles.suggestionReg, { color: isDarkMode ? '#fff' : '#000' }]}>
-                                {item.vehicleReg}
-                              </Text>
-                            </View>
-                            <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
-                              {new Date(item.lastUsed).toLocaleDateString('en-GB')}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                        scrollEnabled={false}
-                        nestedScrollEnabled={true}
-                      />
-                    </View>
-                  )}
-                </View>
+                <TextInput
+                  ref={wipInputRef}
+                  style={[styles.input, { 
+                    backgroundColor: isDarkMode ? '#000' : '#fff',
+                    color: isDarkMode ? '#fff' : '#000',
+                    borderColor: theme.primary
+                  }]}
+                  value={wipNumber}
+                  onChangeText={handleWipChange}
+                  onFocus={() => {
+                    if (wipNumber.length > 0) {
+                      const suggestions = generateSuggestions(wipNumber, 'wip');
+                      setWipSuggestions(suggestions);
+                      setShowWipSuggestions(suggestions.length > 0);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay hiding to allow tap on suggestion
+                    setTimeout(() => setShowWipSuggestions(false), 200);
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={5}
+                  placeholder="12345"
+                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                />
               </View>
 
               <View style={styles.formGroup}>
@@ -583,60 +561,30 @@ export default function AddJobModal() {
                     <Text style={styles.scanButtonText}>Scan Reg</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    ref={regInputRef}
-                    style={[styles.input, { 
-                      backgroundColor: isDarkMode ? '#000' : '#fff',
-                      color: isDarkMode ? '#fff' : '#000',
-                      borderColor: theme.primary
-                    }]}
-                    value={vehicleReg}
-                    onChangeText={handleRegChange}
-                    onFocus={() => {
-                      if (vehicleReg.length > 0) {
-                        const suggestions = generateSuggestions(vehicleReg, 'reg');
-                        setRegSuggestions(suggestions);
-                        setShowRegSuggestions(suggestions.length > 0);
-                      }
-                    }}
-                    onBlur={() => {
-                      // Delay hiding to allow tap on suggestion
-                      setTimeout(() => setShowRegSuggestions(false), 200);
-                    }}
-                    autoCapitalize="characters"
-                    placeholder="ABC123"
-                    placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                  />
-                  {showRegSuggestions && regSuggestions.length > 0 && (
-                    <View style={[styles.suggestionsDropdown, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff', borderColor: theme.primary }]}>
-                      <FlatList
-                        data={regSuggestions}
-                        keyExtractor={(item, index) => `${item.vehicleReg}-${index}`}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity
-                            style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#333' : '#eee' }]}
-                            onPress={() => selectRegSuggestion(item)}
-                          >
-                            <View style={styles.suggestionContent}>
-                              <Text style={[styles.suggestionReg, { color: theme.primary }]}>
-                                {item.vehicleReg}
-                              </Text>
-                              <Text style={[styles.suggestionWip, { color: isDarkMode ? '#fff' : '#000' }]}>
-                                WIP: {item.wipNumber}
-                              </Text>
-                            </View>
-                            <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
-                              {new Date(item.lastUsed).toLocaleDateString('en-GB')}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                        scrollEnabled={false}
-                        nestedScrollEnabled={true}
-                      />
-                    </View>
-                  )}
-                </View>
+                <TextInput
+                  ref={regInputRef}
+                  style={[styles.input, { 
+                    backgroundColor: isDarkMode ? '#000' : '#fff',
+                    color: isDarkMode ? '#fff' : '#000',
+                    borderColor: theme.primary
+                  }]}
+                  value={vehicleReg}
+                  onChangeText={handleRegChange}
+                  onFocus={() => {
+                    if (vehicleReg.length > 0) {
+                      const suggestions = generateSuggestions(vehicleReg, 'reg');
+                      setRegSuggestions(suggestions);
+                      setShowRegSuggestions(suggestions.length > 0);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay hiding to allow tap on suggestion
+                    setTimeout(() => setShowRegSuggestions(false), 200);
+                  }}
+                  autoCapitalize="characters"
+                  placeholder="ABC123"
+                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                />
               </View>
 
               <View style={styles.formGroup}>
@@ -903,6 +851,61 @@ export default function AddJobModal() {
               </TouchableOpacity>
             </View>
           </ScrollView>
+
+          {/* Bottom Suggestions Dropdown - Fixed at bottom, above keyboard */}
+          {showSuggestions && activeSuggestions.length > 0 && (
+            <View style={[styles.bottomSuggestionsContainer, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff', borderTopColor: theme.primary }]}>
+              <View style={styles.suggestionsHeader}>
+                <Text style={[styles.suggestionsHeaderText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                  Suggestions
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowWipSuggestions(false);
+                    setShowRegSuggestions(false);
+                    Keyboard.dismiss();
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={24}
+                    color={isDarkMode ? '#888' : '#999'}
+                  />
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={activeSuggestions}
+                keyExtractor={(item, index) => `${item.wipNumber}-${item.vehicleReg}-${index}`}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.bottomSuggestionItem, { borderBottomColor: isDarkMode ? '#333' : '#eee' }]}
+                    onPress={() => {
+                      if (showWipSuggestions) {
+                        selectWipSuggestion(item);
+                      } else {
+                        selectRegSuggestion(item);
+                      }
+                    }}
+                  >
+                    <View style={styles.suggestionContent}>
+                      <Text style={[styles.suggestionWip, { color: theme.primary }]}>
+                        {item.wipNumber}
+                      </Text>
+                      <Text style={[styles.suggestionReg, { color: isDarkMode ? '#fff' : '#000' }]}>
+                        {item.vehicleReg}
+                      </Text>
+                    </View>
+                    <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
+                      {new Date(item.lastUsed).toLocaleDateString('en-GB')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                scrollEnabled={true}
+                style={styles.bottomSuggestionsList}
+              />
+            </View>
+          )}
         </KeyboardAvoidingView>
 
         {/* Save Process Notification */}
@@ -1042,52 +1045,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  inputContainer: {
-    position: 'relative',
-    zIndex: 1,
-  },
   input: {
     height: 56,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
-  },
-  suggestionsDropdown: {
-    position: 'absolute',
-    top: 58,
-    left: 0,
-    right: 0,
-    maxHeight: 200,
-    borderWidth: 1,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 1000,
-  },
-  suggestionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-  },
-  suggestionContent: {
-    flex: 1,
-  },
-  suggestionWip: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  suggestionReg: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  suggestionDate: {
-    fontSize: 12,
   },
   pickerButton: {
     flexDirection: 'row',
@@ -1252,5 +1215,58 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Bottom suggestions container - fixed at bottom, above keyboard
+  bottomSuggestionsContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: 250,
+    borderTopWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 10,
+    zIndex: 1000,
+  },
+  suggestionsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  suggestionsHeaderText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  bottomSuggestionsList: {
+    maxHeight: 200,
+  },
+  bottomSuggestionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  suggestionContent: {
+    flex: 1,
+  },
+  suggestionWip: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  suggestionReg: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  suggestionDate: {
+    fontSize: 12,
   },
 });
