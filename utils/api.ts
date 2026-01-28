@@ -119,6 +119,30 @@ function calculateJobStats(jobs: Job[]): JobStats {
 }
 
 /**
+ * Get the start of the current week (Sunday)
+ */
+function getWeekStart(date: Date = new Date()): Date {
+  const d = new Date(date);
+  const day = d.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const diff = day; // Days since Sunday
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Get the end of the current week (Saturday)
+ */
+function getWeekEnd(date: Date = new Date()): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = 6 - day; // Days until Saturday
+  d.setDate(d.getDate() + diff);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/**
  * Calculate working days in a month based on custom schedule
  * @param year - Year
  * @param month - Month (1-12)
@@ -204,8 +228,20 @@ export const api = {
   },
 
   async getWeekJobs(): Promise<Job[]> {
-    console.log('API: Fetching week jobs from local storage');
-    return await offlineStorage.getWeekJobs();
+    console.log('API: Fetching week jobs from local storage (Sunday-Saturday)');
+    const allJobs = await offlineStorage.getAllJobs();
+    const weekStart = getWeekStart();
+    const weekEnd = getWeekEnd();
+    
+    console.log('API: Week range:', weekStart.toISOString(), 'to', weekEnd.toISOString());
+    
+    const weekJobs = allJobs.filter(job => {
+      const jobDate = new Date(job.createdAt);
+      return jobDate >= weekStart && jobDate <= weekEnd;
+    });
+    
+    console.log(`API: Found ${weekJobs.length} jobs in current week (Sunday-Saturday)`);
+    return weekJobs;
   },
 
   async getMonthJobs(): Promise<Job[]> {
@@ -276,7 +312,7 @@ export const api = {
   },
 
   async getWeekStats(): Promise<JobStats> {
-    console.log('API: Calculating week stats from local storage');
+    console.log('API: Calculating week stats from local storage (Sunday-Saturday)');
     const jobs = await this.getWeekJobs();
     return calculateJobStats(jobs);
   },
@@ -410,6 +446,7 @@ export const api = {
     isHalfDay?: boolean;
     customHours?: number;
     deductionType: 'target' | 'available';
+    absenceType?: 'overtime' | 'compensation' | 'absence';
     note?: string;
   }): Promise<Absence> {
     console.log('API: Creating absence in local storage', absence);
@@ -579,12 +616,11 @@ export const api = {
       checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    // Calculate weekly streaks
+    // Calculate weekly streaks (Sunday-Saturday)
     const jobsByWeek = new Map<string, Job[]>();
     allJobs.forEach(job => {
       const date = new Date(job.createdAt);
-      const weekStart = new Date(date);
-      weekStart.setDate(date.getDate() - date.getDay() + 1); // Monday
+      const weekStart = getWeekStart(date);
       const weekKey = weekStart.toISOString().split('T')[0];
       if (!jobsByWeek.has(weekKey)) {
         jobsByWeek.set(weekKey, []);
@@ -598,9 +634,8 @@ export const api = {
     let bestWeeklyStreak = 0;
     let tempWeeklyStreak = 0;
 
-    // Get current week start
-    const currentWeekStart = new Date(today);
-    currentWeekStart.setDate(today.getDate() - today.getDay() + 1);
+    // Get current week start (Sunday)
+    const currentWeekStart = getWeekStart();
     const currentWeekKey = currentWeekStart.toISOString().split('T')[0];
 
     // Check current and previous week for streak

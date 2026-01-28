@@ -228,7 +228,7 @@ export default function AddJobModal() {
       toastManager.success('Job saved successfully!');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Wait a moment before hiding notification
+      // Wait a moment before closing or clearing
       setTimeout(() => {
         setShowSaveNotification(false);
         
@@ -242,6 +242,8 @@ export default function AddJobModal() {
           setJobDateTime(new Date());
           setJobCardImageUri(undefined);
         } else {
+          // Close the modal by navigating back
+          console.log('AddJobModal: Closing modal after successful save');
           router.back();
         }
       }, 1500);
