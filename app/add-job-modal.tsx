@@ -228,25 +228,9 @@ export default function AddJobModal() {
       toastManager.success('Job saved successfully!');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Wait a moment before closing or clearing
-      setTimeout(() => {
-        setShowSaveNotification(false);
-        
-        if (saveAnother) {
-          console.log('AddJobModal: Clearing form for next job');
-          setWipNumber('');
-          setVehicleReg('');
-          setAw(0);
-          setNotes('');
-          setVhcStatus('NONE');
-          setJobDateTime(new Date());
-          setJobCardImageUri(undefined);
-        } else {
-          // Close the modal by navigating back
-          console.log('AddJobModal: Closing modal after successful save');
-          router.back();
-        }
-      }, 1500);
+      // Close modal immediately after successful save
+      console.log('AddJobModal: Closing modal after successful save');
+      router.back();
     } catch (error) {
       console.error('AddJobModal: Error saving job:', error);
       setSaveNotificationType('error');
