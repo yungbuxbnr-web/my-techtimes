@@ -48,12 +48,7 @@ export default function JobStoreScreen() {
     loadJobs();
   }, [loadJobs]);
 
-  useEffect(() => {
-    console.log('JobStoreScreen: Applying filters and search');
-    applyFiltersAndSearch();
-  }, [allJobs, searchQuery, filterType, sortType, vhcFilter]);
-
-  const applyFiltersAndSearch = () => {
+  const applyFiltersAndSearch = useCallback(() => {
     let jobs = [...allJobs];
 
     // Apply date filter
@@ -108,7 +103,12 @@ export default function JobStoreScreen() {
 
     setFilteredJobs(jobs);
     console.log('JobStoreScreen: Filtered to', jobs.length, 'jobs');
-  };
+  }, [allJobs, searchQuery, filterType, sortType, vhcFilter, theme]);
+
+  useEffect(() => {
+    console.log('JobStoreScreen: Applying filters and search');
+    applyFiltersAndSearch();
+  }, [applyFiltersAndSearch]);
 
   const onRefresh = async () => {
     console.log('JobStoreScreen: User refreshing jobs list');

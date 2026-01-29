@@ -44,11 +44,20 @@ export default function DashboardScreen() {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [streakData, setStreakData] = useState<any>(null);
   const [streaksEnabled, setStreaksEnabled] = useState(true);
+  const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
 
   const loadDashboardData = useCallback(async () => {
     try {
       console.log('DashboardScreen: Fetching stats from API');
       const currentMonth = getCurrentMonth();
+      
+      // Load today's absences FIRST before other data
+      const todayStr = new Date().toISOString().split('T')[0];
+      const monthAbsences = await api.getAbsences(currentMonth);
+      const todayAbsencesList = monthAbsences.filter(a => a.absenceDate === todayStr);
+      setTodayAbsences(todayAbsencesList);
+      console.log('DashboardScreen: Today absences loaded FIRST:', todayAbsencesList.length, 'absences');
+      
       const [monthly, today, week, profile, schedule, settings, streaks] = await Promise.all([
         api.getMonthlyStats(currentMonth),
         api.getTodayStats(),
@@ -166,19 +175,19 @@ export default function DashboardScreen() {
       clearInterval(timer);
       clearInterval(statsRefresh);
     };
-  }, [loadDashboardData]);
+  }, []); // Empty deps - loadDashboardData is stable via useCallback
 
   const getCurrentMonth = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   };
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     console.log('DashboardScreen: User refreshing dashboard');
     setRefreshing(true);
     await loadDashboardData();
     setRefreshing(false);
-  };
+  }, [loadDashboardData]);
 
   const getEfficiencyColor = (efficiency: number) => {
     if (efficiency >= 65) return theme.chartGreen;
@@ -217,15 +226,24 @@ export default function DashboardScreen() {
 
   const calculateWorkdayProgress = () => {
     if (!workSchedule) {
-      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false };
+      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false, isAbsent: false };
     }
 
     const now = currentTime;
     const dayOfWeek = now.getDay();
     const isWorkDay = workSchedule.workingDays?.includes(dayOfWeek) || false;
 
+    // Check if today is an absent day
+    const todayStr = now.toISOString().split('T')[0];
+    const hasAbsence = todayAbsences.some(a => a.absenceDate === todayStr);
+    
+    if (hasAbsence) {
+      console.log('DashboardScreen: Today is marked as absent - not counting as work day');
+      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false, isAbsent: true };
+    }
+
     if (!isWorkDay) {
-      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false };
+      return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false, isAbsent: false };
     }
 
     // Parse times
@@ -249,12 +267,12 @@ export default function DashboardScreen() {
 
     // Check if before work
     if (nowTime < startTime) {
-      return { progress: 0, isWorkDay: true, beforeWork: true, afterWork: false, isLunch: false };
+      return { progress: 0, isWorkDay: true, beforeWork: true, afterWork: false, isLunch: false, isAbsent: false };
     }
 
     // Check if after work
     if (nowTime > endTime) {
-      return { progress: 100, isWorkDay: true, beforeWork: false, afterWork: true, isLunch: false };
+      return { progress: 100, isWorkDay: true, beforeWork: false, afterWork: true, isLunch: false, isAbsent: false };
     }
 
     // Check if during lunch
@@ -265,7 +283,7 @@ export default function DashboardScreen() {
     const elapsedTime = nowTime - startTime;
     const progress = Math.min(100, Math.max(0, (elapsedTime / totalWorkTime) * 100));
 
-    return { progress, isWorkDay: true, beforeWork: false, afterWork: false, isLunch };
+    return { progress, isWorkDay: true, beforeWork: false, afterWork: false, isLunch, isAbsent: false };
   };
 
   const workdayProgress = calculateWorkdayProgress();
@@ -485,7 +503,9 @@ export default function DashboardScreen() {
                 <View style={[styles.progressCard, { backgroundColor: theme.card, padding: cardPadding }]}>
                   <View style={styles.progressHeader}>
                     <Text style={[styles.progressTitle, { color: theme.text, fontSize: getFontSize(16, layout) }]}>Today's Workday Progress</Text>
-                    {workdayProgress.isWorkDay ? (
+                    {workdayProgress.isAbsent ? (
+                      <Text style={[styles.progressStatus, { color: theme.chartRed, fontSize: getFontSize(14, layout) }]}>Absent</Text>
+                    ) : workdayProgress.isWorkDay ? (
                       <Text style={[styles.progressStatus, { color: theme.primary, fontSize: getFontSize(14, layout) }]}>
                         {workdayProgress.beforeWork ? 'Before Work' : workdayProgress.afterWork ? 'Work Complete' : workdayProgress.isLunch ? 'Lunch Break' : 'Working'}
                       </Text>
@@ -494,7 +514,22 @@ export default function DashboardScreen() {
                     )}
                   </View>
                   
-                  {workdayProgress.isWorkDay && (
+                  {workdayProgress.isAbsent ? (
+                    <View style={[styles.absentNotice, { backgroundColor: theme.background }]}>
+                      <IconSymbol
+                        ios_icon_name="exclamationmark.triangle.fill"
+                        android_material_icon_name="warning"
+                        size={32}
+                        color={theme.chartRed}
+                      />
+                      <Text style={[styles.absentText, { color: theme.text, fontSize: getFontSize(16, layout) }]}>
+                        Today is marked as absent
+                      </Text>
+                      <Text style={[styles.absentSubtext, { color: theme.textSecondary, fontSize: getFontSize(13, layout) }]}>
+                        This day is not counted as a work day
+                      </Text>
+                    </View>
+                  ) : workdayProgress.isWorkDay && (
                     <>
                       <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
                         {/* Main progress fill */}
@@ -727,7 +762,9 @@ export default function DashboardScreen() {
               <View style={[styles.progressCard, { backgroundColor: theme.card, padding: cardPadding }]}>
                 <View style={styles.progressHeader}>
                   <Text style={[styles.progressTitle, { color: theme.text, fontSize: getFontSize(16, layout) }]}>Today's Workday Progress</Text>
-                  {workdayProgress.isWorkDay ? (
+                  {workdayProgress.isAbsent ? (
+                    <Text style={[styles.progressStatus, { color: theme.chartRed, fontSize: getFontSize(14, layout) }]}>Absent</Text>
+                  ) : workdayProgress.isWorkDay ? (
                     <Text style={[styles.progressStatus, { color: theme.primary, fontSize: getFontSize(14, layout) }]}>
                       {workdayProgress.beforeWork ? 'Before Work' : workdayProgress.afterWork ? 'Work Complete' : workdayProgress.isLunch ? 'Lunch Break' : 'Working'}
                     </Text>
@@ -736,7 +773,22 @@ export default function DashboardScreen() {
                   )}
                 </View>
                 
-                {workdayProgress.isWorkDay && (
+                {workdayProgress.isAbsent ? (
+                  <View style={[styles.absentNotice, { backgroundColor: theme.background }]}>
+                    <IconSymbol
+                      ios_icon_name="exclamationmark.triangle.fill"
+                      android_material_icon_name="warning"
+                      size={32}
+                      color={theme.chartRed}
+                    />
+                    <Text style={[styles.absentText, { color: theme.text, fontSize: getFontSize(16, layout) }]}>
+                      Today is marked as absent
+                    </Text>
+                    <Text style={[styles.absentSubtext, { color: theme.textSecondary, fontSize: getFontSize(13, layout) }]}>
+                      This day is not counted as a work day
+                    </Text>
+                  </View>
+                ) : workdayProgress.isWorkDay && (
                   <>
                     <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
                       {/* Main progress fill */}
@@ -1241,6 +1293,19 @@ const styles = StyleSheet.create({
   },
   progressStatus: {
     fontWeight: '600',
+  },
+  absentNotice: {
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  absentText: {
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  absentSubtext: {
+    textAlign: 'center',
   },
   progressBarContainer: {
     height: 24,

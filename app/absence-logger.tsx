@@ -86,19 +86,10 @@ export default function AbsenceLoggerScreen() {
     const durationName = isHalfDay ? 'Half Day' : 'Full Day';
     
     try {
-      // Create absence that deducts from BOTH available and target hours
-      // This is a single day absence, but it affects both calculations
-      await api.createAbsence({
-        month: monthStr,
-        absenceDate: dateStr,
-        daysCount: 1,
-        isHalfDay,
-        customHours: hours,
-        deductionType: 'available',
-        absenceType,
-        note: `${absenceTypeName} - ${durationName} (Available Hours)`,
-      });
-      
+      // Create absence that marks the day as absent
+      // This single absence record will:
+      // 1. Remove the day from the working days count (affects available hours)
+      // 2. Deduct hours from the monthly target
       await api.createAbsence({
         month: monthStr,
         absenceDate: dateStr,
@@ -107,13 +98,13 @@ export default function AbsenceLoggerScreen() {
         customHours: hours,
         deductionType: 'target',
         absenceType,
-        note: `${absenceTypeName} - ${durationName} (Target Hours)`,
+        note: `${absenceTypeName} - ${durationName}`,
       });
       
-      console.log('AbsenceLoggerScreen: Absence logged successfully');
+      console.log('AbsenceLoggerScreen: Absence logged successfully - day will not be counted as a work day');
       Alert.alert(
         'Success',
-        `${absenceTypeName} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n✅ 1 Day Absence\n\n${hours.toFixed(2)} hours will be deducted from:\n• Available Hours (for efficiency calculation)\n• Monthly Target Hours\n\nThis is a single day absence that affects both calculations.`,
+        `${absenceTypeName} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n✅ Day Marked as Absent\n\nThis day will:\n• NOT be counted as a work day\n• NOT contribute to available hours\n• Have ${hours.toFixed(2)}h deducted from monthly target\n\nThe workday progress bar will show "Absent" for this day.`,
         [
           {
             text: 'OK',
@@ -132,16 +123,9 @@ export default function AbsenceLoggerScreen() {
   const handleDeleteAbsence = async (absence: Absence) => {
     console.log('AbsenceLoggerScreen: Deleting absence:', absence.id);
     
-    // Find the paired absence (available/target)
-    const pairedAbsence = absences.find(a => 
-      a.absenceDate === absence.absenceDate && 
-      a.id !== absence.id &&
-      a.deductionType !== absence.deductionType
-    );
-    
     Alert.alert(
       'Delete Absence',
-      `Remove ${absence.absenceType} on ${new Date(absence.absenceDate).toLocaleDateString('en-GB')}?\n\nThis will restore hours to both available and target calculations.`,
+      `Remove ${absence.absenceType} on ${new Date(absence.absenceDate).toLocaleDateString('en-GB')}?\n\nThis will restore the day as a working day and add hours back to your monthly target.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -149,12 +133,8 @@ export default function AbsenceLoggerScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete both the absence and its pair
               await api.deleteAbsence(absence.id);
-              if (pairedAbsence) {
-                await api.deleteAbsence(pairedAbsence.id);
-              }
-              console.log('AbsenceLoggerScreen: Absence deleted');
+              console.log('AbsenceLoggerScreen: Absence deleted - day restored as working day');
               loadData();
             } catch (error) {
               console.error('AbsenceLoggerScreen: Error deleting absence:', error);
@@ -175,7 +155,7 @@ export default function AbsenceLoggerScreen() {
     }
   };
 
-  // Group absences by date to show only one entry per day
+  // Group absences by date to show only one entry per day (in case there are duplicates)
   const groupedAbsences = absences.reduce((acc, absence) => {
     if (!acc[absence.absenceDate]) {
       acc[absence.absenceDate] = absence;
@@ -184,6 +164,8 @@ export default function AbsenceLoggerScreen() {
   }, {} as Record<string, Absence>);
 
   const uniqueAbsences = Object.values(groupedAbsences);
+  
+  console.log('AbsenceLoggerScreen: Displaying', uniqueAbsences.length, 'unique absences for month');
 
   return (
     <AppBackground>
@@ -207,7 +189,7 @@ export default function AbsenceLoggerScreen() {
             color="#ffffff"
           />
           <Text style={[styles.infoText, { color: '#ffffff' }]}>
-            ⚠️ Each absence = 1 DAY. Hours are deducted from BOTH available hours (efficiency) AND monthly target hours.
+            ℹ️ Logging an absence marks the day as NOT a work day. It will not count toward available hours and will be excluded from efficiency calculations.
           </Text>
         </View>
 
@@ -335,16 +317,19 @@ export default function AbsenceLoggerScreen() {
 
           <View style={[styles.deductionInfo, { backgroundColor: theme.background }]}>
             <Text style={[styles.deductionTitle, { color: theme.text }]}>
-              Hours will be deducted from:
+              This absence will:
             </Text>
             <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-              ✓ Available Hours (for efficiency %)
+              ✓ Mark the day as NOT a work day
             </Text>
             <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-              ✓ Monthly Target Hours
+              ✓ Exclude it from available hours calculation
+            </Text>
+            <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+              ✓ Deduct {schedule ? (isHalfDay ? (getHoursForDate(selectedDate) / 2).toFixed(2) : getHoursForDate(selectedDate).toFixed(2)) : '0'}h from monthly target
             </Text>
             <Text style={[styles.deductionNote, { color: theme.textSecondary }]}>
-              This is a single day absence affecting both calculations
+              The workday progress bar will show "Absent" for this day
             </Text>
           </View>
 
@@ -392,7 +377,7 @@ export default function AbsenceLoggerScreen() {
                       {absence.isHalfDay ? 'Half Day' : 'Full Day'} • {absence.customHours?.toFixed(2)}h
                     </Text>
                     <Text style={[styles.absenceDeduction, { color: theme.textSecondary }]}>
-                      Deducted from available & target hours
+                      Day not counted as work day
                     </Text>
                   </View>
                   <TouchableOpacity

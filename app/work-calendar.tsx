@@ -417,7 +417,7 @@ export default function WorkCalendarScreen() {
           
           <View style={[styles.noteBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.noteText, { color: theme.textSecondary }]}>
-              ℹ️ Absence days are automatically deducted from your available hours for efficiency calculations.
+              ℹ️ Absence days are NOT counted as work days. They are excluded from available hours and efficiency calculations. The workday progress bar will show "Absent" for these days.
             </Text>
           </View>
         </View>

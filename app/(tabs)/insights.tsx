@@ -99,7 +99,7 @@ export default function InsightsScreen() {
 
   useEffect(() => {
     loadInsightsData();
-  }, [dateRange, customStartDate, customEndDate, shiftFilter]);
+  }, [dateRange, customStartDate, customEndDate, shiftFilter, loadInsightsData]);
 
   const loadInsightsData = async () => {
     try {

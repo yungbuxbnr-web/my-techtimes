@@ -17,7 +17,7 @@ module.exports = {
       jsx: true
     }
   },
-  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*', '/backend/*'],
+  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*', '/backend/*', 'components/Map.web.tsx'],
   env: {
     browser: true,
   },

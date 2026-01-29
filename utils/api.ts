@@ -334,12 +334,22 @@ export const api = {
     
     // Calculate available hours based on working days from start of month to today
     const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
-    const availableHours = workingDaysToDate * schedule.dailyWorkingHours;
+    
+    // Count unique absent days (each date should only be counted once, regardless of how many absence records exist)
+    const absentDates = new Set<string>();
+    absences.forEach(absence => {
+      if (absence.absenceDate) {
+        absentDates.add(absence.absenceDate);
+      }
+    });
+    
+    // Subtract absent days from working days count
+    const actualWorkingDays = workingDaysToDate - absentDates.size;
+    const availableHours = actualWorkingDays * schedule.dailyWorkingHours;
 
-    console.log(`API: Month ${month} - ${workingDaysToDate} working days × ${schedule.dailyWorkingHours}h = ${availableHours}h available`);
+    console.log(`API: Month ${month} - ${workingDaysToDate} working days - ${absentDates.size} absent days = ${actualWorkingDays} actual working days × ${schedule.dailyWorkingHours}h = ${availableHours}h available`);
 
-    // Calculate absence deductions
-    let absenceHoursFromAvailable = 0;
+    // Calculate absence deductions for target hours
     let absenceHoursFromTarget = 0;
 
     absences.forEach(absence => {
@@ -354,21 +364,21 @@ export const api = {
         hours = schedule.dailyWorkingHours;
       }
 
-      if (absence.deductionType === 'available') {
-        absenceHoursFromAvailable += hours;
-      } else {
+      // Only deduct from target if it's a target deduction type
+      if (absence.deductionType === 'target') {
         absenceHoursFromTarget += hours;
       }
     });
 
-    const adjustedAvailableHours = availableHours - absenceHoursFromAvailable;
+    // Available hours are already reduced by removing absent days from the working days count
+    const adjustedAvailableHours = availableHours;
     const adjustedTargetHours = (settings.monthlyTarget || targetHours) - absenceHoursFromTarget;
 
     const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
     const soldHours = (totalAw * 5) / 60; // 1 AW = 5 minutes = 0.0833 hours
     const efficiency = adjustedAvailableHours > 0 ? (soldHours / adjustedAvailableHours) * 100 : 0;
 
-    console.log(`API: Sold Hours: ${soldHours.toFixed(2)}h, Available Hours: ${adjustedAvailableHours.toFixed(2)}h, Efficiency: ${efficiency.toFixed(1)}%`);
+    console.log(`API: Sold Hours: ${soldHours.toFixed(2)}h, Available Hours: ${adjustedAvailableHours.toFixed(2)}h (${actualWorkingDays} days), Efficiency: ${efficiency.toFixed(1)}%`);
 
     return {
       month,
