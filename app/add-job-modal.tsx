@@ -8,7 +8,6 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Modal,
   FlatList,
@@ -26,6 +25,8 @@ import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import * as Haptics from 'expo-haptics';
 import { updateWidgetData } from '@/utils/widgetManager';
+import { AdaptiveKeyboardView } from '@/components/AdaptiveKeyboardView';
+import { useKeyboard } from '@/utils/keyboardManager';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -59,6 +60,13 @@ export default function AddJobModal() {
   const [activeField, setActiveField] = useState<'wip' | 'reg' | null>(null);
   const wipInputRef = useRef<TextInput>(null);
   const regInputRef = useRef<TextInput>(null);
+
+  // Use AI-powered keyboard detection
+  const { isKeyboardVisible, keyboardHeight, optimalOffset } = useKeyboard({
+    hasTabBar: false,
+    hasHeader: true,
+    inputPosition: 'bottom',
+  });
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
 
@@ -101,7 +109,7 @@ export default function AddJobModal() {
           existing.usageCount++;
           if (new Date(job.createdAt) > new Date(existing.lastUsed)) {
             existing.lastUsed = job.createdAt;
-            existing.aw = job.aw; // Update to most recent AW
+            existing.aw = job.aw;
           }
         } else {
           suggestionMap.set(key, {
@@ -115,7 +123,6 @@ export default function AddJobModal() {
       }
     });
     
-    // Convert to array and sort: starts-with first, then by most recent
     const suggestionsList = Array.from(suggestionMap.values()).sort((a, b) => {
       const aKey = field === 'wip' ? a.wipNumber : a.vehicleReg;
       const bKey = field === 'wip' ? b.wipNumber : b.vehicleReg;
@@ -125,15 +132,12 @@ export default function AddJobModal() {
       if (aStartsWith && !bStartsWith) return -1;
       if (!aStartsWith && bStartsWith) return 1;
       
-      // Both start with or both contain - sort by most recent
       return new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime();
     });
     
-    // Limit to 5 suggestions for better UX
     return suggestionsList.slice(0, 5);
   };
   
-  // Handle WIP input change
   const handleWipChange = (text: string) => {
     setWipNumber(text);
     setActiveField('wip');
@@ -147,7 +151,6 @@ export default function AddJobModal() {
     }
   };
   
-  // Handle Reg input change
   const handleRegChange = (text: string) => {
     const upperText = text.toUpperCase();
     setVehicleReg(upperText);
@@ -162,17 +165,14 @@ export default function AddJobModal() {
     }
   };
   
-  // Select suggestion - auto-fills WIP, Reg, and Hours (AW)
   const selectSuggestion = (suggestion: JobSuggestion) => {
     console.log('AddJobModal: Selected suggestion:', suggestion);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    // Auto-fill all fields
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
     setAw(suggestion.aw);
     
-    // Hide suggestions and dismiss keyboard
     setShowSuggestions(false);
     setActiveField(null);
     Keyboard.dismiss();
@@ -221,19 +221,15 @@ export default function AddJobModal() {
       console.log('AddJobModal: Saving job:', jobData);
       await api.createJob(jobData);
       
-      // Reload jobs for suggestions
       await loadJobsForSuggestions();
       
-      // Update widget data
       console.log('AddJobModal: Updating widget data');
       await updateWidgetData();
       
-      // Show success notification
       setSaveNotificationType('success');
       toastManager.success('Job saved successfully!');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Close modal immediately after successful save
       console.log('AddJobModal: Closing modal after successful save');
       router.back();
     } catch (error) {
@@ -384,18 +380,15 @@ export default function AddJobModal() {
   const handleDateChange = (event: any, selectedDate?: Date) => {
     console.log('AddJobModal: Date picker event:', event.type, selectedDate);
     
-    // On Android, the picker closes automatically after selection
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
     
-    // Handle dismissal (user cancelled)
     if (event.type === 'dismissed') {
       setShowDatePicker(false);
       return;
     }
     
-    // Update date if a date was selected
     if (selectedDate) {
       const newDateTime = new Date(jobDateTime);
       newDateTime.setFullYear(selectedDate.getFullYear());
@@ -405,7 +398,6 @@ export default function AddJobModal() {
       console.log('AddJobModal: Date updated to:', newDateTime.toLocaleDateString());
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
-      // On iOS, close the picker after selection
       if (Platform.OS === 'ios') {
         setShowDatePicker(false);
       }
@@ -415,18 +407,15 @@ export default function AddJobModal() {
   const handleTimeChange = (event: any, selectedDate?: Date) => {
     console.log('AddJobModal: Time picker event:', event.type, selectedDate);
     
-    // On Android, the picker closes automatically after selection
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
     }
     
-    // Handle dismissal (user cancelled)
     if (event.type === 'dismissed') {
       setShowTimePicker(false);
       return;
     }
     
-    // Update time if a time was selected
     if (selectedDate) {
       const newDateTime = new Date(jobDateTime);
       newDateTime.setHours(selectedDate.getHours());
@@ -435,7 +424,6 @@ export default function AddJobModal() {
       console.log('AddJobModal: Time updated to:', newDateTime.toLocaleTimeString());
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
-      // On iOS, close the picker after selection
       if (Platform.OS === 'ios') {
         setShowTimePicker(false);
       }
@@ -473,452 +461,444 @@ export default function AddJobModal() {
         }}
       />
       <View style={[styles.container, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        <AdaptiveKeyboardView
+          hasTabBar={false}
+          hasHeader={true}
+          inputPosition="bottom"
+          scrollEnabled={true}
+          contentContainerStyle={styles.contentContainer}
         >
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.contentContainer}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
-              <View style={styles.formGroup}>
-                <View style={styles.labelRow}>
-                  <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>WIP Number *</Text>
-                  <TouchableOpacity
-                    style={[styles.scanButton, { backgroundColor: theme.secondary }]}
-                    onPress={() => {
-                      console.log('AddJobModal: User tapped Scan Job Card button');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      Alert.alert('Scan Job Card', 'Choose source:', [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Camera', onPress: () => handleScanJobCard('camera') },
-                        { text: 'Gallery', onPress: () => handleScanJobCard('gallery') },
-                      ]);
-                    }}
-                  >
-                    <IconSymbol
-                      ios_icon_name="doc.text.viewfinder"
-                      android_material_icon_name="document-scanner"
-                      size={16}
-                      color="#ffffff"
-                    />
-                    <Text style={styles.scanButtonText}>Scan Card</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  ref={wipInputRef}
-                  style={[styles.input, { 
-                    backgroundColor: isDarkMode ? '#000' : '#fff',
-                    color: isDarkMode ? '#fff' : '#000',
-                    borderColor: theme.primary
-                  }]}
-                  value={wipNumber}
-                  onChangeText={handleWipChange}
-                  onFocus={() => {
-                    setActiveField('wip');
-                    if (wipNumber.length > 0) {
-                      const newSuggestions = generateSuggestions(wipNumber, 'wip');
-                      setSuggestions(newSuggestions);
-                      setShowSuggestions(newSuggestions.length > 0);
-                    }
-                  }}
-                  onBlur={() => {
-                    // Delay hiding to allow tap on suggestion
-                    setTimeout(() => {
-                      setShowSuggestions(false);
-                      setActiveField(null);
-                    }, 200);
-                  }}
-                  keyboardType="number-pad"
-                  maxLength={5}
-                  placeholder="12345"
-                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                />
-              </View>
-
-              {/* Suggestions Dropdown - Appears ABOVE the input fields */}
-              {showSuggestions && suggestions.length > 0 && (
-                <View style={[styles.suggestionsContainer, { 
-                  backgroundColor: isDarkMode ? '#2a2a2a' : '#ffffff',
-                  borderColor: theme.primary
-                }]}>
-                  <View style={styles.suggestionsHeader}>
-                    <Text style={[styles.suggestionsHeaderText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                      Memory Suggestions
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowSuggestions(false);
-                        setActiveField(null);
-                        Keyboard.dismiss();
-                      }}
-                    >
-                      <IconSymbol
-                        ios_icon_name="xmark.circle.fill"
-                        android_material_icon_name="close"
-                        size={20}
-                        color={isDarkMode ? '#888' : '#999'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  <FlatList
-                    data={suggestions}
-                    keyExtractor={(item, index) => `${item.wipNumber}-${item.vehicleReg}-${index}`}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
-                        onPress={() => selectSuggestion(item)}
-                      >
-                        <View style={styles.suggestionContent}>
-                          <View style={styles.suggestionRow}>
-                            <Text style={[styles.suggestionWip, { color: theme.primary }]}>
-                              {item.wipNumber}
-                            </Text>
-                            <Text style={[styles.suggestionReg, { color: isDarkMode ? '#fff' : '#000' }]}>
-                              {item.vehicleReg}
-                            </Text>
-                          </View>
-                          <View style={styles.suggestionRow}>
-                            <Text style={[styles.suggestionAw, { color: theme.secondary }]}>
-                              {item.aw} AW ({formatTime(awToMinutes(item.aw))})
-                            </Text>
-                            <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
-                              {new Date(item.lastUsed).toLocaleDateString('en-GB')}
-                            </Text>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    scrollEnabled={true}
-                    style={styles.suggestionsList}
-                  />
-                </View>
-              )}
-
-              <View style={styles.formGroup}>
-                <View style={styles.labelRow}>
-                  <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Vehicle Registration *</Text>
-                  <TouchableOpacity
-                    style={[styles.scanButton, { backgroundColor: theme.secondary }]}
-                    onPress={() => {
-                      console.log('AddJobModal: User tapped Scan Reg button');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      Alert.alert('Scan Registration', 'Choose source:', [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Camera', onPress: () => handleScanReg('camera') },
-                        { text: 'Gallery', onPress: () => handleScanReg('gallery') },
-                      ]);
-                    }}
-                  >
-                    <IconSymbol
-                      ios_icon_name="camera.viewfinder"
-                      android_material_icon_name="camera"
-                      size={16}
-                      color="#ffffff"
-                    />
-                    <Text style={styles.scanButtonText}>Scan Reg</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  ref={regInputRef}
-                  style={[styles.input, { 
-                    backgroundColor: isDarkMode ? '#000' : '#fff',
-                    color: isDarkMode ? '#fff' : '#000',
-                    borderColor: theme.primary
-                  }]}
-                  value={vehicleReg}
-                  onChangeText={handleRegChange}
-                  onFocus={() => {
-                    setActiveField('reg');
-                    if (vehicleReg.length > 0) {
-                      const newSuggestions = generateSuggestions(vehicleReg, 'reg');
-                      setSuggestions(newSuggestions);
-                      setShowSuggestions(newSuggestions.length > 0);
-                    }
-                  }}
-                  onBlur={() => {
-                    // Delay hiding to allow tap on suggestion
-                    setTimeout(() => {
-                      setShowSuggestions(false);
-                      setActiveField(null);
-                    }, 200);
-                  }}
-                  autoCapitalize="characters"
-                  placeholder="ABC123"
-                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>AW Value *</Text>
+          <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
+            <View style={styles.formGroup}>
+              <View style={styles.labelRow}>
+                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>WIP Number *</Text>
                 <TouchableOpacity
-                  style={[styles.pickerButton, { 
+                  style={[styles.scanButton, { backgroundColor: theme.secondary }]}
+                  onPress={() => {
+                    console.log('AddJobModal: User tapped Scan Job Card button');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    Alert.alert('Scan Job Card', 'Choose source:', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Camera', onPress: () => handleScanJobCard('camera') },
+                      { text: 'Gallery', onPress: () => handleScanJobCard('gallery') },
+                    ]);
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="doc.text.viewfinder"
+                    android_material_icon_name="document-scanner"
+                    size={16}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.scanButtonText}>Scan Card</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                ref={wipInputRef}
+                style={[styles.input, { 
+                  backgroundColor: isDarkMode ? '#000' : '#fff',
+                  color: isDarkMode ? '#fff' : '#000',
+                  borderColor: theme.primary
+                }]}
+                value={wipNumber}
+                onChangeText={handleWipChange}
+                onFocus={() => {
+                  setActiveField('wip');
+                  if (wipNumber.length > 0) {
+                    const newSuggestions = generateSuggestions(wipNumber, 'wip');
+                    setSuggestions(newSuggestions);
+                    setShowSuggestions(newSuggestions.length > 0);
+                  }
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    setShowSuggestions(false);
+                    setActiveField(null);
+                  }, 200);
+                }}
+                keyboardType="number-pad"
+                maxLength={5}
+                placeholder="12345"
+                placeholderTextColor={isDarkMode ? '#888' : '#999'}
+              />
+            </View>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <View style={[styles.suggestionsContainer, { 
+                backgroundColor: isDarkMode ? '#2a2a2a' : '#ffffff',
+                borderColor: theme.primary
+              }]}>
+                <View style={styles.suggestionsHeader}>
+                  <Text style={[styles.suggestionsHeaderText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                    Memory Suggestions
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowSuggestions(false);
+                      setActiveField(null);
+                      Keyboard.dismiss();
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="close"
+                      size={20}
+                      color={isDarkMode ? '#888' : '#999'}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={suggestions}
+                  keyExtractor={(item, index) => `${item.wipNumber}-${item.vehicleReg}-${index}`}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
+                      onPress={() => selectSuggestion(item)}
+                    >
+                      <View style={styles.suggestionContent}>
+                        <View style={styles.suggestionRow}>
+                          <Text style={[styles.suggestionWip, { color: theme.primary }]}>
+                            {item.wipNumber}
+                          </Text>
+                          <Text style={[styles.suggestionReg, { color: isDarkMode ? '#fff' : '#000' }]}>
+                            {item.vehicleReg}
+                          </Text>
+                        </View>
+                        <View style={styles.suggestionRow}>
+                          <Text style={[styles.suggestionAw, { color: theme.secondary }]}>
+                            {item.aw} AW ({formatTime(awToMinutes(item.aw))})
+                          </Text>
+                          <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
+                            {new Date(item.lastUsed).toLocaleDateString('en-GB')}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  scrollEnabled={true}
+                  style={styles.suggestionsList}
+                />
+              </View>
+            )}
+
+            <View style={styles.formGroup}>
+              <View style={styles.labelRow}>
+                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Vehicle Registration *</Text>
+                <TouchableOpacity
+                  style={[styles.scanButton, { backgroundColor: theme.secondary }]}
+                  onPress={() => {
+                    console.log('AddJobModal: User tapped Scan Reg button');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    Alert.alert('Scan Registration', 'Choose source:', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Camera', onPress: () => handleScanReg('camera') },
+                      { text: 'Gallery', onPress: () => handleScanReg('gallery') },
+                    ]);
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="camera.viewfinder"
+                    android_material_icon_name="camera"
+                    size={16}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.scanButtonText}>Scan Reg</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                ref={regInputRef}
+                style={[styles.input, { 
+                  backgroundColor: isDarkMode ? '#000' : '#fff',
+                  color: isDarkMode ? '#fff' : '#000',
+                  borderColor: theme.primary
+                }]}
+                value={vehicleReg}
+                onChangeText={handleRegChange}
+                onFocus={() => {
+                  setActiveField('reg');
+                  if (vehicleReg.length > 0) {
+                    const newSuggestions = generateSuggestions(vehicleReg, 'reg');
+                    setSuggestions(newSuggestions);
+                    setShowSuggestions(newSuggestions.length > 0);
+                  }
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    setShowSuggestions(false);
+                    setActiveField(null);
+                  }, 200);
+                }}
+                autoCapitalize="characters"
+                placeholder="ABC123"
+                placeholderTextColor={isDarkMode ? '#888' : '#999'}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>AW Value *</Text>
+              <TouchableOpacity
+                style={[styles.pickerButton, { 
+                  backgroundColor: isDarkMode ? '#000' : '#fff',
+                  borderColor: theme.primary
+                }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowAwPicker(true);
+                }}
+              >
+                <Text style={[styles.pickerButtonText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                  {aw} AW
+                </Text>
+                <IconSymbol
+                  ios_icon_name="chevron.down"
+                  android_material_icon_name="arrow-drop-down"
+                  size={24}
+                  color={isDarkMode ? '#888' : '#999'}
+                />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>VHC Status</Text>
+              <View style={styles.vhcButtonsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.vhcButton,
+                    { borderColor: '#4CAF50' },
+                    vhcStatus === 'GREEN' && { backgroundColor: '#4CAF50' },
+                  ]}
+                  onPress={() => {
+                    console.log('AddJobModal: User selected VHC GREEN');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setVhcStatus(vhcStatus === 'GREEN' ? 'NONE' : 'GREEN');
+                  }}
+                >
+                  {vhcStatus === 'GREEN' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={20}
+                      color="#ffffff"
+                    />
+                  )}
+                  <Text style={[styles.vhcButtonText, { color: vhcStatus === 'GREEN' ? '#ffffff' : '#4CAF50' }]}>
+                    Green
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.vhcButton,
+                    { borderColor: '#FF9800' },
+                    vhcStatus === 'ORANGE' && { backgroundColor: '#FF9800' },
+                  ]}
+                  onPress={() => {
+                    console.log('AddJobModal: User selected VHC ORANGE');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setVhcStatus(vhcStatus === 'ORANGE' ? 'NONE' : 'ORANGE');
+                  }}
+                >
+                  {vhcStatus === 'ORANGE' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={20}
+                      color="#ffffff"
+                    />
+                  )}
+                  <Text style={[styles.vhcButtonText, { color: vhcStatus === 'ORANGE' ? '#ffffff' : '#FF9800' }]}>
+                    Orange
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.vhcButton,
+                    { borderColor: '#f44336' },
+                    vhcStatus === 'RED' && { backgroundColor: '#f44336' },
+                  ]}
+                  onPress={() => {
+                    console.log('AddJobModal: User selected VHC RED');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setVhcStatus(vhcStatus === 'RED' ? 'NONE' : 'RED');
+                  }}
+                >
+                  {vhcStatus === 'RED' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={20}
+                      color="#ffffff"
+                    />
+                  )}
+                  <Text style={[styles.vhcButtonText, { color: vhcStatus === 'RED' ? '#ffffff' : '#f44336' }]}>
+                    Red
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={[styles.timeDisplay, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}>
+              <View style={styles.timeItem}>
+                <Text style={[styles.timeLabel, { color: isDarkMode ? '#888' : '#666' }]}>Time</Text>
+                <Text style={[styles.timeValue, { color: theme.primary }]}>
+                  {formatTime(calculatedMinutes)}
+                </Text>
+              </View>
+              <View style={styles.timeItem}>
+                <Text style={[styles.timeLabel, { color: isDarkMode ? '#888' : '#666' }]}>Decimal Hours</Text>
+                <Text style={[styles.timeValue, { color: theme.primary }]}>
+                  {formatDecimalHours(calculatedMinutes)}h
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Date & Time</Text>
+              <View style={styles.dateTimeRow}>
+                <TouchableOpacity
+                  style={[styles.dateTimeButton, { 
                     backgroundColor: isDarkMode ? '#000' : '#fff',
                     borderColor: theme.primary
                   }]}
                   onPress={() => {
+                    console.log('AddJobModal: User tapped date picker button');
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowAwPicker(true);
+                    setShowDatePicker(true);
                   }}
                 >
-                  <Text style={[styles.pickerButtonText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                    {aw} AW
-                  </Text>
                   <IconSymbol
-                    ios_icon_name="chevron.down"
-                    android_material_icon_name="arrow-drop-down"
-                    size={24}
-                    color={isDarkMode ? '#888' : '#999'}
+                    ios_icon_name="calendar"
+                    android_material_icon_name="calendar-today"
+                    size={20}
+                    color={theme.primary}
                   />
+                  <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                    {jobDateTime.toLocaleDateString('en-GB')}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>VHC Status</Text>
-                <View style={styles.vhcButtonsRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.vhcButton,
-                      { borderColor: '#4CAF50' },
-                      vhcStatus === 'GREEN' && { backgroundColor: '#4CAF50' },
-                    ]}
-                    onPress={() => {
-                      console.log('AddJobModal: User selected VHC GREEN');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setVhcStatus(vhcStatus === 'GREEN' ? 'NONE' : 'GREEN');
-                    }}
-                  >
-                    {vhcStatus === 'GREEN' && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={20}
-                        color="#ffffff"
-                      />
-                    )}
-                    <Text style={[styles.vhcButtonText, { color: vhcStatus === 'GREEN' ? '#ffffff' : '#4CAF50' }]}>
-                      Green
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.vhcButton,
-                      { borderColor: '#FF9800' },
-                      vhcStatus === 'ORANGE' && { backgroundColor: '#FF9800' },
-                    ]}
-                    onPress={() => {
-                      console.log('AddJobModal: User selected VHC ORANGE');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setVhcStatus(vhcStatus === 'ORANGE' ? 'NONE' : 'ORANGE');
-                    }}
-                  >
-                    {vhcStatus === 'ORANGE' && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={20}
-                        color="#ffffff"
-                      />
-                    )}
-                    <Text style={[styles.vhcButtonText, { color: vhcStatus === 'ORANGE' ? '#ffffff' : '#FF9800' }]}>
-                      Orange
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.vhcButton,
-                      { borderColor: '#f44336' },
-                      vhcStatus === 'RED' && { backgroundColor: '#f44336' },
-                    ]}
-                    onPress={() => {
-                      console.log('AddJobModal: User selected VHC RED');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setVhcStatus(vhcStatus === 'RED' ? 'NONE' : 'RED');
-                    }}
-                  >
-                    {vhcStatus === 'RED' && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={20}
-                        color="#ffffff"
-                      />
-                    )}
-                    <Text style={[styles.vhcButtonText, { color: vhcStatus === 'RED' ? '#ffffff' : '#f44336' }]}>
-                      Red
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={[styles.timeDisplay, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}>
-                <View style={styles.timeItem}>
-                  <Text style={[styles.timeLabel, { color: isDarkMode ? '#888' : '#666' }]}>Time</Text>
-                  <Text style={[styles.timeValue, { color: theme.primary }]}>
-                    {formatTime(calculatedMinutes)}
-                  </Text>
-                </View>
-                <View style={styles.timeItem}>
-                  <Text style={[styles.timeLabel, { color: isDarkMode ? '#888' : '#666' }]}>Decimal Hours</Text>
-                  <Text style={[styles.timeValue, { color: theme.primary }]}>
-                    {formatDecimalHours(calculatedMinutes)}h
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Date & Time</Text>
-                <View style={styles.dateTimeRow}>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { 
-                      backgroundColor: isDarkMode ? '#000' : '#fff',
-                      borderColor: theme.primary
-                    }]}
-                    onPress={() => {
-                      console.log('AddJobModal: User tapped date picker button');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setShowDatePicker(true);
-                    }}
-                  >
-                    <IconSymbol
-                      ios_icon_name="calendar"
-                      android_material_icon_name="calendar-today"
-                      size={20}
-                      color={theme.primary}
-                    />
-                    <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                      {jobDateTime.toLocaleDateString('en-GB')}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { 
-                      backgroundColor: isDarkMode ? '#000' : '#fff',
-                      borderColor: theme.primary
-                    }]}
-                    onPress={() => {
-                      console.log('AddJobModal: User tapped time picker button');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setShowTimePicker(true);
-                    }}
-                  >
-                    <IconSymbol
-                      ios_icon_name="clock"
-                      android_material_icon_name="access-time"
-                      size={20}
-                      color={theme.primary}
-                    />
-                    <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                      {jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Notes (Optional)</Text>
-                <TextInput
-                  style={[styles.textArea, { 
+                <TouchableOpacity
+                  style={[styles.dateTimeButton, { 
                     backgroundColor: isDarkMode ? '#000' : '#fff',
-                    color: isDarkMode ? '#fff' : '#000',
                     borderColor: theme.primary
                   }]}
-                  value={notes}
-                  onChangeText={setNotes}
-                  multiline
-                  numberOfLines={4}
-                  placeholder="Add any additional notes..."
-                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                />
+                  onPress={() => {
+                    console.log('AddJobModal: User tapped time picker button');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowTimePicker(true);
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="clock"
+                    android_material_icon_name="access-time"
+                    size={20}
+                    color={theme.primary}
+                  />
+                  <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
+                    {jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </TouchableOpacity>
               </View>
-
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Job Card Photo (Optional)</Text>
-                {jobCardImageUri ? (
-                  <View style={styles.imagePreviewContainer}>
-                    <Image
-                      source={{ uri: jobCardImageUri }}
-                      style={styles.imagePreview}
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity
-                      style={[styles.removeImageButton, { backgroundColor: '#f44336' }]}
-                      onPress={handleRemoveJobCardPhoto}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash.fill"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color="#ffffff"
-                      />
-                      <Text style={styles.removeImageText}>Remove Photo</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={styles.imageButtonsRow}>
-                    <TouchableOpacity
-                      style={[styles.imageButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}
-                      onPress={() => {
-                        console.log('AddJobModal: User tapped Take Photo button');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        handleTakeJobCardPhoto('camera');
-                      }}
-                    >
-                      <IconSymbol
-                        ios_icon_name="camera.fill"
-                        android_material_icon_name="camera"
-                        size={24}
-                        color="#ffffff"
-                      />
-                      <Text style={styles.imageButtonText}>Take Photo</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.imageButton, { backgroundColor: theme.secondary, borderColor: theme.secondary }]}
-                      onPress={() => {
-                        console.log('AddJobModal: User tapped Choose from Gallery button');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        handleTakeJobCardPhoto('gallery');
-                      }}
-                    >
-                      <IconSymbol
-                        ios_icon_name="photo.fill"
-                        android_material_icon_name="image"
-                        size={24}
-                        color="#ffffff"
-                      />
-                      <Text style={styles.imageButtonText}>Choose Photo</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  handleSave(false);
-                }}
-                disabled={saving}
-              >
-                <IconSymbol
-                  ios_icon_name="checkmark.circle.fill"
-                  android_material_icon_name="check-circle"
-                  size={24}
-                  color="#ffffff"
-                />
-                <Text style={styles.saveButtonText}>
-                  {saving ? 'Saving...' : 'Save Record'}
-                </Text>
-              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
 
-        {/* Save Process Notification */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Notes (Optional)</Text>
+              <TextInput
+                style={[styles.textArea, { 
+                  backgroundColor: isDarkMode ? '#000' : '#fff',
+                  color: isDarkMode ? '#fff' : '#000',
+                  borderColor: theme.primary
+                }]}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={4}
+                placeholder="Add any additional notes..."
+                placeholderTextColor={isDarkMode ? '#888' : '#999'}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Job Card Photo (Optional)</Text>
+              {jobCardImageUri ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Image
+                    source={{ uri: jobCardImageUri }}
+                    style={styles.imagePreview}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    style={[styles.removeImageButton, { backgroundColor: '#f44336' }]}
+                    onPress={handleRemoveJobCardPhoto}
+                  >
+                    <IconSymbol
+                      ios_icon_name="trash.fill"
+                      android_material_icon_name="delete"
+                      size={20}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.removeImageText}>Remove Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.imageButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.imageButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                    onPress={() => {
+                      console.log('AddJobModal: User tapped Take Photo button');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      handleTakeJobCardPhoto('camera');
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="camera.fill"
+                      android_material_icon_name="camera"
+                      size={24}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.imageButtonText}>Take Photo</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.imageButton, { backgroundColor: theme.secondary, borderColor: theme.secondary }]}
+                    onPress={() => {
+                      console.log('AddJobModal: User tapped Choose from Gallery button');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      handleTakeJobCardPhoto('gallery');
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="photo.fill"
+                      android_material_icon_name="image"
+                      size={24}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.imageButtonText}>Choose Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveButton, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleSave(false);
+              }}
+              disabled={saving}
+            >
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
+                size={24}
+                color="#ffffff"
+              />
+              <Text style={styles.saveButtonText}>
+                {saving ? 'Saving...' : 'Save Record'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </AdaptiveKeyboardView>
+
         <ProcessNotification
           visible={showSaveNotification}
           title={
@@ -979,8 +959,6 @@ export default function AddJobModal() {
             </View>
           </View>
         </Modal>
-        
-
 
         {showDatePicker && (
           <DateTimePicker
@@ -1008,12 +986,6 @@ export default function AddJobModal() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollView: {
     flex: 1,
   },
   contentContainer: {
@@ -1226,7 +1198,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // Suggestions container - appears ABOVE the input fields
   suggestionsContainer: {
     marginBottom: 16,
     borderRadius: 12,
