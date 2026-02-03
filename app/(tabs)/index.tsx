@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
 import { api } from '@/utils/api';
 import CircularProgress from '@/components/CircularProgress';
@@ -158,24 +158,33 @@ export default function DashboardScreen() {
   };
 
   useEffect(() => {
-    console.log('DashboardScreen: Loading dashboard data');
+    console.log('DashboardScreen: Initial load of dashboard data');
     loadDashboardData();
     
-    // Update timer every second and reload stats every 30 seconds for live updates
+    // Update timer every second
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     
+    // Auto-refresh stats every 30 seconds for live updates
     const statsRefresh = setInterval(() => {
       console.log('DashboardScreen: Auto-refreshing stats for live updates');
       loadDashboardData();
-    }, 30000); // Refresh every 30 seconds
+    }, 30000);
     
     return () => {
       clearInterval(timer);
       clearInterval(statsRefresh);
     };
   }, []); // Empty deps - loadDashboardData is stable via useCallback
+
+  // Reload data immediately when screen comes into focus (e.g., after closing add-job-modal)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('DashboardScreen: Screen focused - reloading data for immediate update after job save');
+      loadDashboardData();
+    }, [loadDashboardData])
+  );
 
   const getCurrentMonth = () => {
     const now = new Date();
