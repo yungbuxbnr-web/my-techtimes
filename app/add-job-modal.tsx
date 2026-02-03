@@ -80,6 +80,7 @@ export default function AddJobModal() {
       console.log('AddJobModal: Loading jobs for suggestions');
       const jobs = await api.getAllJobs();
       setAllJobs(jobs);
+      console.log('AddJobModal: Loaded', jobs.length, 'jobs for suggestions');
     } catch (error) {
       console.error('AddJobModal: Error loading jobs for suggestions:', error);
     }
@@ -166,13 +167,15 @@ export default function AddJobModal() {
   };
   
   const selectSuggestion = (suggestion: JobSuggestion) => {
-    console.log('AddJobModal: Selected suggestion:', suggestion);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('AddJobModal: User selected suggestion - auto-filling all fields:', suggestion);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
+    // Auto-fill WIP, Reg, and AW from the selected suggestion
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
     setAw(suggestion.aw);
     
+    // Close suggestions and dismiss keyboard
     setShowSuggestions(false);
     setActiveField(null);
     Keyboard.dismiss();
@@ -180,6 +183,7 @@ export default function AddJobModal() {
     const awMinutes = awToMinutes(suggestion.aw);
     const awTimeFormatted = formatTime(awMinutes);
     toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
+    console.log('AddJobModal: All fields auto-filled from memory');
   };
 
   const handleSave = async (saveAnother: boolean = false) => {
@@ -221,15 +225,18 @@ export default function AddJobModal() {
       console.log('AddJobModal: Saving job:', jobData);
       await api.createJob(jobData);
       
+      // Reload suggestions immediately after saving for live updates
+      console.log('AddJobModal: Reloading suggestions for live updates');
       await loadJobsForSuggestions();
       
-      console.log('AddJobModal: Updating widget data');
+      console.log('AddJobModal: Updating widget data for live dashboard updates');
       await updateWidgetData();
       
       setSaveNotificationType('success');
       toastManager.success('Job saved successfully!');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+      console.log('AddJobModal: Job saved - all stats will update live');
       console.log('AddJobModal: Closing modal after successful save');
       router.back();
     } catch (error) {
@@ -530,7 +537,7 @@ export default function AddJobModal() {
               }]}>
                 <View style={styles.suggestionsHeader}>
                   <Text style={[styles.suggestionsHeaderText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                    Memory Suggestions
+                    Memory Suggestions - Tap to Auto-Fill
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
@@ -573,6 +580,12 @@ export default function AddJobModal() {
                           </Text>
                         </View>
                       </View>
+                      <IconSymbol
+                        ios_icon_name="arrow.right.circle.fill"
+                        android_material_icon_name="arrow-forward"
+                        size={24}
+                        color={theme.primary}
+                      />
                     </TouchableOpacity>
                   )}
                   scrollEnabled={true}
@@ -1219,16 +1232,19 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
   },
   suggestionsHeaderText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   suggestionsList: {
     maxHeight: 200,
   },
   suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
+    gap: 12,
   },
   suggestionContent: {
     flex: 1,
