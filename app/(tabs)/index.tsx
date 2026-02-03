@@ -1046,12 +1046,12 @@ export default function DashboardScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Add New Job Button */}
+            {/* Add New Job Button - NOW OPENS MODAL */}
             <TouchableOpacity
               style={[styles.addButton, { backgroundColor: theme.primary, padding: cardPadding }]}
               onPress={() => {
-                console.log('DashboardScreen: User tapped Add New Job button');
-                router.push('/(tabs)/add-job');
+                console.log('DashboardScreen: User tapped Add New Job button - opening modal');
+                router.push('/add-job-modal');
               }}
             >
               <IconSymbol
