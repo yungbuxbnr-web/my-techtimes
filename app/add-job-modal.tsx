@@ -170,7 +170,7 @@ export default function AddJobModal() {
     console.log('AddJobModal: User selected suggestion - auto-filling all fields:', suggestion);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    // Auto-fill WIP, Reg, and AW from the selected suggestion
+    // CRITICAL FIX: Auto-fill WIP, Reg, and AW from the selected suggestion
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
     setAw(suggestion.aw);
@@ -183,7 +183,7 @@ export default function AddJobModal() {
     const awMinutes = awToMinutes(suggestion.aw);
     const awTimeFormatted = formatTime(awMinutes);
     toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
-    console.log('AddJobModal: All fields auto-filled from memory');
+    console.log('AddJobModal: All fields auto-filled from memory - WIP:', suggestion.wipNumber, 'Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw);
   };
 
   const handleSave = async (saveAnother: boolean = false) => {
@@ -510,6 +510,7 @@ export default function AddJobModal() {
                 value={wipNumber}
                 onChangeText={handleWipChange}
                 onFocus={() => {
+                  console.log('AddJobModal: WIP input focused');
                   setActiveField('wip');
                   if (wipNumber.length > 0) {
                     const newSuggestions = generateSuggestions(wipNumber, 'wip');
@@ -518,10 +519,12 @@ export default function AddJobModal() {
                   }
                 }}
                 onBlur={() => {
+                  // CRITICAL FIX: Increased timeout to allow suggestion tap to register
                   setTimeout(() => {
+                    console.log('AddJobModal: WIP input blurred, hiding suggestions');
                     setShowSuggestions(false);
                     setActiveField(null);
-                  }, 200);
+                  }, 300);
                 }}
                 keyboardType="number-pad"
                 maxLength={5}
@@ -560,7 +563,11 @@ export default function AddJobModal() {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
-                      onPress={() => selectSuggestion(item)}
+                      onPress={() => {
+                        console.log('AddJobModal: User tapped suggestion:', item);
+                        selectSuggestion(item);
+                      }}
+                      activeOpacity={0.7}
                     >
                       <View style={styles.suggestionContent}>
                         <View style={styles.suggestionRow}>
@@ -628,6 +635,7 @@ export default function AddJobModal() {
                 value={vehicleReg}
                 onChangeText={handleRegChange}
                 onFocus={() => {
+                  console.log('AddJobModal: Reg input focused');
                   setActiveField('reg');
                   if (vehicleReg.length > 0) {
                     const newSuggestions = generateSuggestions(vehicleReg, 'reg');
@@ -636,10 +644,12 @@ export default function AddJobModal() {
                   }
                 }}
                 onBlur={() => {
+                  // CRITICAL FIX: Increased timeout to allow suggestion tap to register
                   setTimeout(() => {
+                    console.log('AddJobModal: Reg input blurred, hiding suggestions');
                     setShowSuggestions(false);
                     setActiveField(null);
-                  }, 200);
+                  }, 300);
                 }}
                 autoCapitalize="characters"
                 placeholder="ABC123"

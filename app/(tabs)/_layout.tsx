@@ -18,8 +18,9 @@ export default function TabLayout() {
           backgroundColor: theme.card,
           borderTopColor: theme.border,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'android' ? 12 : 8,
-          height: Platform.OS === 'android' ? 80 : 64,
+          // CRITICAL FIX: Add extra bottom padding for Android to prevent nav bar overlap
+          paddingBottom: Platform.OS === 'android' ? 20 : 8,
+          height: Platform.OS === 'android' ? 88 : 64,
         },
         tabBarLabelStyle: {
           fontSize: 12,

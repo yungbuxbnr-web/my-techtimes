@@ -55,7 +55,7 @@ export function AdaptiveKeyboardView({
   const animatedPadding = useRef(new Animated.Value(0)).current;
   
   useEffect(() => {
-    console.log('AdaptiveKeyboardView: Keyboard visibility changed:', isKeyboardVisible);
+    console.log('AdaptiveKeyboardView: Keyboard visibility changed:', isKeyboardVisible, 'height:', keyboardHeight);
     
     // Animate padding when keyboard appears/disappears
     Animated.timing(animatedPadding, {
@@ -64,18 +64,20 @@ export function AdaptiveKeyboardView({
       useNativeDriver: false,
     }).start();
     
-    // Auto-scroll to bottom when keyboard appears (for bottom inputs)
+    // CRITICAL FIX: Auto-scroll to bottom when keyboard appears (for bottom inputs)
     if (isKeyboardVisible && scrollEnabled && inputPosition === 'bottom') {
       setTimeout(() => {
+        console.log('AdaptiveKeyboardView: Auto-scrolling to bottom to reveal input field');
         scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, 150);
     }
   }, [isKeyboardVisible, keyboardHeight, inputPosition, scrollEnabled, animatedPadding]);
   
-  // Calculate dynamic padding to prevent content from being hidden
+  // CRITICAL FIX: Calculate dynamic padding to prevent content from being hidden by keyboard
+  // Add extra padding to ensure input fields are always visible above keyboard
   const dynamicPaddingBottom = isKeyboardVisible
-    ? Math.max(keyboardHeight - safeAreaInsets.bottom, 0)
-    : safeAreaInsets.bottom;
+    ? Math.max(keyboardHeight - safeAreaInsets.bottom + 20, 0) // Add 20px buffer
+    : safeAreaInsets.bottom + (hasTabBar ? 60 : 0);
   
   const containerStyle: ViewStyle = {
     flex: 1,
@@ -85,8 +87,10 @@ export function AdaptiveKeyboardView({
   };
   
   const contentStyle: ViewStyle = {
-    paddingBottom: dynamicPaddingBottom + (hasTabBar ? 60 : 0),
+    paddingBottom: dynamicPaddingBottom,
   };
+  
+  console.log('AdaptiveKeyboardView: Dynamic padding bottom:', dynamicPaddingBottom, 'keyboard visible:', isKeyboardVisible);
   
   console.log('AdaptiveKeyboardView: Rendering with offset:', optimalOffset, 'keyboard height:', keyboardHeight);
   

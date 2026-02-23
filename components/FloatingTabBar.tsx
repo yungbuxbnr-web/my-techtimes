@@ -160,7 +160,9 @@ export default function FloatingTabBar({
         styles.container,
         {
           width: containerWidth,
-          marginBottom: bottomMargin ?? 20
+          marginBottom: bottomMargin ?? 20,
+          // CRITICAL FIX: Add extra bottom padding to prevent Android nav bar overlap
+          paddingBottom: Platform.OS === 'android' ? 8 : 0,
         }
       ]}>
         <BlurView

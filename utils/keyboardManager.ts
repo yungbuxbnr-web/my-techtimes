@@ -126,6 +126,7 @@ export class KeyboardManager {
   /**
    * AI-powered calculation of optimal keyboard offset
    * Takes into account device type, orientation, and UI elements
+   * CRITICAL FIX: Enhanced to prevent keyboard from covering input fields
    */
   public calculateOptimalOffset(options: {
     hasTabBar?: boolean;
@@ -152,7 +153,7 @@ export class KeyboardManager {
     // Platform-specific adjustments
     if (Platform.OS === 'ios') {
       // iOS needs less offset due to better native handling
-      offset -= 20;
+      offset -= 10;
       
       // Add header offset if present
       if (hasHeader) {
@@ -164,8 +165,8 @@ export class KeyboardManager {
         offset += 49; // Standard iOS tab bar height
       }
     } else {
-      // Android needs more aggressive offset
-      offset += 20;
+      // CRITICAL FIX: Android needs more aggressive offset to prevent keyboard overlap
+      offset += 40; // Increased from 20 to 40 for better clearance
       
       // Add header offset if present
       if (hasHeader) {
@@ -174,7 +175,7 @@ export class KeyboardManager {
       
       // Add tab bar offset if present
       if (hasTabBar) {
-        offset += 56; // Standard Android tab bar height
+        offset += 88; // Increased from 56 to 88 to account for Android nav bar
       }
     }
     
@@ -187,7 +188,7 @@ export class KeyboardManager {
         offset *= 0.6; // Moderate offset for middle inputs
         break;
       case 'bottom':
-        offset *= 1.0; // Full offset for bottom inputs
+        offset *= 1.2; // CRITICAL FIX: Increased from 1.0 to 1.2 for better bottom input visibility
         break;
     }
     
@@ -197,7 +198,7 @@ export class KeyboardManager {
     // Ensure offset is never negative
     offset = Math.max(0, offset);
     
-    console.log('KeyboardManager: Calculated optimal offset:', offset, 'for options:', options);
+    console.log('KeyboardManager: Calculated optimal offset:', offset, 'for options:', options, 'keyboard height:', this.keyboardState.height);
     
     return offset;
   }
@@ -290,6 +291,7 @@ export function useKeyboard(options: {
 
 /**
  * Calculates safe area insets for different device types
+ * CRITICAL FIX: Enhanced Android navigation bar handling
  */
 export function calculateSafeAreaInsets(): SafeAreaInsets {
   const { height, width } = Dimensions.get('window');
@@ -317,9 +319,20 @@ export function calculateSafeAreaInsets(): SafeAreaInsets {
       insets.bottom = 0;
     }
   } else {
-    // Android
+    // CRITICAL FIX: Android with enhanced navigation bar detection
     insets.top = 24; // Status bar
-    insets.bottom = 0; // Navigation bar handled by system
+    
+    // Detect Android navigation bar height
+    // Most Android devices have 48dp navigation bar (3-button nav)
+    // Gesture navigation devices have ~20dp indicator
+    const screenHeight = Dimensions.get('screen').height;
+    const windowHeight = Dimensions.get('window').height;
+    const navBarHeight = screenHeight - windowHeight;
+    
+    // Use detected nav bar height, or fallback to 48 for safety
+    insets.bottom = navBarHeight > 0 ? navBarHeight : 48;
+    
+    console.log('calculateSafeAreaInsets: Android nav bar detected, height:', navBarHeight);
   }
   
   console.log('calculateSafeAreaInsets: Calculated insets:', insets);
