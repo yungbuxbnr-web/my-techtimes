@@ -1,5 +1,13 @@
 
+import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculations';
+import { useThemeContext } from '@/contexts/ThemeContext';
+import { router } from 'expo-router';
 import React, { useState, useEffect, useCallback } from 'react';
+import { api, Job } from '@/utils/api';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { exportToPdf } from '@/utils/exportUtils';
+import { IconSymbol } from '@/components/IconSymbol';
+import { updateWidgetData } from '@/utils/widgetManager';
 import {
   View,
   Text,
@@ -13,86 +21,283 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { useThemeContext } from '@/contexts/ThemeContext';
-import { IconSymbol } from '@/components/IconSymbol';
-import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculations';
-import { router } from 'expo-router';
-import { api, Job } from '@/utils/api';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { exportToPdf } from '@/utils/exportUtils';
-import { updateWidgetData } from '@/utils/widgetManager';
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    padding: 20,
+    paddingTop: Platform.OS === 'android' ? 48 : 20,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  monthSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  monthButton: {
+    padding: 8,
+  },
+  monthText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  searchContainer: {
+    padding: 16,
+  },
+  searchInput: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  },
+  statsContainer: {
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statBox: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  statLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  jobCard: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  jobHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  jobWip: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  jobReg: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  jobDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  jobAw: {
+    fontSize: 14,
+  },
+  jobTime: {
+    fontSize: 14,
+  },
+  jobDate: {
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  jobActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+    gap: 12,
+  },
+  actionButton: {
+    padding: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+    opacity: 0.7,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  modalInput: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 16,
+  },
+  modalButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  vhcBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  vhcText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  selectionMode: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  selectionText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+});
 
 export default function JobRecordsScreen() {
-  const { theme, overlayStrength } = useThemeContext();
+  const { theme } = useThemeContext();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
-  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [technicianName, setTechnicianName] = useState('Technician');
-  
   const [editWip, setEditWip] = useState('');
   const [editReg, setEditReg] = useState('');
   const [editAw, setEditAw] = useState('');
   const [editNotes, setEditNotes] = useState('');
-  const [editVhc, setEditVhc] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
-  const [editDate, setEditDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [technicianName, setTechnicianName] = useState('Technician');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
 
-  function getCurrentMonth() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }
-
+  // FIXED: Define loadJobs function
   const loadJobs = useCallback(async () => {
     try {
-      console.log('JobRecordsScreen: Fetching jobs for month:', selectedMonth);
-      const fetchedJobs = await api.getJobsForMonth(selectedMonth);
-      setJobs(fetchedJobs);
-      console.log('JobRecordsScreen: Loaded', fetchedJobs.length, 'jobs');
+      console.log('JobRecords: Loading jobs for month:', selectedMonth);
+      const monthJobs = await api.getJobsForMonth(selectedMonth);
+      setJobs(monthJobs);
+      setFilteredJobs(monthJobs);
+      console.log('JobRecords: Loaded', monthJobs.length, 'jobs');
     } catch (error) {
-      console.error('JobRecordsScreen: Error loading jobs:', error);
+      console.error('JobRecords: Error loading jobs:', error);
       Alert.alert('Error', 'Failed to load jobs');
     }
   }, [selectedMonth]);
 
+  // FIXED: Define loadProfile function
   const loadProfile = useCallback(async () => {
     try {
+      console.log('JobRecords: Loading technician profile');
       const profile = await api.getTechnicianProfile();
-      setTechnicianName(profile.name);
+      if (profile && profile.name) {
+        setTechnicianName(profile.name);
+        console.log('JobRecords: Loaded profile:', profile.name);
+      }
     } catch (error) {
-      console.error('JobRecordsScreen: Error loading profile:', error);
+      console.error('JobRecords: Error loading profile:', error);
     }
   }, []);
 
+  // FIXED: Now the dependency array is correct
   useEffect(() => {
-    console.log('JobRecordsScreen: Loading jobs for month:', selectedMonth);
     loadJobs();
     loadProfile();
   }, [selectedMonth, loadJobs, loadProfile]);
 
-  const onRefresh = async () => {
-    console.log('JobRecordsScreen: User refreshing jobs list');
+  useEffect(() => {
+    // Filter jobs based on search query
+    if (searchQuery.trim() === '') {
+      setFilteredJobs(jobs);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = jobs.filter(
+        (job) =>
+          job.wipNumber.toLowerCase().includes(query) ||
+          job.vehicleReg.toLowerCase().includes(query) ||
+          (job.notes && job.notes.toLowerCase().includes(query))
+      );
+      setFilteredJobs(filtered);
+    }
+  }, [searchQuery, jobs]);
+
+  function getCurrentMonth(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadJobs();
+    await loadProfile();
     setRefreshing(false);
-  };
+  }, [loadJobs, loadProfile]);
 
   const handlePreviousMonth = () => {
     const [year, month] = selectedMonth.split('-').map(Number);
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    setSelectedMonth(`${prevYear}-${String(prevMonth).padStart(2, '0')}`);
+    const date = new Date(year, month - 2, 1); // month - 2 because month is 1-indexed
+    const newMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    setSelectedMonth(newMonth);
   };
 
   const handleNextMonth = () => {
     const [year, month] = selectedMonth.split('-').map(Number);
-    const nextMonth = month === 12 ? 1 : month + 1;
-    const nextYear = month === 12 ? year + 1 : year;
-    setSelectedMonth(`${nextYear}-${String(nextMonth).padStart(2, '0')}`);
+    const date = new Date(year, month, 1); // month is already correct for next month
+    const newMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    setSelectedMonth(newMonth);
   };
 
   const toggleJobSelection = (jobId: string) => {
@@ -103,55 +308,33 @@ export default function JobRecordsScreen() {
       newSelection.add(jobId);
     }
     setSelectedJobs(newSelection);
-    console.log('JobRecordsScreen: Selected jobs count:', newSelection.size);
   };
 
   const handleEditJob = (job: Job) => {
-    console.log('JobRecordsScreen: User editing job:', job.id);
     setEditingJob(job);
     setEditWip(job.wipNumber);
     setEditReg(job.vehicleReg);
     setEditAw(job.aw.toString());
     setEditNotes(job.notes || '');
-    setEditVhc(job.vhcStatus || 'NONE');
-    setEditDate(new Date(job.createdAt));
-    setShowEditModal(true);
   };
 
   const handleSaveEdit = async () => {
     if (!editingJob) return;
 
-    const aw = parseInt(editAw);
-    if (isNaN(aw) || aw < 0 || aw > 100) {
-      Alert.alert('Invalid AW', 'AW must be between 0 and 100');
-      return;
-    }
-
-    if (editWip.length !== 5 || !/^\d+$/.test(editWip)) {
-      Alert.alert('Invalid WIP', 'WIP must be exactly 5 digits');
-      return;
-    }
-
     try {
-      console.log('JobRecordsScreen: Saving job edit');
       await api.updateJob(editingJob.id, {
         wipNumber: editWip,
         vehicleReg: editReg.toUpperCase(),
-        aw,
+        aw: parseInt(editAw, 10),
         notes: editNotes,
-        vhcStatus: editVhc,
-        createdAt: editDate.toISOString(),
       });
-      
-      // Update widget data
-      console.log('JobRecordsScreen: Updating widget data after edit');
-      await updateWidgetData();
-      
-      setShowEditModal(false);
+
+      setEditingJob(null);
       await loadJobs();
+      await updateWidgetData();
       Alert.alert('Success', 'Job updated successfully');
     } catch (error) {
-      console.error('JobRecordsScreen: Error updating job:', error);
+      console.error('JobRecords: Error updating job:', error);
       Alert.alert('Error', 'Failed to update job');
     }
   };
@@ -166,17 +349,13 @@ export default function JobRecordsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            console.log('JobRecordsScreen: User confirmed delete job:', jobId);
             try {
               await api.deleteJob(jobId);
-              
-              // Update widget data
-              console.log('JobRecordsScreen: Updating widget data after delete');
-              await updateWidgetData();
-              
               await loadJobs();
+              await updateWidgetData();
+              Alert.alert('Success', 'Job deleted successfully');
             } catch (error) {
-              console.error('JobRecordsScreen: Error deleting job:', error);
+              console.error('JobRecords: Error deleting job:', error);
               Alert.alert('Error', 'Failed to delete job');
             }
           },
@@ -187,70 +366,73 @@ export default function JobRecordsScreen() {
 
   const handleExportSelected = async () => {
     if (selectedJobs.size === 0) {
-      Alert.alert('No Jobs Selected', 'Please select jobs to export');
+      Alert.alert('No Selection', 'Please select jobs to export');
       return;
     }
 
-    const selectedJobsArray = jobs.filter(job => selectedJobs.has(job.id));
-    console.log('JobRecordsScreen: Exporting', selectedJobsArray.length, 'selected jobs to PDF');
+    const jobsToExport = jobs.filter((job) => selectedJobs.has(job.id));
 
     try {
-      await exportToPdf(selectedJobsArray, technicianName, { type: 'all' });
-      Alert.alert('Success', `Exported ${selectedJobsArray.length} jobs to PDF`);
+      await exportToPdf(jobsToExport, technicianName, {
+        groupBy: 'day',
+        includeVhc: true,
+        includeNotes: true,
+        includeImages: false,
+      });
+      setSelectionMode(false);
+      setSelectedJobs(new Set());
     } catch (error) {
-      console.error('JobRecordsScreen: Error exporting to PDF:', error);
-      Alert.alert('Error', 'Failed to export jobs to PDF');
+      console.error('JobRecords: Error exporting jobs:', error);
+      Alert.alert('Error', 'Failed to export jobs');
     }
   };
 
   const getVhcColor = (vhc: string) => {
     switch (vhc) {
-      case 'GREEN': return theme.chartGreen;
-      case 'ORANGE': return theme.chartYellow;
-      case 'RED': return theme.chartRed;
-      default: return 'transparent';
+      case 'GREEN':
+        return '#4CAF50';
+      case 'ORANGE':
+        return '#FF9800';
+      case 'RED':
+        return '#F44336';
+      default:
+        return 'transparent';
     }
   };
 
   const calculateTotals = () => {
-    const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
-    const totalMinutes = totalAw * 5;
+    const totalAw = filteredJobs.reduce((sum, job) => sum + job.aw, 0);
+    const totalMinutes = awToMinutes(totalAw);
     return {
-      count: jobs.length,
-      totalAw,
-      totalTime: formatTime(totalMinutes),
-      totalHours: totalMinutes / 60,
+      jobs: filteredJobs.length,
+      aw: totalAw,
+      time: formatTime(totalMinutes),
+      hours: formatDecimalHours(totalMinutes),
     };
   };
 
   const calculateSelectedTotals = () => {
-    const selectedJobsArray = jobs.filter(job => selectedJobs.has(job.id));
-    const totalAw = selectedJobsArray.reduce((sum, job) => sum + job.aw, 0);
-    const totalMinutes = totalAw * 5;
+    const selectedJobsList = jobs.filter((job) => selectedJobs.has(job.id));
+    const totalAw = selectedJobsList.reduce((sum, job) => sum + job.aw, 0);
+    const totalMinutes = awToMinutes(totalAw);
     return {
-      count: selectedJobsArray.length,
-      totalAw,
-      totalTime: formatTime(totalMinutes),
-      totalHours: totalMinutes / 60,
+      jobs: selectedJobsList.length,
+      aw: totalAw,
+      time: formatTime(totalMinutes),
+      hours: formatDecimalHours(totalMinutes),
     };
   };
 
-  const totals = calculateTotals();
-  const selectedTotals = calculateSelectedTotals();
-  const monthName = new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
   const renderJob = ({ item }: { item: Job }) => {
     const minutes = awToMinutes(item.aw);
-    const date = new Date(item.createdAt);
-    const vhcColor = getVhcColor(item.vhcStatus || 'NONE');
     const isSelected = selectedJobs.has(item.id);
 
     return (
       <TouchableOpacity
         style={[
           styles.jobCard,
-          { backgroundColor: theme.card },
-          isSelected && { borderWidth: 3, borderColor: theme.primary },
+          { backgroundColor: theme.card, borderColor: theme.border },
+          isSelected && { borderColor: theme.primary, borderWidth: 2 },
         ]}
         onPress={() => {
           if (selectionMode) {
@@ -264,711 +446,315 @@ export default function JobRecordsScreen() {
           }
         }}
       >
-        {item.vhcStatus && item.vhcStatus !== 'NONE' && (
-          <View style={[styles.vhcStrip, { backgroundColor: vhcColor }]} />
-        )}
-        
-        <View style={styles.jobContent}>
-          <View style={styles.jobHeader}>
-            <View style={styles.jobInfo}>
-              {selectionMode && (
-                <View style={[styles.checkbox, isSelected && { backgroundColor: theme.primary }]}>
-                  {isSelected && (
-                    <IconSymbol
-                      ios_icon_name="checkmark"
-                      android_material_icon_name="check"
-                      size={16}
-                      color="#ffffff"
-                    />
-                  )}
-                </View>
-              )}
-              <Text style={[styles.wipNumber, { color: theme.primary }]}>
-                WIP: {item.wipNumber}
-              </Text>
-              {item.vhcStatus && item.vhcStatus !== 'NONE' && (
-                <View style={[styles.vhcBadge, { backgroundColor: vhcColor }]}>
-                  <Text style={styles.vhcText}>● VHC: {item.vhcStatus}</Text>
-                </View>
-              )}
-            </View>
-            {!selectionMode && (
-              <View style={styles.jobActions}>
-                <TouchableOpacity
-                  onPress={() => handleEditJob(item)}
-                  style={[styles.actionButton, { backgroundColor: theme.primary }]}
-                >
-                  <Text style={styles.actionButtonText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleDeleteJob(item.id)}
-                  style={[styles.actionButton, { backgroundColor: theme.error }]}
-                >
+        <View style={styles.jobHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {selectionMode && (
+              <View
+                style={[
+                  styles.checkbox,
+                  { borderColor: theme.primary },
+                  isSelected && { backgroundColor: theme.primary },
+                ]}
+              >
+                {isSelected && (
                   <IconSymbol
-                    ios_icon_name="xmark"
-                    android_material_icon_name="close"
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
                     size={16}
-                    color="#ffffff"
+                    color="#fff"
                   />
-                </TouchableOpacity>
+                )}
               </View>
             )}
-          </View>
-
-          <View style={styles.jobDetails}>
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Vehicle:</Text>
-              <Text style={[styles.detailValue, { color: theme.text }]}>{item.vehicleReg}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>AWs:</Text>
-              <Text style={[styles.detailValue, { color: theme.text }]}>{item.aw}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Time:</Text>
-              <Text style={[styles.detailValue, { color: theme.text }]}>{formatTime(minutes)}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Date:</Text>
-              <Text style={[styles.detailValue, { color: theme.text }]}>
-                {date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}, {date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            <View>
+              <Text style={[styles.jobWip, { color: theme.text }]}>
+                WIP: {item.wipNumber}
               </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.jobReg, { color: theme.text }]}>
+                  {item.vehicleReg}
+                </Text>
+                {item.vhcStatus !== 'NONE' && (
+                  <View
+                    style={[
+                      styles.vhcBadge,
+                      { backgroundColor: getVhcColor(item.vhcStatus) },
+                    ]}
+                  >
+                    <Text style={styles.vhcText}>{item.vhcStatus}</Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
-
-          {item.notes && (
-            <View style={styles.notesSection}>
-              <Text style={[styles.notesLabel, { color: theme.textSecondary }]}>Notes:</Text>
-              <Text style={[styles.notesText, { color: theme.text }]}>{item.notes}</Text>
+          {!selectionMode && (
+            <View style={styles.jobActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleEditJob(item)}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={20}
+                  color={theme.primary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleDeleteJob(item.id)}
+              >
+                <IconSymbol
+                  ios_icon_name="trash"
+                  android_material_icon_name="delete"
+                  size={20}
+                  color="#F44336"
+                />
+              </TouchableOpacity>
             </View>
           )}
         </View>
+
+        <View style={styles.jobDetails}>
+          <Text style={[styles.jobAw, { color: theme.text }]}>
+            AW: {item.aw}
+          </Text>
+          <Text style={[styles.jobTime, { color: theme.text }]}>
+            {formatTime(minutes)} ({formatDecimalHours(minutes)}h)
+          </Text>
+        </View>
+
+        {item.notes && (
+          <Text style={[styles.jobDate, { color: theme.text }]}>
+            Notes: {item.notes}
+          </Text>
+        )}
+
+        <Text style={[styles.jobDate, { color: theme.text }]}>
+          {new Date(item.createdAt).toLocaleString()}
+        </Text>
       </TouchableOpacity>
     );
   };
 
+  const totals = selectionMode ? calculateSelectedTotals() : calculateTotals();
+
   return (
     <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1530124566582-a618bc2615dc?w=1200' }}
-      style={styles.background}
+      source={require('@/assets/images/c7530b94-d069-450b-8eb8-e35e3dd41e52.png')}
+      style={styles.container}
+      resizeMode="cover"
     >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
-        <View style={styles.container}>
-          <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-            <Text style={[styles.title, { color: '#ffffff' }]}>Job Records</Text>
-            {!selectionMode && (
-              <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  console.log('JobRecordsScreen: User tapped Add Job button');
-                  router.push('/add-job-modal');
-                }}
-              >
-                <IconSymbol
-                  ios_icon_name="plus"
-                  android_material_icon_name="add"
-                  size={20}
-                  color="#ffffff"
-                />
-                <Text style={styles.addButtonText}>Add Job</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={[styles.monthSelector, { backgroundColor: theme.card }]}>
-            <TouchableOpacity onPress={handlePreviousMonth} style={styles.monthArrow}>
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={24}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-            <View style={styles.monthInfo}>
-              <Text style={[styles.monthText, { color: theme.text }]}>{monthName}</Text>
-              <Text style={[styles.monthSubtext, { color: theme.textSecondary }]}>
-                {totals.count} jobs
-              </Text>
-            </View>
-            <TouchableOpacity onPress={handleNextMonth} style={styles.monthArrow}>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="arrow-forward"
-                size={24}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {selectionMode ? (
-            <View style={[styles.selectionBar, { backgroundColor: theme.primary }]}>
-              <View style={styles.selectionInfo}>
-                <Text style={styles.selectionText}>
-                  {selectedJobs.size} selected
-                </Text>
-                <Text style={styles.selectionSubtext}>
-                  {selectedTotals.totalAw} AW • {selectedTotals.totalHours.toFixed(2)}h
-                </Text>
-              </View>
-              <View style={styles.selectionActions}>
-                <TouchableOpacity
-                  style={styles.selectionButton}
-                  onPress={handleExportSelected}
-                >
-                  <IconSymbol
-                    ios_icon_name="square.and.arrow.up"
-                    android_material_icon_name="share"
-                    size={20}
-                    color="#ffffff"
-                  />
-                  <Text style={styles.selectionButtonText}>Export PDF</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.selectionButton}
-                  onPress={() => {
-                    setSelectionMode(false);
-                    setSelectedJobs(new Set());
-                  }}
-                >
-                  <IconSymbol
-                    ios_icon_name="xmark"
-                    android_material_icon_name="close"
-                    size={20}
-                    color="#ffffff"
-                  />
-                  <Text style={styles.selectionButtonText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={[styles.totalsRow, { backgroundColor: theme.card }]}>
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.count}</Text>
-                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Jobs</Text>
-              </View>
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalAw}</Text>
-                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>AWs</Text>
-              </View>
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalTime}</Text>
-                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Time</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.selectButton, { backgroundColor: theme.secondary }]}
-                onPress={() => {
-                  console.log('JobRecordsScreen: User enabled selection mode');
-                  setSelectionMode(true);
-                }}
-              >
-                <IconSymbol
-                  ios_icon_name="checkmark.circle"
-                  android_material_icon_name="check-circle"
-                  size={20}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <FlatList
-            data={jobs}
-            renderItem={renderJob}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <IconSymbol
-                  ios_icon_name="tray.fill"
-                  android_material_icon_name="inbox"
-                  size={64}
-                  color={theme.textSecondary}
-                />
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                  No jobs found for this month
-                </Text>
-              </View>
-            }
-          />
+      <View style={styles.header}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>
+          Job Records
+        </Text>
+        <View style={styles.monthSelector}>
+          <TouchableOpacity
+            style={styles.monthButton}
+            onPress={handlePreviousMonth}
+          >
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="chevron-left"
+              size={24}
+              color={theme.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.monthText, { color: theme.text }]}>
+            {new Date(selectedMonth + '-01').toLocaleDateString('en-US', {
+              month: 'long',
+              year: 'numeric',
+            })}
+          </Text>
+          <TouchableOpacity
+            style={styles.monthButton}
+            onPress={handleNextMonth}
+          >
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={24}
+              color={theme.text}
+            />
+          </TouchableOpacity>
         </View>
+      </View>
 
-        <Modal
-          visible={showEditModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowEditModal(false)}
+      {selectionMode && (
+        <View
+          style={[
+            styles.selectionMode,
+            { backgroundColor: theme.card, borderBottomColor: theme.border },
+          ]}
         >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modal, { backgroundColor: theme.card }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Job</Text>
-                <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+          <Text style={[styles.selectionText, { color: theme.text }]}>
+            {selectedJobs.size} selected
+          </Text>
+          <View style={styles.selectionActions}>
+            <TouchableOpacity onPress={handleExportSelected}>
+              <IconSymbol
+                ios_icon_name="square.and.arrow.up"
+                android_material_icon_name="file-download"
+                size={24}
+                color={theme.primary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectionMode(false);
+                setSelectedJobs(new Set());
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={theme.text}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
-              <View style={styles.modalContent}>
-                <Text style={[styles.label, { color: theme.text }]}>WIP Number</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editWip}
-                  onChangeText={setEditWip}
-                  keyboardType="number-pad"
-                  maxLength={5}
-                  placeholderTextColor={theme.textSecondary}
-                />
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={[
+            styles.searchInput,
+            { backgroundColor: theme.card, color: theme.text },
+          ]}
+          placeholder="Search by WIP, Reg, or Notes..."
+          placeholderTextColor={theme.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
 
-                <Text style={[styles.label, { color: theme.text }]}>Vehicle Registration</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editReg}
-                  onChangeText={(text) => setEditReg(text.toUpperCase())}
-                  autoCapitalize="characters"
-                  placeholderTextColor={theme.textSecondary}
-                />
+      <View style={styles.statsContainer}>
+        <View style={styles.statBox}>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {totals.jobs}
+          </Text>
+          <Text style={[styles.statLabel, { color: theme.text }]}>Jobs</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {totals.aw}
+          </Text>
+          <Text style={[styles.statLabel, { color: theme.text }]}>
+            Total AW
+          </Text>
+        </View>
+        <View style={styles.statBox}>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {totals.hours}h
+          </Text>
+          <Text style={[styles.statLabel, { color: theme.text }]}>Hours</Text>
+        </View>
+      </View>
 
-                <Text style={[styles.label, { color: theme.text }]}>AW Value</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editAw}
-                  onChangeText={setEditAw}
-                  keyboardType="number-pad"
-                  placeholderTextColor={theme.textSecondary}
-                />
+      <FlatList
+        data={filteredJobs}
+        renderItem={renderJob}
+        keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={[styles.emptyText, { color: theme.text }]}>
+              No jobs found for this month
+            </Text>
+          </View>
+        }
+      />
 
-                <Text style={[styles.label, { color: theme.text }]}>VHC Status</Text>
-                <View style={styles.vhcSelector}>
-                  {(['NONE', 'GREEN', 'ORANGE', 'RED'] as const).map((vhc) => (
-                    <TouchableOpacity
-                      key={vhc}
-                      style={[
-                        styles.vhcOption,
-                        { backgroundColor: editVhc === vhc ? getVhcColor(vhc) || theme.primary : theme.background },
-                      ]}
-                      onPress={() => setEditVhc(vhc)}
-                    >
-                      <Text style={[styles.vhcOptionText, { color: editVhc === vhc ? '#ffffff' : theme.text }]}>
-                        {vhc}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+      {/* Edit Modal */}
+      <Modal
+        visible={editingJob !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingJob(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              Edit Job
+            </Text>
 
-                <Text style={[styles.label, { color: theme.text }]}>Date & Time</Text>
-                <View style={styles.dateTimeRow}>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Text style={[styles.dateTimeText, { color: theme.text }]}>
-                      {editDate.toLocaleDateString('en-GB')}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => setShowTimePicker(true)}
-                  >
-                    <Text style={[styles.dateTimeText, { color: theme.text }]}>
-                      {editDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              placeholder="WIP Number"
+              placeholderTextColor={theme.textSecondary}
+              value={editWip}
+              onChangeText={setEditWip}
+              keyboardType="number-pad"
+              maxLength={5}
+            />
 
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={editDate}
-                    mode="date"
-                    display="default"
-                    onChange={(event, selectedDate) => {
-                      setShowDatePicker(false);
-                      if (selectedDate) setEditDate(selectedDate);
-                    }}
-                  />
-                )}
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              placeholder="Vehicle Registration"
+              placeholderTextColor={theme.textSecondary}
+              value={editReg}
+              onChangeText={(text) => setEditReg(text.toUpperCase())}
+              autoCapitalize="characters"
+            />
 
-                {showTimePicker && (
-                  <DateTimePicker
-                    value={editDate}
-                    mode="time"
-                    display="default"
-                    onChange={(event, selectedDate) => {
-                      setShowTimePicker(false);
-                      if (selectedDate) setEditDate(selectedDate);
-                    }}
-                  />
-                )}
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              placeholder="AW (0-100)"
+              placeholderTextColor={theme.textSecondary}
+              value={editAw}
+              onChangeText={setEditAw}
+              keyboardType="number-pad"
+            />
 
-                <Text style={[styles.label, { color: theme.text }]}>Notes</Text>
-                <TextInput
-                  style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editNotes}
-                  onChangeText={setEditNotes}
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={theme.textSecondary}
-                />
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              placeholder="Notes (optional)"
+              placeholderTextColor={theme.textSecondary}
+              value={editNotes}
+              onChangeText={setEditNotes}
+              multiline
+            />
 
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                  onPress={handleSaveEdit}
-                >
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                </TouchableOpacity>
-              </View>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.border }]}
+                onPress={() => setEditingJob(null)}
+              >
+                <Text style={[styles.modalButtonText, { color: theme.text }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: theme.primary },
+                ]}
+                onPress={handleSaveEdit}
+              >
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>
+                  Save
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 }
-
-const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 16,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 4,
-  },
-  addButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  monthSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  monthArrow: {
-    padding: 8,
-  },
-  monthInfo: {
-    alignItems: 'center',
-  },
-  monthText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  monthSubtext: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  totalsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  totalItem: {
-    alignItems: 'center',
-  },
-  totalValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  totalLabel: {
-    fontSize: 12,
-  },
-  selectButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  selectionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  selectionInfo: {
-    flex: 1,
-  },
-  selectionText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  selectionSubtext: {
-    color: '#ffffff',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  selectionActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  selectionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    gap: 4,
-  },
-  selectionButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  listContent: {
-    padding: 16,
-    paddingTop: 0,
-    paddingBottom: 100,
-  },
-  jobCard: {
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  vhcStrip: {
-    width: 4,
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-  },
-  jobContent: {
-    padding: 16,
-    paddingLeft: 20,
-  },
-  jobHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  jobInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  wipNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  vhcBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  vhcText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  jobActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  actionButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  jobDetails: {
-    gap: 6,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  detailLabel: {
-    fontSize: 13,
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  notesSection: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  notesLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  notesText: {
-    fontSize: 13,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 64,
-  },
-  emptyText: {
-    fontSize: 16,
-    marginTop: 16,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modal: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  modalContent: {
-    padding: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
-  },
-  textArea: {
-    height: 80,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    textAlignVertical: 'top',
-  },
-  vhcSelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  vhcOption: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  vhcOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  dateTimeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  dateTimeButton: {
-    flex: 1,
-    height: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dateTimeText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  saveButton: {
-    height: 56,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-});

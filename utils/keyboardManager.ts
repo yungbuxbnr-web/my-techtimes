@@ -44,6 +44,7 @@ export class KeyboardManager {
   };
   
   private listeners: Array<(state: KeyboardState) => void> = [];
+  private dimensionsSubscription: any = null;
   
   private constructor() {
     this.initializeListeners();
@@ -65,7 +66,8 @@ export class KeyboardManager {
     Keyboard.addListener(showEvent, this.handleKeyboardShow.bind(this));
     Keyboard.addListener(hideEvent, this.handleKeyboardHide.bind(this));
     
-    Dimensions.addEventListener('change', ({ window }) => {
+    // FIXED: Store subscription reference for proper cleanup
+    this.dimensionsSubscription = Dimensions.addEventListener('change', ({ window }) => {
       console.log('KeyboardManager: Screen dimensions changed:', window);
       this.screenDimensions = {
         width: window.width,
@@ -74,6 +76,19 @@ export class KeyboardManager {
         fontScale: window.fontScale,
       };
     });
+  }
+  
+  // FIXED: Add cleanup method
+  public cleanup() {
+    console.log('KeyboardManager: Cleaning up listeners');
+    if (this.dimensionsSubscription) {
+      this.dimensionsSubscription.remove();
+      this.dimensionsSubscription = null;
+    }
+    Keyboard.removeAllListeners('keyboardWillShow');
+    Keyboard.removeAllListeners('keyboardDidShow');
+    Keyboard.removeAllListeners('keyboardWillHide');
+    Keyboard.removeAllListeners('keyboardDidHide');
   }
   
   private handleKeyboardShow(event: KeyboardEvent) {
