@@ -41,7 +41,8 @@ module.exports = function (api) {
       ],
       ...EDITABLE_COMPONENTS,
       "@babel/plugin-proposal-export-namespace-from",
-      "react-native-worklets/plugin", // react-native-worklets/plugin must be listed last!
+      // NOTE: react-native-worklets/plugin is already included by babel-preset-expo in SDK 54.
+      // Do NOT add it here again — duplicate plugin registration causes build failures.
     ],
   };
 };
