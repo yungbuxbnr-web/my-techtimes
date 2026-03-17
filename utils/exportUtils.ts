@@ -348,11 +348,11 @@ function generatePdfHtml(
     
     // Add efficiency bar for the day
     if (availableHours > 0) {
-      const dailyAvailable = availableHours / 30; // Rough estimate
+      console.log('ExportUtils: Daily efficiency - soldHours:', dayTotals.totalHours, 'availableHours:', availableHours);
       html += `
         <div class="efficiency-section">
           <div class="efficiency-title">Daily Efficiency</div>
-          ${generateEfficiencyBar(dayTotals.totalHours, dailyAvailable, 'Day Performance')}
+          ${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}
         </div>
       `;
     }
@@ -432,11 +432,11 @@ function generatePdfHtml(
       
       // Add efficiency bar for the week
       if (availableHours > 0) {
-        const weeklyAvailable = (availableHours / 30) * 6; // 6 working days per week
+        console.log('ExportUtils: Weekly efficiency - soldHours:', weekTotals.totalHours, 'availableHours:', availableHours);
         html += `
           <div class="efficiency-section">
             <div class="efficiency-title">Weekly Efficiency</div>
-            ${generateEfficiencyBar(weekTotals.totalHours, weeklyAvailable, 'Week Performance')}
+            ${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}
           </div>
         `;
       }
