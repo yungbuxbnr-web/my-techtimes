@@ -14,6 +14,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  StatusBar,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -470,13 +471,14 @@ export default function AddJobModal() {
       />
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 56 : 90}
       >
         <ScrollView
           contentContainerStyle={styles.contentContainer}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets={true}
         >
           <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
             <View style={styles.formGroup}>
@@ -522,12 +524,11 @@ export default function AddJobModal() {
                   }
                 }}
                 onBlur={() => {
-                  // CRITICAL FIX: Increased timeout to allow suggestion tap to register
                   setTimeout(() => {
                     console.log('AddJobModal: WIP input blurred, hiding suggestions');
                     setShowSuggestions(false);
                     setActiveField(null);
-                  }, 300);
+                  }, 500);
                 }}
                 keyboardType="number-pad"
                 maxLength={5}
@@ -563,6 +564,7 @@ export default function AddJobModal() {
                 <FlatList
                   data={suggestions}
                   keyExtractor={(item, index) => `${item.wipNumber}-${item.vehicleReg}-${index}`}
+                  keyboardShouldPersistTaps="always"
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
@@ -647,12 +649,11 @@ export default function AddJobModal() {
                   }
                 }}
                 onBlur={() => {
-                  // CRITICAL FIX: Increased timeout to allow suggestion tap to register
                   setTimeout(() => {
                     console.log('AddJobModal: Reg input blurred, hiding suggestions');
                     setShowSuggestions(false);
                     setActiveField(null);
-                  }, 300);
+                  }, 500);
                 }}
                 autoCapitalize="characters"
                 placeholder="ABC123"
@@ -1016,7 +1017,8 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 120,
+    flexGrow: 1,
   },
   card: {
     padding: 20,
