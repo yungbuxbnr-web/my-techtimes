@@ -472,7 +472,7 @@ export default function JobRecordsScreen() {
           )}
 
           <FlatList
-            data={jobs}
+            data={[...jobs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())}
             renderItem={renderJob}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}

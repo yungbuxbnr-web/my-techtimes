@@ -13,6 +13,7 @@ import {
   FlatList,
   Image,
   Keyboard,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -25,13 +26,14 @@ import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import * as Haptics from 'expo-haptics';
 import { updateWidgetData } from '@/utils/widgetManager';
-import { AdaptiveKeyboardView } from '@/components/AdaptiveKeyboardView';
-import { useKeyboard } from '@/utils/keyboardManager';
+
 
 interface JobSuggestion {
   wipNumber: string;
   vehicleReg: string;
   aw: number;
+  notes: string;
+  vhcStatus: 'NONE' | 'GREEN' | 'ORANGE' | 'RED';
   lastUsed: string;
   usageCount: number;
 }
@@ -60,13 +62,6 @@ export default function AddJobModal() {
   const [activeField, setActiveField] = useState<'wip' | 'reg' | null>(null);
   const wipInputRef = useRef<TextInput>(null);
   const regInputRef = useRef<TextInput>(null);
-
-  // Use AI-powered keyboard detection
-  const { isKeyboardVisible, keyboardHeight, optimalOffset } = useKeyboard({
-    hasTabBar: false,
-    hasHeader: true,
-    inputPosition: 'bottom',
-  });
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
 
@@ -111,12 +106,16 @@ export default function AddJobModal() {
           if (new Date(job.createdAt) > new Date(existing.lastUsed)) {
             existing.lastUsed = job.createdAt;
             existing.aw = job.aw;
+            existing.notes = job.notes || '';
+            existing.vhcStatus = job.vhcStatus || 'NONE';
           }
         } else {
           suggestionMap.set(key, {
             wipNumber: job.wipNumber,
             vehicleReg: job.vehicleReg.toUpperCase(),
             aw: job.aw,
+            notes: job.notes || '',
+            vhcStatus: job.vhcStatus || 'NONE',
             lastUsed: job.createdAt,
             usageCount: 1,
           });
@@ -170,10 +169,12 @@ export default function AddJobModal() {
     console.log('AddJobModal: User selected suggestion - auto-filling all fields:', suggestion);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    // CRITICAL FIX: Auto-fill WIP, Reg, and AW from the selected suggestion
+    // Auto-fill all fields from the selected suggestion
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
     setAw(suggestion.aw);
+    setNotes(suggestion.notes || '');
+    setVhcStatus(suggestion.vhcStatus || 'NONE');
     
     // Close suggestions and dismiss keyboard
     setShowSuggestions(false);
@@ -183,7 +184,7 @@ export default function AddJobModal() {
     const awMinutes = awToMinutes(suggestion.aw);
     const awTimeFormatted = formatTime(awMinutes);
     toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
-    console.log('AddJobModal: All fields auto-filled from memory - WIP:', suggestion.wipNumber, 'Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw);
+    console.log('AddJobModal: All fields auto-filled from memory - WIP:', suggestion.wipNumber, 'Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw, 'VHC:', suggestion.vhcStatus, 'Notes:', suggestion.notes);
   };
 
   const handleSave = async (saveAnother: boolean = false) => {
@@ -467,13 +468,15 @@ export default function AddJobModal() {
           ),
         }}
       />
-      <View style={[styles.container, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}>
-        <AdaptiveKeyboardView
-          hasTabBar={false}
-          hasHeader={true}
-          inputPosition="bottom"
-          scrollEnabled={true}
+      <KeyboardAvoidingView
+        style={[styles.container, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView
           contentContainerStyle={styles.contentContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
             <View style={styles.formGroup}>
@@ -920,9 +923,10 @@ export default function AddJobModal() {
               </Text>
             </TouchableOpacity>
           </View>
-        </AdaptiveKeyboardView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-        <ProcessNotification
+      <ProcessNotification
           visible={showSaveNotification}
           title={
             saveNotificationType === 'loading'
@@ -1002,7 +1006,6 @@ export default function AddJobModal() {
             is24Hour={true}
           />
         )}
-      </View>
     </>
   );
 }

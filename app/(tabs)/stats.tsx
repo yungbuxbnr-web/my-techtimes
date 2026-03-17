@@ -37,6 +37,7 @@ export default function StatsScreen() {
   const [selectedDayStats, setSelectedDayStats] = useState<any>(null);
   const [selectedWeekStats, setSelectedWeekStats] = useState<any>(null);
   const [selectedMonthStats, setSelectedMonthStats] = useState<any>(null);
+  const [dailyWorkingHours, setDailyWorkingHours] = useState(8.5);
 
   const loadStats = useCallback(async () => {
     try {
@@ -57,6 +58,7 @@ export default function StatsScreen() {
       setAllTimeStats(allTime);
       setRecentJobs(jobs);
       setSchedule(sched);
+      setDailyWorkingHours(sched.dailyWorkingHours || 8.5);
       console.log('StatsScreen: Stats loaded successfully');
     } catch (error) {
       console.error('StatsScreen: Error loading stats:', error);
@@ -68,15 +70,20 @@ export default function StatsScreen() {
       console.log('StatsScreen: Loading stats for day:', date.toLocaleDateString());
       const dateStr = date.toISOString().split('T')[0];
       const jobs = await api.getJobsInRange(dateStr, dateStr);
+      const sched = await api.getSchedule();
       
       const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
       const totalMinutes = totalAw * 5;
+      const totalHours = totalMinutes / 60;
+      const dayHours = sched.dailyWorkingHours || 8.5;
+      const percentage = dayHours > 0 ? (totalHours / dayHours) * 100 : 0;
       
       setSelectedDayStats({
         jobCount: jobs.length,
         totalAw,
         totalMinutes,
-        totalHours: totalMinutes / 60,
+        totalHours,
+        percentage,
       });
     } catch (error) {
       console.error('StatsScreen: Error loading day stats:', error);
@@ -92,15 +99,22 @@ export default function StatsScreen() {
       const startStr = weekStart.toISOString().split('T')[0];
       const endStr = weekEnd.toISOString().split('T')[0];
       const jobs = await api.getJobsInRange(startStr, endStr);
+      const sched = await api.getSchedule();
       
       const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
       const totalMinutes = totalAw * 5;
+      const totalHours = totalMinutes / 60;
+      // Week target = 5 working days × daily hours
+      const weekWorkingDays = (sched.workingDays || [1, 2, 3, 4, 5]).length;
+      const weekTargetHours = weekWorkingDays * (sched.dailyWorkingHours || 8.5);
+      const percentage = weekTargetHours > 0 ? (totalHours / weekTargetHours) * 100 : 0;
       
       setSelectedWeekStats({
         jobCount: jobs.length,
         totalAw,
         totalMinutes,
-        totalHours: totalMinutes / 60,
+        totalHours,
+        percentage,
       });
     } catch (error) {
       console.error('StatsScreen: Error loading week stats:', error);
@@ -111,16 +125,22 @@ export default function StatsScreen() {
     try {
       console.log('StatsScreen: Loading stats for month:', month.toLocaleDateString());
       const monthStr = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
-      const jobs = await api.getJobsForMonth(monthStr);
+      const monthlyStats = await api.getMonthlyStats(monthStr);
       
-      const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
+      const totalAw = monthlyStats.totalAw;
       const totalMinutes = totalAw * 5;
+      const totalHours = totalMinutes / 60;
+      // Use the period's actual available hours for the percentage
+      const percentage = monthlyStats.availableHours > 0
+        ? (monthlyStats.soldHours / monthlyStats.availableHours) * 100
+        : 0;
       
       setSelectedMonthStats({
-        jobCount: jobs.length,
+        jobCount: monthlyStats.totalJobs,
         totalAw,
         totalMinutes,
-        totalHours: totalMinutes / 60,
+        totalHours,
+        percentage,
       });
     } catch (error) {
       console.error('StatsScreen: Error loading month stats:', error);
@@ -459,6 +479,12 @@ export default function StatsScreen() {
                     {selectedDayStats.totalHours.toFixed(2)}h
                   </Text>
                 </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>%</Text>
+                  <Text style={[styles.periodStatValue, { color: getEfficiencyColor(selectedDayStats.percentage) }]}>
+                    {selectedDayStats.percentage.toFixed(0)}%
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -503,6 +529,12 @@ export default function StatsScreen() {
                     {selectedWeekStats.totalHours.toFixed(2)}h
                   </Text>
                 </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>%</Text>
+                  <Text style={[styles.periodStatValue, { color: getEfficiencyColor(selectedWeekStats.percentage) }]}>
+                    {selectedWeekStats.percentage.toFixed(0)}%
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -545,6 +577,12 @@ export default function StatsScreen() {
                   <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>Hours</Text>
                   <Text style={[styles.periodStatValue, { color: theme.primary }]}>
                     {selectedMonthStats.totalHours.toFixed(2)}h
+                  </Text>
+                </View>
+                <View style={styles.periodStat}>
+                  <Text style={[styles.periodStatLabel, { color: theme.textSecondary }]}>%</Text>
+                  <Text style={[styles.periodStatValue, { color: getEfficiencyColor(selectedMonthStats.percentage) }]}>
+                    {selectedMonthStats.percentage.toFixed(0)}%
                   </Text>
                 </View>
               </View>
