@@ -51,8 +51,16 @@ export default function JobRecordsScreen() {
     try {
       console.log('JobRecordsScreen: Fetching jobs for month:', selectedMonth);
       const fetchedJobs = await api.getJobsForMonth(selectedMonth);
-      setJobs(fetchedJobs);
-      console.log('JobRecordsScreen: Loaded', fetchedJobs.length, 'jobs');
+      // Sort descending: newest first. Use id timestamp prefix as tiebreaker
+      // since createdAt can be edited by the user.
+      const sorted = [...fetchedJobs].sort((a, b) => {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (!isNaN(tB - tA) && tB !== tA) return tB - tA;
+        return Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]);
+      });
+      setJobs(sorted);
+      console.log('JobRecordsScreen: Loaded', sorted.length, 'jobs (sorted newest first)');
     } catch (error) {
       console.error('JobRecordsScreen: Error loading jobs:', error);
       Alert.alert('Error', 'Failed to load jobs');
@@ -472,7 +480,14 @@ export default function JobRecordsScreen() {
           )}
 
           <FlatList
-            data={[...jobs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())}
+            data={[...jobs].sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : Number(a.id.split('-')[0]);
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : Number(b.id.split('-')[0]);
+              const diff = timeB - timeA;
+              if (!isNaN(diff) && diff !== 0) return diff;
+              // Fallback: sort by id timestamp prefix (always reliable)
+              return Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]);
+            })}
             renderItem={renderJob}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
