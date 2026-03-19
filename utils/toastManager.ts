@@ -1,6 +1,4 @@
 
-import { EventEmitter } from 'events';
-
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastMessage {
@@ -10,9 +8,24 @@ interface ToastMessage {
   duration?: number;
 }
 
-class ToastManager extends EventEmitter {
+type ToastListener = (toast: ToastMessage) => void;
+
+class ToastManager {
   private toastQueue: ToastMessage[] = [];
   private currentToast: ToastMessage | null = null;
+  private listeners: ToastListener[] = [];
+
+  on(_event: 'show', listener: ToastListener) {
+    this.listeners.push(listener);
+  }
+
+  off(_event: 'show', listener: ToastListener) {
+    this.listeners = this.listeners.filter((l) => l !== listener);
+  }
+
+  private emit(_event: 'show', toast: ToastMessage) {
+    this.listeners.forEach((l) => l(toast));
+  }
 
   show(message: string, type: ToastType = 'info', duration: number = 3000) {
     console.log('ToastManager: Showing toast -', type, ':', message);
@@ -26,7 +39,7 @@ class ToastManager extends EventEmitter {
     if (!this.currentToast) {
       this.currentToast = toast;
       this.emit('show', toast);
-      
+
       setTimeout(() => {
         this.currentToast = null;
         this.processQueue();
@@ -58,7 +71,7 @@ class ToastManager extends EventEmitter {
       if (nextToast) {
         this.currentToast = nextToast;
         this.emit('show', nextToast);
-        
+
         setTimeout(() => {
           this.currentToast = null;
           this.processQueue();

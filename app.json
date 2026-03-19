@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.techtimes.app",
+      "bundleIdentifier": "com.buxrug.techtime",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "TechTimes uses Face ID to securely unlock the app and protect your job data.",
