@@ -270,6 +270,7 @@ function RootLayoutContent() {
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
+        headerBackTitle: 'Back',
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -277,22 +278,22 @@ function RootLayoutContent() {
       <Stack.Screen name="setup" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-job-modal" options={{ presentation: 'modal', headerShown: false }} />
-      <Stack.Screen name="calendar" options={{ headerShown: false }} />
-      <Stack.Screen name="edit-work-schedule" options={{ headerShown: false }} />
-      <Stack.Screen name="work-calendar" options={{ headerShown: false }} />
-      <Stack.Screen name="absence-logger" options={{ headerShown: false }} />
-      <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
-      <Stack.Screen name="target-details" options={{ headerShown: false }} />
-      <Stack.Screen name="efficiency-details" options={{ headerShown: false }} />
-      <Stack.Screen name="about" options={{ headerShown: false }} />
-      <Stack.Screen name="formulas" options={{ headerShown: false }} />
-      <Stack.Screen name="job-stats" options={{ headerShown: false }} />
-      <Stack.Screen name="total-aws-details" options={{ headerShown: false }} />
-      <Stack.Screen name="time-logged-details" options={{ headerShown: false }} />
-      <Stack.Screen name="jobs-done-details" options={{ headerShown: false }} />
-      <Stack.Screen name="hours-remaining-details" options={{ headerShown: false }} />
-      <Stack.Screen name="today-details" options={{ headerShown: false }} />
-      <Stack.Screen name="week-details" options={{ headerShown: false }} />
+      <Stack.Screen name="calendar" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="edit-work-schedule" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="work-calendar" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="absence-logger" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="notification-settings" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="target-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="efficiency-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="about" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="formulas" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="job-stats" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="total-aws-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="time-logged-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="jobs-done-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="hours-remaining-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="today-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="week-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
     </Stack>
   );
 }

@@ -18,6 +18,7 @@ export default function AppBackground({ children, style }: AppBackgroundProps) {
       resizeMode="cover"
     >
       <View 
+        pointerEvents="none"
         style={[
           styles.overlay, 
           { 
