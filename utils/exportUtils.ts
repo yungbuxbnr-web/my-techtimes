@@ -86,88 +86,94 @@ function groupDaysByMonth(days: string[]): Map<string, string[]> {
   return monthGroups;
 }
 
-// Helper to get VHC display HTML as a pill badge
+// ── VHC pill badge ──────────────────────────────────────────────────────────
 function getVhcDisplayHtml(vhcStatus?: string): string {
   if (!vhcStatus || vhcStatus === 'NONE') {
-    return `<span style="display:inline-block;background:#e9ecef;color:#6b7280;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;">N/A</span>`;
+    return `<span style="display:inline-block;background:#e2e8f0;color:#64748b;border-radius:12px;padding:3px 10px;font-size:11px;font-weight:600;">N/A</span>`;
   }
-  const vhcColor = vhcStatus === 'GREEN' ? '#d1fae5' :
-                   vhcStatus === 'ORANGE' ? '#ffedd5' :
-                   vhcStatus === 'RED'    ? '#fee2e2' : '#e9ecef';
-  const textColor = vhcStatus === 'GREEN' ? '#065f46' :
-                    vhcStatus === 'ORANGE' ? '#9a3412' :
-                    vhcStatus === 'RED'    ? '#991b1b' : '#6b7280';
-  return `<span style="display:inline-block;background:${vhcColor};color:${textColor};border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;">${vhcStatus}</span>`;
+  return `<span style="display:inline-block;background:#0f172a;color:#00d4ff;border-radius:12px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:0.3px;">${vhcStatus}</span>`;
 }
 
-// Generate efficiency progress bar HTML
+// ── Efficiency progress bar ──────────────────────────────────────────────────
 function generateEfficiencyBar(soldHours: number, availableHours: number, label: string): string {
   const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
-  const efficiencyColor = efficiency >= 90 ? '#4CAF50' : efficiency >= 75 ? '#FF9800' : '#f44336';
+  const barColor = efficiency >= 90 ? '#00d4ff' : efficiency >= 75 ? '#f59e0b' : '#f87171';
   const barWidth = Math.min(efficiency, 100);
-  
+  const efficiencyDisplay = efficiency.toFixed(1);
+  const soldDisplay = soldHours.toFixed(2);
+  const availableDisplay = availableHours.toFixed(2);
   return `
-    <div style="margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 8px;">
-      <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-        <span style="font-weight: bold; font-size: 12px;">${label}</span>
-        <span style="font-weight: bold; color: ${efficiencyColor}; font-size: 12px;">${efficiency.toFixed(1)}%</span>
+    <div style="margin:10px 0;padding:14px 16px;background:#0f172a;border-radius:6px;border:1px solid #1e293b;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;align-items:center;">
+        <span style="font-weight:700;font-size:11px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;">${label}</span>
+        <span style="font-weight:800;color:${barColor};font-size:13px;font-family:monospace;">${efficiencyDisplay}%</span>
       </div>
-      <div style="width: 100%; height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden;">
-        <div style="width: ${barWidth}%; height: 100%; background: ${efficiencyColor}; transition: width 0.3s;"></div>
+      <div style="width:100%;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;">
+        <div style="width:${barWidth}%;height:100%;background:${barColor};border-radius:3px;"></div>
       </div>
-      <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; color: #666;">
-        <span>Sold: ${soldHours.toFixed(2)}h</span>
-        <span>Available: ${availableHours.toFixed(2)}h</span>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:#475569;font-family:monospace;">
+        <span>SOLD ${soldDisplay}h</span>
+        <span>AVAILABLE ${availableDisplay}h</span>
       </div>
     </div>
   `;
 }
 
-// Shared column header row HTML for the job table
+// ── Table column headers ─────────────────────────────────────────────────────
 function jobTableColHeaders(): string {
   return `
     <thead>
       <tr>
-        <th style="width:10%;">📅 DATE</th>
-        <th style="width:11%;">🔢 WIP NUMBER</th>
-        <th style="width:11%;">🚗 VEHICLE REG</th>
-        <th style="width:10%;">🔵 VHC STATUS</th>
-        <th style="width:46%;">📝 DESCRIPTION</th>
-        <th style="width:12%; text-align:right;">⚙️ AWS</th>
+        <th style="width:9%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">DATE</th>
+        <th style="width:11%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">WIP #</th>
+        <th style="width:11%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">VEHICLE REG</th>
+        <th style="width:10%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">VHC STATUS</th>
+        <th style="width:51%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">DESCRIPTION</th>
+        <th style="width:8%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:right;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">AWS</th>
       </tr>
     </thead>
   `;
 }
 
-// Render a single job row
+// ── Single job row ───────────────────────────────────────────────────────────
 function jobTableRow(job: Job, isEven: boolean): string {
-  const rowBg = isEven ? '#f8f9ff' : '#ffffff';
+  const rowBg = isEven ? '#ffffff' : '#f1f5f9';
   const dateStr = new Date(job.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const description = job.notes ? job.notes.trim() : '';
   return `
-    <tr style="background:${rowBg};">
-      <td style="color:#6b7280;">${dateStr}</td>
-      <td style="font-weight:700;">${job.wipNumber}</td>
-      <td style="font-weight:700;">${job.vehicleReg}</td>
-      <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
-      <td style="color:#374151;">${description}</td>
-      <td style="text-align:right; font-weight:800; color:#1a237e;">${job.aw}</td>
+    <tr style="background:${rowBg};border-bottom:1px solid #e2e8f0;">
+      <td style="padding:9px 10px;font-size:13px;color:#0f172a;vertical-align:top;">${dateStr}</td>
+      <td style="padding:9px 10px;font-size:13px;color:#0f172a;vertical-align:top;font-weight:600;">${job.wipNumber}</td>
+      <td style="padding:9px 10px;font-size:13px;color:#0f172a;vertical-align:top;font-weight:600;">${job.vehicleReg}</td>
+      <td style="padding:9px 10px;font-size:13px;vertical-align:top;">${getVhcDisplayHtml(job.vhcStatus)}</td>
+      <td style="padding:9px 10px;font-size:12px;color:#334155;vertical-align:top;text-align:left;line-height:1.5;">${description}</td>
+      <td style="padding:9px 10px;font-size:14px;color:#0f172a;vertical-align:top;text-align:right;font-weight:700;">${job.aw}</td>
     </tr>
   `;
 }
 
-// Render a month group header row spanning all columns
+// ── Month group header row ───────────────────────────────────────────────────
 function monthGroupHeaderRow(monthName: string): string {
   return `
     <tr>
-      <td colspan="6" style="background:#dbeafe; color:#1e3a8a; font-weight:800; font-size:13px; padding:10px 14px; border-top:2px solid #93c5fd; border-bottom:2px solid #93c5fd;">
+      <td colspan="6" style="background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;padding:10px 16px;border-left:4px solid #00d4ff;">
         📅 ${monthName}
       </td>
     </tr>
   `;
 }
 
-// Generate PDF HTML with enhanced grouping and efficiency bars
+// ── Total summary row ────────────────────────────────────────────────────────
+function totalRow(label: string, jobCount: number, totalAw: number, totalHours: string): string {
+  return `
+    <div style="background:#1a1f2e;padding:12px 20px;margin:12px 0 20px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #00d4ff;">
+      <span style="color:#94a3b8;font-size:11px;font-weight:600;letter-spacing:0.5px;">${label}</span>
+      <span style="color:#00d4ff;font-size:12px;font-weight:800;font-family:monospace;letter-spacing:0.5px;">${jobCount} JOBS &nbsp;·&nbsp; ${totalAw} AWS &nbsp;·&nbsp; ${totalHours}h</span>
+    </div>
+  `;
+}
+
+// ── Main PDF HTML generator ──────────────────────────────────────────────────
 function generatePdfHtml(
   jobs: Job[],
   technicianName: string,
@@ -176,337 +182,188 @@ function generatePdfHtml(
   console.log('ExportUtils: Generating PDF HTML for', options.type, 'export with', jobs.length, 'jobs');
 
   const groupedByDay = groupJobsByDay(jobs);
-  const sortedDays = Array.from(groupedByDay.keys()).sort().reverse(); // newest first
+  const sortedDays = Array.from(groupedByDay.keys()).sort().reverse();
   const overallTotals = calculateTotals(jobs);
-
   const availableHours = options.availableHours || 0;
-  const generatedDate = new Date().toLocaleString('en-GB', {
+
+  const generatedDate = new Date().toLocaleDateString('en-GB', {
     day: '2-digit', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
   });
 
-  // Determine period label for header badge
-  let periodLabel = options.type.toUpperCase() + ' EXPORT';
+  // Period label for header
+  let periodLabel = '';
   if (options.type === 'daily' && options.day) {
     periodLabel = new Date(options.day).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  } else if (options.type === 'weekly') {
+    periodLabel = 'Weekly Report';
+  } else if (options.type === 'monthly') {
+    periodLabel = 'Monthly Report';
+  } else {
+    periodLabel = 'All-Time Report';
   }
 
-  let html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-          font-family: Arial, Helvetica, sans-serif;
-          background: #f0f2f5;
-          color: #1a1a2e;
-          font-size: 12px;
-          line-height: 1.5;
-        }
-        /* ── HEADER ── */
-        .header {
-          background: linear-gradient(135deg, #1a237e 0%, #00695c 100%);
-          color: #ffffff;
-          padding: 32px 40px 24px;
-          position: relative;
-          overflow: hidden;
-        }
-        .header::after {
-          content: '';
-          position: absolute;
-          right: -60px;
-          top: -60px;
-          width: 220px;
-          height: 220px;
-          border-radius: 50%;
-          background: rgba(255,255,255,0.06);
-        }
-        .header-brand {
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 3px;
-          text-transform: uppercase;
-          opacity: 0.75;
-          margin-bottom: 6px;
-        }
-        .header h1 {
-          font-size: 28px;
-          font-weight: 800;
-          letter-spacing: -0.5px;
-          margin-bottom: 4px;
-        }
-        .header .technician {
-          font-size: 15px;
-          opacity: 0.9;
-          margin-bottom: 12px;
-        }
-        .header-meta {
-          display: flex;
-          gap: 24px;
-          margin-top: 16px;
-        }
-        .header-badge {
-          background: rgba(255,255,255,0.15);
-          border: 1px solid rgba(255,255,255,0.25);
-          border-radius: 20px;
-          padding: 4px 14px;
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-        }
-        /* ── ACCENT BAR ── */
-        .accent-bar {
-          height: 4px;
-          background: linear-gradient(90deg, #00bcd4, #1a237e, #00695c, #ff6f00);
-        }
-        /* ── CONTENT WRAPPER ── */
-        .content {
-          padding: 28px 32px;
-        }
-        /* ── SUMMARY CARDS ── */
-        .summary-grid {
-          display: flex;
-          gap: 16px;
-          margin-bottom: 28px;
-        }
-        .summary-card {
-          flex: 1;
-          background: #ffffff;
-          border-radius: 10px;
-          padding: 16px 20px;
-          border-left: 4px solid #1a237e;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-        }
-        .summary-card.green  { border-left-color: #00695c; }
-        .summary-card.amber  { border-left-color: #ff6f00; }
-        .summary-card-label {
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 1.5px;
-          text-transform: uppercase;
-          color: #6b7280;
-          margin-bottom: 6px;
-        }
-        .summary-card-value {
-          font-size: 26px;
-          font-weight: 800;
-          color: #1a237e;
-        }
-        .summary-card.green  .summary-card-value { color: #00695c; }
-        .summary-card.amber  .summary-card-value { color: #ff6f00; }
-        /* ── EFFICIENCY BAR ── */
-        .efficiency-section {
-          background: #ffffff;
-          border-radius: 10px;
-          padding: 18px 20px;
-          margin-bottom: 20px;
-          border-left: 4px solid #00695c;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-        }
-        .efficiency-title {
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 1.5px;
-          text-transform: uppercase;
-          color: #6b7280;
-          margin-bottom: 10px;
-        }
-        /* ── JOB TABLE ── */
-        .job-table {
-          width: 100%;
-          border-collapse: collapse;
-          background: #ffffff;
-          border-radius: 10px;
-          overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-          margin-bottom: 24px;
-        }
-        .job-table thead th {
-          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-          color: #ffffff;
-          padding: 11px 14px;
-          text-align: left;
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.8px;
-          text-transform: uppercase;
-          border-bottom: none;
-        }
-        .job-table td {
-          padding: 10px 14px;
-          border-bottom: 1px solid #e8eaf6;
-          font-size: 12px;
-          color: #374151;
-          vertical-align: top;
-        }
-        .job-table tr:last-child td {
-          border-bottom: none;
-        }
-        /* ── TOTALS ── */
-        .week-total {
-          background: #e0f7fa;
-          padding: 14px 20px;
-          border-radius: 10px;
-          margin: 16px 0;
-          font-weight: 700;
-          border-left: 4px solid #00838f;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .month-total {
-          background: #e8f5e9;
-          padding: 16px 20px;
-          border-radius: 10px;
-          margin: 20px 0;
-          font-weight: 700;
-          border-left: 4px solid #2e7d32;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .total-label { color: #374151; font-size: 13px; }
-        .total-value { color: #1a237e; font-size: 14px; font-weight: 800; }
-        /* ── SECTION DIVIDER ── */
-        .section-divider {
-          height: 1px;
-          background: linear-gradient(90deg, #e8eaf6, transparent);
-          margin: 28px 0;
-        }
-        /* ── FOOTER ── */
-        .footer {
-          background: #1a237e;
-          color: rgba(255,255,255,0.7);
-          text-align: center;
-          padding: 16px 32px;
-          font-size: 11px;
-          margin-top: 40px;
-        }
-        .footer strong { color: #ffffff; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="header-brand">Tech Times</div>
-        <h1>Job Performance Report</h1>
-        <div class="technician">${technicianName}</div>
-        <div class="header-meta">
-          <span class="header-badge">${periodLabel}</span>
-          <span class="header-badge">${generatedDate}</span>
-        </div>
-      </div>
-      <div class="accent-bar"></div>
+  // Report type badge label
+  const reportTypeBadge = options.type === 'daily' ? 'DAILY REPORT'
+    : options.type === 'weekly' ? 'WEEKLY REPORT'
+    : options.type === 'monthly' ? 'MONTHLY REPORT'
+    : 'ALL-TIME REPORT';
 
-      <div class="content">
-        <div class="summary-grid">
-          <div class="summary-card">
-            <div class="summary-card-label">Total Jobs</div>
-            <div class="summary-card-value">${overallTotals.jobCount}</div>
-          </div>
-          <div class="summary-card green">
-            <div class="summary-card-label">Total AWS</div>
-            <div class="summary-card-value">${overallTotals.totalAw}</div>
-          </div>
-          <div class="summary-card amber">
-            <div class="summary-card-label">Total Hours</div>
-            <div class="summary-card-value">${overallTotals.totalHours.toFixed(2)}h</div>
-          </div>
-        </div>
-  `;
+  // Stats bar values
+  const avgAwPerJob = overallTotals.jobCount > 0
+    ? (overallTotals.totalAw / overallTotals.jobCount).toFixed(1)
+    : '0.0';
 
-  // ── DAILY ──
+  // Date range for stats bar
+  const allDates = sortedDays;
+  const dateRangeLabel = allDates.length > 0
+    ? (allDates[allDates.length - 1] === allDates[0]
+        ? new Date(allDates[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        : `${new Date(allDates[allDates.length - 1]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${new Date(allDates[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
+    : '—';
+
+  let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      background: #f0f4f8;
+      color: #0f172a;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    table { border-collapse: collapse; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div style="
+    background: #0a0f1e;
+    background-image: repeating-linear-gradient(45deg, rgba(0,212,255,0.03) 0px, rgba(0,212,255,0.03) 1px, transparent 1px, transparent 10px);
+    color: #ffffff;
+    padding: 28px 32px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  ">
+    <div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#00d4ff;margin-bottom:8px;">TECH TIMES</div>
+      <div style="font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;line-height:1.1;margin-bottom:6px;">${technicianName}</div>
+      <div style="font-size:13px;color:#00d4ff;font-weight:600;letter-spacing:0.5px;">${periodLabel}</div>
+    </div>
+    <div style="border:1px solid #00d4ff;padding:10px 20px;text-align:center;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#00d4ff;">${reportTypeBadge}</div>
+    </div>
+  </div>
+  <div style="height:3px;background:#00d4ff;"></div>
+
+  <!-- STATS BAR -->
+  <div style="background:#1a1f2e;display:flex;">
+    <div style="flex:1;padding:12px 16px;border-left:3px solid #00d4ff;border-right:1px solid #0f172a;">
+      <div style="font-size:22px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${overallTotals.jobCount}</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">TOTAL JOBS</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;border-left:3px solid #06b6d4;border-right:1px solid #0f172a;">
+      <div style="font-size:22px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${overallTotals.totalAw}</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">TOTAL AWS</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;border-left:3px solid #06b6d4;border-right:1px solid #0f172a;">
+      <div style="font-size:22px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${avgAwPerJob}</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">AVG AWS/JOB</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;border-left:3px solid #06b6d4;">
+      <div style="font-size:16px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${dateRangeLabel}</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">DATE RANGE</div>
+    </div>
+  </div>
+  <div style="height:3px;background:#00d4ff;"></div>
+
+  <!-- TABLE SECTION -->
+  <div style="padding:24px 32px;background:#f0f4f8;">
+`;
+
+  // ── DAILY ──────────────────────────────────────────────────────────────────
   if (options.type === 'daily') {
     const dayJobs = (groupedByDay.get(options.day!) || []).slice().sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     const dayTotals = calculateTotals(dayJobs);
     const dayName = new Date(options.day!).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const dayTotalHours = dayTotals.totalHours.toFixed(2);
 
-    html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
-    html += `<tr><td colspan="6" style="background:#dbeafe;color:#1e3a8a;font-weight:800;font-size:13px;padding:10px 14px;border-bottom:2px solid #93c5fd;">📅 ${dayName}</td></tr>`;
-    dayJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+    html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+    html += jobTableColHeaders();
+    html += `<tbody>`;
+    html += `<tr><td colspan="6" style="background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;padding:10px 16px;border-left:4px solid #00d4ff;">📅 ${dayName}</td></tr>`;
+    dayJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
     html += `</tbody></table>`;
-
-    html += `
-      <div class="month-total">
-        <span class="total-label">Day Total — ${dayName}</span>
-        <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AWS &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
-      </div>
-    `;
+    html += totalRow(`DAY TOTAL — ${dayName}`, dayTotals.jobCount, dayTotals.totalAw, dayTotalHours);
     if (availableHours > 0) {
       console.log('ExportUtils: Daily efficiency - soldHours:', dayTotals.totalHours, 'availableHours:', availableHours);
-      html += `<div class="efficiency-section"><div class="efficiency-title">Daily Efficiency</div>${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}</div>`;
+      html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Daily Efficiency</div>${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}</div>`;
     }
 
-  // ── WEEKLY ──
+  // ── WEEKLY ─────────────────────────────────────────────────────────────────
   } else if (options.type === 'weekly') {
     const weekGroups = groupDaysByWeek(sortedDays);
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
       const [startStr, endStr] = weekKey.split('_');
       const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-
       const weekJobs = weekDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
       const weekTotals = calculateTotals(weekJobs);
+      const weekTotalHours = weekTotals.totalHours.toFixed(2);
 
-      html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
-      html += `<tr><td colspan="6" style="background:#dbeafe;color:#1e3a8a;font-weight:800;font-size:13px;padding:10px 14px;border-bottom:2px solid #93c5fd;">📅 Week: ${startDate} – ${endDate}</td></tr>`;
-      weekJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+      html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+      html += jobTableColHeaders();
+      html += `<tbody>`;
+      html += `<tr><td colspan="6" style="background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;padding:10px 16px;border-left:4px solid #00d4ff;">📅 Week: ${startDate} – ${endDate}</td></tr>`;
+      weekJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
       html += `</tbody></table>`;
-
-      html += `
-        <div class="week-total">
-          <span class="total-label">Week Total (${startDate} – ${endDate})</span>
-          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AWS &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
-        </div>
-      `;
+      html += totalRow(`WEEK TOTAL (${startDate} – ${endDate})`, weekTotals.jobCount, weekTotals.totalAw, weekTotalHours);
       if (availableHours > 0) {
         console.log('ExportUtils: Weekly efficiency - soldHours:', weekTotals.totalHours, 'availableHours:', availableHours);
-        html += `<div class="efficiency-section"><div class="efficiency-title">Weekly Efficiency</div>${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}</div>`;
+        html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Weekly Efficiency</div>${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}</div>`;
       }
     });
 
-  // ── MONTHLY ──
+  // ── MONTHLY ────────────────────────────────────────────────────────────────
   } else if (options.type === 'monthly') {
     const monthGroups = groupDaysByMonth(sortedDays);
     Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
       const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       const monthJobs = monthDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
+      const monthTotalHours = monthTotals.totalHours.toFixed(2);
 
-      html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
+      html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+      html += jobTableColHeaders();
+      html += `<tbody>`;
       html += monthGroupHeaderRow(monthName);
-      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
       html += `</tbody></table>`;
-
-      html += `
-        <div class="month-total">
-          <span class="total-label">Month Total — ${monthName}</span>
-          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AWS &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
-        </div>
-      `;
+      html += totalRow(`MONTH TOTAL — ${monthName}`, monthTotals.jobCount, monthTotals.totalAw, monthTotalHours);
       if (availableHours > 0) {
-        html += `<div class="efficiency-section"><div class="efficiency-title">Monthly Efficiency</div>${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}</div>`;
+        html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Monthly Efficiency</div>${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}</div>`;
       }
     });
 
-  // ── ALL ──
+  // ── ALL-TIME ───────────────────────────────────────────────────────────────
   } else {
     const monthGroups = groupDaysByMonth(sortedDays);
     const weekGroups = groupDaysByWeek(sortedDays);
 
-    // One table per month, with month group header row inside
-    html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
+    html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+    html += jobTableColHeaders();
+    html += `<tbody>`;
     Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
       const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       const monthJobs = monthDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
       html += monthGroupHeaderRow(monthName);
-      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
     });
     html += `</tbody></table>`;
 
@@ -515,43 +372,37 @@ function generatePdfHtml(
       const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
-      html += `
-        <div class="month-total">
-          <span class="total-label">Month Total — ${monthName}</span>
-          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AWS &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
-        </div>
-      `;
+      const monthTotalHours = monthTotals.totalHours.toFixed(2);
+      html += totalRow(`MONTH TOTAL — ${monthName}`, monthTotals.jobCount, monthTotals.totalAw, monthTotalHours);
     });
 
     // Weekly summary
-    html += `<div class="section-divider"></div>`;
+    html += `<div style="height:1px;background:#e2e8f0;margin:24px 0;"></div>`;
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
       const [startStr, endStr] = weekKey.split('_');
       const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
       const weekTotals = calculateTotals(weekJobs);
+      const weekTotalHours = weekTotals.totalHours.toFixed(2);
       const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      html += `
-        <div class="week-total">
-          <span class="total-label">Week (${startDate} – ${endDate})</span>
-          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AWS &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
-        </div>
-      `;
+      html += totalRow(`WEEK (${startDate} – ${endDate})`, weekTotals.jobCount, weekTotals.totalAw, weekTotalHours);
     });
 
     if (availableHours > 0) {
-      html += `<div class="section-divider"></div><div class="efficiency-section"><div class="efficiency-title">Overall Efficiency Summary</div>${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}</div>`;
+      html += `<div style="height:1px;background:#e2e8f0;margin:24px 0;"></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Overall Efficiency Summary</div>${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}</div>`;
     }
   }
 
   html += `
-      </div><!-- /content -->
-      <div class="footer">
-        <strong>Tech Times</strong> &nbsp;·&nbsp; Professional job tracking for vehicle technicians &nbsp;·&nbsp; ${generatedDate}
-      </div>
-    </body>
-    </html>
-  `;
+  </div><!-- /table section -->
+
+  <!-- FOOTER -->
+  <div style="background:#0a0f1e;border-top:2px solid #00d4ff;text-align:center;padding:16px 32px;">
+    <span style="font-size:11px;color:#94a3b8;letter-spacing:0.5px;">TECH TIMES &nbsp;•&nbsp; Generated on ${generatedDate} &nbsp;•&nbsp; Confidential</span>
+  </div>
+
+</body>
+</html>`;
 
   return html;
 }
