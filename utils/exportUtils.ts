@@ -86,32 +86,63 @@ function groupDaysByMonth(days: string[]): Map<string, string[]> {
   return monthGroups;
 }
 
+// ── Theme constants ──────────────────────────────────────────────────────────
+const T = {
+  pageBg:        '#0A1628',
+  headerBg:      '#00B4D8',
+  headerText:    '#FFFFFF',
+  rowEven:       '#0D1F3C',
+  rowOdd:        '#0A1628',
+  rowText:       '#E0F4FF',
+  colBorder:     '#1A3A5C',
+  titleText:     '#00E5FF',
+  subtitleText:  '#7EC8E3',
+  sectionBg:     '#00B4D8',
+  notesText:     '#B0D4E8',
+  footerBg:      '#0D1F3C',
+  footerText:    '#7EC8E3',
+  accentCyan:    '#00B4D8',
+  accentGlow:    '#00E5FF',
+  statsBg:       '#0D1F3C',
+  awsColor:      '#00E5FF',
+  barGreen:      '#22C55E',
+  barAmber:      '#F59E0B',
+  barRed:        '#F87171',
+};
+
 // ── VHC pill badge ──────────────────────────────────────────────────────────
 function getVhcDisplayHtml(vhcStatus?: string): string {
   if (!vhcStatus || vhcStatus === 'NONE') {
-    return `<span style="display:inline-block;background:#e2e8f0;color:#64748b;border-radius:12px;padding:3px 10px;font-size:11px;font-weight:600;">N/A</span>`;
+    return `<span style="display:inline-block;background:#1A3A5C;color:#7EC8E3;border-radius:10px;padding:2px 9px;font-size:10px;font-weight:600;letter-spacing:0.3px;">N/A</span>`;
   }
-  return `<span style="display:inline-block;background:#0f172a;color:#00d4ff;border-radius:12px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:0.3px;">${vhcStatus}</span>`;
+  const colors: Record<string, string> = {
+    GREEN:  '#22C55E',
+    ORANGE: '#F59E0B',
+    AMBER:  '#F59E0B',
+    RED:    '#F87171',
+  };
+  const color = colors[vhcStatus.toUpperCase()] || T.accentCyan;
+  return `<span style="display:inline-block;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:10px;padding:2px 9px;font-size:10px;font-weight:700;letter-spacing:0.3px;">${vhcStatus}</span>`;
 }
 
 // ── Efficiency progress bar ──────────────────────────────────────────────────
 function generateEfficiencyBar(soldHours: number, availableHours: number, label: string): string {
   const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
-  const barColor = efficiency >= 90 ? '#00d4ff' : efficiency >= 75 ? '#f59e0b' : '#f87171';
+  const barColor = efficiency >= 90 ? T.barGreen : efficiency >= 75 ? T.barAmber : T.barRed;
   const barWidth = Math.min(efficiency, 100);
   const efficiencyDisplay = efficiency.toFixed(1);
   const soldDisplay = soldHours.toFixed(2);
   const availableDisplay = availableHours.toFixed(2);
   return `
-    <div style="margin:10px 0;padding:14px 16px;background:#0f172a;border-radius:6px;border:1px solid #1e293b;">
+    <div style="margin:10px 0;padding:14px 16px;background:#0D1F3C;border-radius:6px;border:1px solid ${T.colBorder};">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px;align-items:center;">
-        <span style="font-weight:700;font-size:11px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;">${label}</span>
+        <span style="font-weight:700;font-size:11px;color:${T.subtitleText};letter-spacing:1px;text-transform:uppercase;">${label}</span>
         <span style="font-weight:800;color:${barColor};font-size:13px;font-family:monospace;">${efficiencyDisplay}%</span>
       </div>
-      <div style="width:100%;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;">
-        <div style="width:${barWidth}%;height:100%;background:${barColor};border-radius:3px;"></div>
+      <div style="width:100%;height:6px;background:#1A3A5C;border-radius:3px;overflow:hidden;">
+        <div style="width:${barWidth}%;height:100%;background:${barColor};border-radius:3px;box-shadow:0 0 6px ${barColor}88;"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:#475569;font-family:monospace;">
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:${T.subtitleText};font-family:monospace;">
         <span>SOLD ${soldDisplay}h</span>
         <span>AVAILABLE ${availableDisplay}h</span>
       </div>
@@ -119,17 +150,21 @@ function generateEfficiencyBar(soldHours: number, availableHours: number, label:
   `;
 }
 
-// ── Table column headers ─────────────────────────────────────────────────────
+// ── Shared th style ──────────────────────────────────────────────────────────
+const TH = `background:${T.headerBg};color:${T.headerText};padding:9px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-right:1px solid ${T.colBorder};`;
+
+// ── Table column headers (7 cols, Notes last) ────────────────────────────────
 function jobTableColHeaders(): string {
   return `
     <thead>
       <tr>
-        <th style="width:9%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">DATE</th>
-        <th style="width:11%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">WIP #</th>
-        <th style="width:11%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">VEHICLE REG</th>
-        <th style="width:10%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">VHC STATUS</th>
-        <th style="width:51%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">DESCRIPTION</th>
-        <th style="width:8%;background:#0f172a;color:#ffffff;padding:8px 10px;text-align:right;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid #00d4ff;">AWS</th>
+        <th style="${TH}width:8%;">DATE</th>
+        <th style="${TH}width:10%;">WIP #</th>
+        <th style="${TH}width:10%;">VEHICLE REG</th>
+        <th style="${TH}width:9%;">VHC STATUS</th>
+        <th style="${TH}width:22%;">DESCRIPTION</th>
+        <th style="${TH}width:6%;text-align:right;">AWS</th>
+        <th style="${TH}width:35%;border-right:none;">NOTES</th>
       </tr>
     </thead>
   `;
@@ -137,27 +172,30 @@ function jobTableColHeaders(): string {
 
 // ── Single job row ───────────────────────────────────────────────────────────
 function jobTableRow(job: Job, isEven: boolean): string {
-  const rowBg = isEven ? '#ffffff' : '#f1f5f9';
+  const rowBg = isEven ? T.rowEven : T.rowOdd;
   const dateStr = new Date(job.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const description = job.notes ? job.notes.trim() : '';
+  const notesText = job.notes ? job.notes.trim() : '';
+  const TD = `padding:9px 10px;font-size:12px;color:${T.rowText};vertical-align:top;border-right:1px solid ${T.colBorder};`;
   return `
-    <tr style="background:${rowBg};border-bottom:1px solid #e2e8f0;">
-      <td style="padding:9px 10px;font-size:13px;color:#0f172a;vertical-align:top;">${dateStr}</td>
-      <td style="padding:9px 10px;font-size:13px;color:#0f172a;vertical-align:top;font-weight:600;">${job.wipNumber}</td>
-      <td style="padding:9px 10px;font-size:13px;color:#0f172a;vertical-align:top;font-weight:600;">${job.vehicleReg}</td>
-      <td style="padding:9px 10px;font-size:13px;vertical-align:top;">${getVhcDisplayHtml(job.vhcStatus)}</td>
-      <td style="padding:9px 10px;font-size:12px;color:#334155;vertical-align:top;text-align:left;line-height:1.5;">${description}</td>
-      <td style="padding:9px 10px;font-size:14px;color:#0f172a;vertical-align:top;text-align:right;font-weight:700;">${job.aw}</td>
+    <tr style="background:${rowBg};border-bottom:1px solid ${T.colBorder};">
+      <td style="${TD}">${dateStr}</td>
+      <td style="${TD}font-weight:600;">${job.wipNumber}</td>
+      <td style="${TD}font-weight:600;">${job.vehicleReg}</td>
+      <td style="${TD}">${getVhcDisplayHtml(job.vhcStatus)}</td>
+      <td style="${TD}line-height:1.5;">${description}</td>
+      <td style="${TD}font-size:13px;font-weight:700;color:${T.awsColor};text-align:right;">${job.aw}</td>
+      <td style="${TD}color:${T.notesText};line-height:1.5;border-right:none;">${notesText}</td>
     </tr>
   `;
 }
 
-// ── Month group header row ───────────────────────────────────────────────────
+// ── Section group header row (spans 7 cols) ──────────────────────────────────
 function monthGroupHeaderRow(monthName: string): string {
   return `
     <tr>
-      <td colspan="6" style="background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;padding:10px 16px;border-left:4px solid #00d4ff;">
-        📅 ${monthName}
+      <td colspan="7" style="background:${T.sectionBg};color:${T.headerText};font-weight:700;font-size:12px;padding:9px 14px;letter-spacing:0.5px;">
+        ${monthName}
       </td>
     </tr>
   `;
@@ -166,9 +204,9 @@ function monthGroupHeaderRow(monthName: string): string {
 // ── Total summary row ────────────────────────────────────────────────────────
 function totalRow(label: string, jobCount: number, totalAw: number, totalHours: string): string {
   return `
-    <div style="background:#1a1f2e;padding:12px 20px;margin:12px 0 20px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #00d4ff;">
-      <span style="color:#94a3b8;font-size:11px;font-weight:600;letter-spacing:0.5px;">${label}</span>
-      <span style="color:#00d4ff;font-size:12px;font-weight:800;font-family:monospace;letter-spacing:0.5px;">${jobCount} JOBS &nbsp;·&nbsp; ${totalAw} AWS &nbsp;·&nbsp; ${totalHours}h</span>
+    <div style="background:${T.statsBg};padding:11px 18px;margin:10px 0 18px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${T.accentCyan};border:1px solid ${T.colBorder};border-left:3px solid ${T.accentCyan};">
+      <span style="color:${T.subtitleText};font-size:11px;font-weight:600;letter-spacing:0.5px;">${label}</span>
+      <span style="color:${T.accentGlow};font-size:12px;font-weight:800;font-family:monospace;letter-spacing:0.5px;">${jobCount} JOBS &nbsp;·&nbsp; ${totalAw} AWS &nbsp;·&nbsp; ${totalHours}h</span>
     </div>
   `;
 }
@@ -229,8 +267,8 @@ function generatePdfHtml(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
-      background: #f0f4f8;
-      color: #0f172a;
+      background: ${T.pageBg};
+      color: ${T.rowText};
       font-size: 13px;
       line-height: 1.5;
     }
@@ -241,48 +279,47 @@ function generatePdfHtml(
 
   <!-- HEADER -->
   <div style="
-    background: #0a0f1e;
-    background-image: repeating-linear-gradient(45deg, rgba(0,212,255,0.03) 0px, rgba(0,212,255,0.03) 1px, transparent 1px, transparent 10px);
-    color: #ffffff;
+    background: ${T.pageBg};
+    background-image: repeating-linear-gradient(45deg, rgba(0,180,216,0.04) 0px, rgba(0,180,216,0.04) 1px, transparent 1px, transparent 12px);
+    color: ${T.headerText};
     padding: 28px 32px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-bottom: 2px solid ${T.accentCyan};
   ">
     <div>
-      <div style="font-size:9px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#00d4ff;margin-bottom:8px;">TECH TIMES</div>
-      <div style="font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;line-height:1.1;margin-bottom:6px;">${technicianName}</div>
-      <div style="font-size:13px;color:#00d4ff;font-weight:600;letter-spacing:0.5px;">${periodLabel}</div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:${T.accentCyan};margin-bottom:8px;">TECH TIMES</div>
+      <div style="font-size:26px;font-weight:800;color:${T.headerText};letter-spacing:-0.5px;line-height:1.1;margin-bottom:6px;text-shadow:0 0 18px ${T.accentGlow}44;">${technicianName}</div>
+      <div style="font-size:13px;color:${T.subtitleText};font-weight:600;letter-spacing:0.5px;">${periodLabel}</div>
     </div>
-    <div style="border:1px solid #00d4ff;padding:10px 20px;text-align:center;">
-      <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#00d4ff;">${reportTypeBadge}</div>
+    <div style="border:1px solid ${T.accentCyan};padding:10px 20px;text-align:center;background:${T.accentCyan}18;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${T.accentGlow};">${reportTypeBadge}</div>
     </div>
   </div>
-  <div style="height:3px;background:#00d4ff;"></div>
 
   <!-- STATS BAR -->
-  <div style="background:#1a1f2e;display:flex;">
-    <div style="flex:1;padding:12px 16px;border-left:3px solid #00d4ff;border-right:1px solid #0f172a;">
-      <div style="font-size:22px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${overallTotals.jobCount}</div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">TOTAL JOBS</div>
+  <div style="background:${T.statsBg};display:flex;border-bottom:2px solid ${T.accentCyan};">
+    <div style="flex:1;padding:12px 16px;border-left:3px solid ${T.accentCyan};border-right:1px solid ${T.colBorder};">
+      <div style="font-size:22px;font-weight:800;color:${T.accentGlow};font-family:monospace;line-height:1;margin-bottom:4px;">${overallTotals.jobCount}</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${T.subtitleText};">TOTAL JOBS</div>
     </div>
-    <div style="flex:1;padding:12px 16px;border-left:3px solid #06b6d4;border-right:1px solid #0f172a;">
-      <div style="font-size:22px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${overallTotals.totalAw}</div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">TOTAL AWS</div>
+    <div style="flex:1;padding:12px 16px;border-left:1px solid ${T.colBorder};border-right:1px solid ${T.colBorder};">
+      <div style="font-size:22px;font-weight:800;color:${T.accentGlow};font-family:monospace;line-height:1;margin-bottom:4px;">${overallTotals.totalAw}</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${T.subtitleText};">TOTAL AWS</div>
     </div>
-    <div style="flex:1;padding:12px 16px;border-left:3px solid #06b6d4;border-right:1px solid #0f172a;">
-      <div style="font-size:22px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${avgAwPerJob}</div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">AVG AWS/JOB</div>
+    <div style="flex:1;padding:12px 16px;border-left:1px solid ${T.colBorder};border-right:1px solid ${T.colBorder};">
+      <div style="font-size:22px;font-weight:800;color:${T.accentGlow};font-family:monospace;line-height:1;margin-bottom:4px;">${avgAwPerJob}</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${T.subtitleText};">AVG AWS/JOB</div>
     </div>
-    <div style="flex:1;padding:12px 16px;border-left:3px solid #06b6d4;">
-      <div style="font-size:16px;font-weight:800;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:4px;">${dateRangeLabel}</div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">DATE RANGE</div>
+    <div style="flex:1;padding:12px 16px;border-left:1px solid ${T.colBorder};">
+      <div style="font-size:14px;font-weight:800;color:${T.accentGlow};font-family:monospace;line-height:1;margin-bottom:4px;">${dateRangeLabel}</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${T.subtitleText};">DATE RANGE</div>
     </div>
   </div>
-  <div style="height:3px;background:#00d4ff;"></div>
 
   <!-- TABLE SECTION -->
-  <div style="padding:24px 32px;background:#f0f4f8;">
+  <div style="padding:20px 28px;background:${T.pageBg};">
 `;
 
   // ── DAILY ──────────────────────────────────────────────────────────────────
@@ -294,16 +331,16 @@ function generatePdfHtml(
     const dayName = new Date(options.day!).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const dayTotalHours = dayTotals.totalHours.toFixed(2);
 
-    html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+    html += `<table style="width:100%;border-collapse:collapse;background:${T.rowOdd};margin-bottom:16px;border:1px solid ${T.colBorder};">`;
     html += jobTableColHeaders();
     html += `<tbody>`;
-    html += `<tr><td colspan="6" style="background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;padding:10px 16px;border-left:4px solid #00d4ff;">📅 ${dayName}</td></tr>`;
+    html += `<tr><td colspan="7" style="background:${T.sectionBg};color:${T.headerText};font-weight:700;font-size:12px;padding:9px 14px;letter-spacing:0.5px;">${dayName}</td></tr>`;
     dayJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
     html += `</tbody></table>`;
     html += totalRow(`DAY TOTAL — ${dayName}`, dayTotals.jobCount, dayTotals.totalAw, dayTotalHours);
     if (availableHours > 0) {
       console.log('ExportUtils: Daily efficiency - soldHours:', dayTotals.totalHours, 'availableHours:', availableHours);
-      html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Daily Efficiency</div>${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}</div>`;
+      html += `<div style="background:${T.statsBg};border:1px solid ${T.colBorder};border-left:3px solid ${T.accentCyan};padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${T.subtitleText};margin-bottom:8px;">Daily Efficiency</div>${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}</div>`;
     }
 
   // ── WEEKLY ─────────────────────────────────────────────────────────────────
@@ -317,16 +354,16 @@ function generatePdfHtml(
       const weekTotals = calculateTotals(weekJobs);
       const weekTotalHours = weekTotals.totalHours.toFixed(2);
 
-      html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+      html += `<table style="width:100%;border-collapse:collapse;background:${T.rowOdd};margin-bottom:16px;border:1px solid ${T.colBorder};">`;
       html += jobTableColHeaders();
       html += `<tbody>`;
-      html += `<tr><td colspan="6" style="background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;padding:10px 16px;border-left:4px solid #00d4ff;">📅 Week: ${startDate} – ${endDate}</td></tr>`;
+      html += `<tr><td colspan="7" style="background:${T.sectionBg};color:${T.headerText};font-weight:700;font-size:12px;padding:9px 14px;letter-spacing:0.5px;">Week: ${startDate} – ${endDate}</td></tr>`;
       weekJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
       html += `</tbody></table>`;
       html += totalRow(`WEEK TOTAL (${startDate} – ${endDate})`, weekTotals.jobCount, weekTotals.totalAw, weekTotalHours);
       if (availableHours > 0) {
         console.log('ExportUtils: Weekly efficiency - soldHours:', weekTotals.totalHours, 'availableHours:', availableHours);
-        html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Weekly Efficiency</div>${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}</div>`;
+        html += `<div style="background:${T.statsBg};border:1px solid ${T.colBorder};border-left:3px solid ${T.accentCyan};padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${T.subtitleText};margin-bottom:8px;">Weekly Efficiency</div>${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}</div>`;
       }
     });
 
@@ -339,7 +376,7 @@ function generatePdfHtml(
       const monthTotals = calculateTotals(monthJobs);
       const monthTotalHours = monthTotals.totalHours.toFixed(2);
 
-      html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+      html += `<table style="width:100%;border-collapse:collapse;background:${T.rowOdd};margin-bottom:16px;border:1px solid ${T.colBorder};">`;
       html += jobTableColHeaders();
       html += `<tbody>`;
       html += monthGroupHeaderRow(monthName);
@@ -347,7 +384,7 @@ function generatePdfHtml(
       html += `</tbody></table>`;
       html += totalRow(`MONTH TOTAL — ${monthName}`, monthTotals.jobCount, monthTotals.totalAw, monthTotalHours);
       if (availableHours > 0) {
-        html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Monthly Efficiency</div>${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}</div>`;
+        html += `<div style="background:${T.statsBg};border:1px solid ${T.colBorder};border-left:3px solid ${T.accentCyan};padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${T.subtitleText};margin-bottom:8px;">Monthly Efficiency</div>${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}</div>`;
       }
     });
 
@@ -356,7 +393,7 @@ function generatePdfHtml(
     const monthGroups = groupDaysByMonth(sortedDays);
     const weekGroups = groupDaysByWeek(sortedDays);
 
-    html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:20px;">`;
+    html += `<table style="width:100%;border-collapse:collapse;background:${T.rowOdd};margin-bottom:16px;border:1px solid ${T.colBorder};">`;
     html += jobTableColHeaders();
     html += `<tbody>`;
     Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
@@ -377,7 +414,7 @@ function generatePdfHtml(
     });
 
     // Weekly summary
-    html += `<div style="height:1px;background:#e2e8f0;margin:24px 0;"></div>`;
+    html += `<div style="height:1px;background:${T.colBorder};margin:20px 0;"></div>`;
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
       const [startStr, endStr] = weekKey.split('_');
       const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
@@ -389,7 +426,7 @@ function generatePdfHtml(
     });
 
     if (availableHours > 0) {
-      html += `<div style="height:1px;background:#e2e8f0;margin:24px 0;"></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #00d4ff;padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Overall Efficiency Summary</div>${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}</div>`;
+      html += `<div style="height:1px;background:${T.colBorder};margin:20px 0;"></div><div style="background:${T.statsBg};border:1px solid ${T.colBorder};border-left:3px solid ${T.accentCyan};padding:14px 18px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${T.subtitleText};margin-bottom:8px;">Overall Efficiency Summary</div>${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}</div>`;
     }
   }
 
@@ -397,8 +434,8 @@ function generatePdfHtml(
   </div><!-- /table section -->
 
   <!-- FOOTER -->
-  <div style="background:#0a0f1e;border-top:2px solid #00d4ff;text-align:center;padding:16px 32px;">
-    <span style="font-size:11px;color:#94a3b8;letter-spacing:0.5px;">TECH TIMES &nbsp;•&nbsp; Generated on ${generatedDate} &nbsp;•&nbsp; Confidential</span>
+  <div style="background:${T.footerBg};border-top:2px solid ${T.accentCyan};text-align:center;padding:14px 32px;">
+    <span style="font-size:11px;color:${T.footerText};letter-spacing:0.5px;">TECH TIMES &nbsp;•&nbsp; Generated on ${generatedDate} &nbsp;•&nbsp; Confidential</span>
   </div>
 
 </body>
