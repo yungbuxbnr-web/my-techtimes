@@ -316,22 +316,47 @@ export async function exportToPdf(
 ): Promise<void> {
   console.log('ExportUtils: exportToPdf called — type:', options.type, 'jobs:', jobs.length, 'technician:', technicianName, 'availableHours:', options.availableHours);
 
-  const html = generatePdfHtml(jobs, technicianName, options);
+  const safeJobs = Array.isArray(jobs) ? jobs : [];
+  const html = generatePdfHtml(safeJobs, technicianName, options);
 
-  const { uri } = await Print.printToFileAsync({ html });
-  console.log('ExportUtils: PDF generated at', uri);
+  console.log('ExportUtils: Calling printToFileAsync...');
+  const printResult = await Print.printToFileAsync({ html });
+  const sourceUri = printResult.uri;
+  console.log('ExportUtils: PDF generated at', sourceUri);
 
+  // Copy to a named file in the cache directory (works cross-platform on Android).
+  // We use copyAsync instead of moveAsync because moveAsync can fail on Android
+  // when the source and destination are on different storage partitions.
   const fileName = `techtimes_${options.type}_${new Date().toISOString().split('T')[0]}.pdf`;
-  const newUri = FileSystem.documentDirectory + fileName;
-  await FileSystem.moveAsync({ from: uri, to: newUri });
-  console.log('ExportUtils: PDF moved to', newUri);
+  const cacheDir = FileSystem.cacheDirectory ?? '';
+  const destUri = cacheDir + fileName;
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(newUri, {
+  // Only copy if the destination differs from the source (printToFileAsync may
+  // already place the file in cacheDirectory with a random name).
+  if (sourceUri !== destUri) {
+    await FileSystem.copyAsync({ from: sourceUri, to: destUri });
+    console.log('ExportUtils: PDF copied to', destUri);
+    // Clean up the original temp file
+    try {
+      await FileSystem.deleteAsync(sourceUri, { idempotent: true });
+    } catch (cleanupErr) {
+      console.warn('ExportUtils: Could not delete temp PDF file:', cleanupErr);
+    }
+  }
+
+  const sharingAvailable = await Sharing.isAvailableAsync();
+  console.log('ExportUtils: Sharing available:', sharingAvailable);
+
+  if (sharingAvailable) {
+    await Sharing.shareAsync(destUri, {
       mimeType: 'application/pdf',
       dialogTitle: 'Share TechTimes Report',
+      UTI: 'com.adobe.pdf',
     });
     console.log('ExportUtils: PDF shared successfully');
+  } else {
+    console.warn('ExportUtils: Sharing not available on this device');
+    throw new Error('Sharing is not available on this device.');
   }
 }
 
