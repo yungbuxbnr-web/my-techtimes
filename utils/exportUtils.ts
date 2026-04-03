@@ -86,13 +86,18 @@ function groupDaysByMonth(days: string[]): Map<string, string[]> {
   return monthGroups;
 }
 
-// Helper to get VHC display HTML
+// Helper to get VHC display HTML as a pill badge
 function getVhcDisplayHtml(vhcStatus?: string): string {
-  if (!vhcStatus || vhcStatus === 'NONE') return '-';
-  const vhcColor = vhcStatus === 'GREEN' ? '#4CAF50' : 
-                  vhcStatus === 'ORANGE' ? '#FF9800' : 
-                  vhcStatus === 'RED' ? '#f44336' : '#999';
-  return `<span style="color: ${vhcColor}; font-weight: bold;">● ${vhcStatus}</span>`;
+  if (!vhcStatus || vhcStatus === 'NONE') {
+    return `<span style="display:inline-block;background:#e9ecef;color:#6b7280;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;">N/A</span>`;
+  }
+  const vhcColor = vhcStatus === 'GREEN' ? '#d1fae5' :
+                   vhcStatus === 'ORANGE' ? '#ffedd5' :
+                   vhcStatus === 'RED'    ? '#fee2e2' : '#e9ecef';
+  const textColor = vhcStatus === 'GREEN' ? '#065f46' :
+                    vhcStatus === 'ORANGE' ? '#9a3412' :
+                    vhcStatus === 'RED'    ? '#991b1b' : '#6b7280';
+  return `<span style="display:inline-block;background:${vhcColor};color:${textColor};border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;">${vhcStatus}</span>`;
 }
 
 // Generate efficiency progress bar HTML
@@ -118,26 +123,74 @@ function generateEfficiencyBar(soldHours: number, availableHours: number, label:
   `;
 }
 
+// Shared column header row HTML for the job table
+function jobTableColHeaders(): string {
+  return `
+    <thead>
+      <tr>
+        <th style="width:10%;">📅 DATE</th>
+        <th style="width:11%;">🔢 WIP NUMBER</th>
+        <th style="width:11%;">🚗 VEHICLE REG</th>
+        <th style="width:10%;">🔵 VHC STATUS</th>
+        <th style="width:46%;">📝 DESCRIPTION</th>
+        <th style="width:12%; text-align:right;">⚙️ AWS</th>
+      </tr>
+    </thead>
+  `;
+}
+
+// Render a single job row
+function jobTableRow(job: Job, isEven: boolean): string {
+  const rowBg = isEven ? '#f8f9ff' : '#ffffff';
+  const dateStr = new Date(job.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const description = job.notes ? job.notes.trim() : '';
+  return `
+    <tr style="background:${rowBg};">
+      <td style="color:#6b7280;">${dateStr}</td>
+      <td style="font-weight:700;">${job.wipNumber}</td>
+      <td style="font-weight:700;">${job.vehicleReg}</td>
+      <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
+      <td style="color:#374151;">${description}</td>
+      <td style="text-align:right; font-weight:800; color:#1a237e;">${job.aw}</td>
+    </tr>
+  `;
+}
+
+// Render a month group header row spanning all columns
+function monthGroupHeaderRow(monthName: string): string {
+  return `
+    <tr>
+      <td colspan="6" style="background:#dbeafe; color:#1e3a8a; font-weight:800; font-size:13px; padding:10px 14px; border-top:2px solid #93c5fd; border-bottom:2px solid #93c5fd;">
+        📅 ${monthName}
+      </td>
+    </tr>
+  `;
+}
+
 // Generate PDF HTML with enhanced grouping and efficiency bars
 function generatePdfHtml(
   jobs: Job[],
   technicianName: string,
   options: ExportOptions
 ): string {
-  console.log('ExportUtils: Generating PDF HTML for', options.type, 'export');
-  
+  console.log('ExportUtils: Generating PDF HTML for', options.type, 'export with', jobs.length, 'jobs');
+
   const groupedByDay = groupJobsByDay(jobs);
-  const sortedDays = Array.from(groupedByDay.keys()).sort();
+  const sortedDays = Array.from(groupedByDay.keys()).sort().reverse(); // newest first
   const overallTotals = calculateTotals(jobs);
-  
-  // Calculate overall efficiency if available hours provided
-  const targetHours = options.targetHours || 0;
+
   const availableHours = options.availableHours || 0;
   const generatedDate = new Date().toLocaleString('en-GB', {
     day: '2-digit', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
-  
+
+  // Determine period label for header badge
+  let periodLabel = options.type.toUpperCase() + ' EXPORT';
+  if (options.type === 'daily' && options.day) {
+    periodLabel = new Date(options.day).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
   let html = `
     <!DOCTYPE html>
     <html>
@@ -244,17 +297,6 @@ function generatePdfHtml(
         }
         .summary-card.green  .summary-card-value { color: #00695c; }
         .summary-card.amber  .summary-card-value { color: #ff6f00; }
-        /* ── SECTION HEADERS ── */
-        .section-heading {
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 2px;
-          text-transform: uppercase;
-          color: #1a237e;
-          margin: 28px 0 12px;
-          padding-bottom: 6px;
-          border-bottom: 2px solid #e8eaf6;
-        }
         /* ── EFFICIENCY BAR ── */
         .efficiency-section {
           background: #ffffff;
@@ -272,62 +314,38 @@ function generatePdfHtml(
           color: #6b7280;
           margin-bottom: 10px;
         }
-        /* ── DAY SECTION ── */
-        .day-section {
-          margin-bottom: 20px;
-          page-break-inside: avoid;
-          background: #ffffff;
-          border-radius: 10px;
-          overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-        }
-        .day-header {
-          background: #1a237e;
-          color: #ffffff;
-          padding: 10px 16px;
-          font-weight: 700;
-          font-size: 12px;
-          letter-spacing: 0.3px;
-        }
         /* ── JOB TABLE ── */
         .job-table {
           width: 100%;
           border-collapse: collapse;
+          background: #ffffff;
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+          margin-bottom: 24px;
         }
-        .job-table th {
-          background: #e8eaf6;
-          padding: 9px 12px;
+        .job-table thead th {
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+          color: #ffffff;
+          padding: 11px 14px;
           text-align: left;
           font-size: 10px;
           font-weight: 700;
-          letter-spacing: 1px;
+          letter-spacing: 0.8px;
           text-transform: uppercase;
-          color: #3949ab;
-          border-bottom: 2px solid #c5cae9;
+          border-bottom: none;
         }
         .job-table td {
-          padding: 9px 12px;
-          border-bottom: 1px solid #f0f2f5;
+          padding: 10px 14px;
+          border-bottom: 1px solid #e8eaf6;
           font-size: 12px;
           color: #374151;
-        }
-        .job-table tr:nth-child(even) td {
-          background: #f5f5f5;
+          vertical-align: top;
         }
         .job-table tr:last-child td {
           border-bottom: none;
         }
         /* ── TOTALS ── */
-        .day-total {
-          background: #fffde7;
-          padding: 10px 16px;
-          font-weight: 700;
-          font-size: 12px;
-          color: #f57f17;
-          border-top: 2px solid #fff9c4;
-          display: flex;
-          justify-content: space-between;
-        }
         .week-total {
           background: #e0f7fa;
           padding: 14px 20px;
@@ -378,7 +396,7 @@ function generatePdfHtml(
         <h1>Job Performance Report</h1>
         <div class="technician">${technicianName}</div>
         <div class="header-meta">
-          <span class="header-badge">${options.type.toUpperCase()} EXPORT</span>
+          <span class="header-badge">${periodLabel}</span>
           <span class="header-badge">${generatedDate}</span>
         </div>
       </div>
@@ -391,7 +409,7 @@ function generatePdfHtml(
             <div class="summary-card-value">${overallTotals.jobCount}</div>
           </div>
           <div class="summary-card green">
-            <div class="summary-card-label">Total AW</div>
+            <div class="summary-card-label">Total AWS</div>
             <div class="summary-card-value">${overallTotals.totalAw}</div>
           </div>
           <div class="summary-card amber">
@@ -400,42 +418,32 @@ function generatePdfHtml(
           </div>
         </div>
   `;
-  
-  if (options.type === 'daily') {
-    const dayJobs = groupedByDay.get(options.day!) || [];
-    const dayTotals = calculateTotals(dayJobs);
-    const dayDate = new Date(options.day!);
-    const dayName = dayDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-    html += `<div class="section-heading">Daily Jobs</div>`;
+  // ── DAILY ──
+  if (options.type === 'daily') {
+    const dayJobs = (groupedByDay.get(options.day!) || []).slice().sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const dayTotals = calculateTotals(dayJobs);
+    const dayName = new Date(options.day!).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
+    html += `<tr><td colspan="6" style="background:#dbeafe;color:#1e3a8a;font-weight:800;font-size:13px;padding:10px 14px;border-bottom:2px solid #93c5fd;">📅 ${dayName}</td></tr>`;
+    dayJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+    html += `</tbody></table>`;
+
     html += `
-      <div class="day-section">
-        <div class="day-header">${dayName}</div>
-        <table class="job-table">
-          <thead><tr>
-            <th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th>
-          </tr></thead>
-          <tbody>
-    `;
-    dayJobs.forEach(job => {
-      const hours = (job.aw * 5) / 60;
-      html += `<tr>
-        <td>${job.wipNumber}</td><td>${job.vehicleReg}</td>
-        <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
-        <td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td>
-      </tr>`;
-    });
-    html += `</tbody></table>
-        <div class="day-total">
-          <span class="total-label">Day Total</span>
-          <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
-        </div>
+      <div class="month-total">
+        <span class="total-label">Day Total — ${dayName}</span>
+        <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AWS &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
       </div>
     `;
     if (availableHours > 0) {
       console.log('ExportUtils: Daily efficiency - soldHours:', dayTotals.totalHours, 'availableHours:', availableHours);
       html += `<div class="efficiency-section"><div class="efficiency-title">Daily Efficiency</div>${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}</div>`;
     }
+
+  // ── WEEKLY ──
   } else if (options.type === 'weekly') {
     const weekGroups = groupDaysByWeek(sortedDays);
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
@@ -443,38 +451,18 @@ function generatePdfHtml(
       const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-      html += `<div class="section-heading">Week: ${startDate} – ${endDate}</div>`;
-
-      weekDays.sort().forEach(day => {
-        const dayJobs = groupedByDay.get(day)!;
-        const dayTotals = calculateTotals(dayJobs);
-        const dayName = new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-        html += `
-          <div class="day-section">
-            <div class="day-header">${dayName}</div>
-            <table class="job-table">
-              <thead><tr><th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th></tr></thead>
-              <tbody>
-        `;
-        dayJobs.forEach(job => {
-          const hours = (job.aw * 5) / 60;
-          html += `<tr><td>${job.wipNumber}</td><td>${job.vehicleReg}</td><td>${getVhcDisplayHtml(job.vhcStatus)}</td><td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td></tr>`;
-        });
-        html += `</tbody></table>
-            <div class="day-total">
-              <span class="total-label">Day Total</span>
-              <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
-            </div>
-          </div>
-        `;
-      });
-
-      const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
+      const weekJobs = weekDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
       const weekTotals = calculateTotals(weekJobs);
+
+      html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
+      html += `<tr><td colspan="6" style="background:#dbeafe;color:#1e3a8a;font-weight:800;font-size:13px;padding:10px 14px;border-bottom:2px solid #93c5fd;">📅 Week: ${startDate} – ${endDate}</td></tr>`;
+      weekJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+      html += `</tbody></table>`;
+
       html += `
         <div class="week-total">
           <span class="total-label">Week Total (${startDate} – ${endDate})</span>
-          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AW &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
+          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AWS &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
       if (availableHours > 0) {
@@ -482,92 +470,61 @@ function generatePdfHtml(
         html += `<div class="efficiency-section"><div class="efficiency-title">Weekly Efficiency</div>${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}</div>`;
       }
     });
+
+  // ── MONTHLY ──
   } else if (options.type === 'monthly') {
     const monthGroups = groupDaysByMonth(sortedDays);
-    Array.from(monthGroups.entries()).sort().forEach(([month, monthDays]) => {
+    Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
       const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      html += `<div class="section-heading">${monthName}</div>`;
-
-      monthDays.sort().forEach(day => {
-        const dayJobs = groupedByDay.get(day)!;
-        const dayTotals = calculateTotals(dayJobs);
-        const dayName = new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-        html += `
-          <div class="day-section">
-            <div class="day-header">${dayName}</div>
-            <table class="job-table">
-              <thead><tr><th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th></tr></thead>
-              <tbody>
-        `;
-        dayJobs.forEach(job => {
-          const hours = (job.aw * 5) / 60;
-          html += `<tr><td>${job.wipNumber}</td><td>${job.vehicleReg}</td><td>${getVhcDisplayHtml(job.vhcStatus)}</td><td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td></tr>`;
-        });
-        html += `</tbody></table>
-            <div class="day-total">
-              <span class="total-label">Day Total</span>
-              <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
-            </div>
-          </div>
-        `;
-      });
-
-      const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
+      const monthJobs = monthDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
+
+      html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
+      html += monthGroupHeaderRow(monthName);
+      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+      html += `</tbody></table>`;
+
       html += `
         <div class="month-total">
           <span class="total-label">Month Total — ${monthName}</span>
-          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AW &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
+          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AWS &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
       if (availableHours > 0) {
         html += `<div class="efficiency-section"><div class="efficiency-title">Monthly Efficiency</div>${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}</div>`;
       }
     });
+
+  // ── ALL ──
   } else {
-    // All/Entire export
-    const weekGroups = groupDaysByWeek(sortedDays);
     const monthGroups = groupDaysByMonth(sortedDays);
+    const weekGroups = groupDaysByWeek(sortedDays);
 
-    Array.from(monthGroups.entries()).sort().forEach(([month, monthDays]) => {
+    // One table per month, with month group header row inside
+    html += `<table class="job-table">${jobTableColHeaders()}<tbody>`;
+    Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
       const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      html += `<div class="section-heading">${monthName}</div>`;
+      const monthJobs = monthDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
+      html += monthGroupHeaderRow(monthName);
+      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 1); });
+    });
+    html += `</tbody></table>`;
 
-      monthDays.sort().forEach(day => {
-        const dayJobs = groupedByDay.get(day)!;
-        const dayTotals = calculateTotals(dayJobs);
-        const dayName = new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-        html += `
-          <div class="day-section">
-            <div class="day-header">${dayName}</div>
-            <table class="job-table">
-              <thead><tr><th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th></tr></thead>
-              <tbody>
-        `;
-        dayJobs.forEach(job => {
-          const hours = (job.aw * 5) / 60;
-          html += `<tr><td>${job.wipNumber}</td><td>${job.vehicleReg}</td><td>${getVhcDisplayHtml(job.vhcStatus)}</td><td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td></tr>`;
-        });
-        html += `</tbody></table>
-            <div class="day-total">
-              <span class="total-label">Day Total</span>
-              <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
-            </div>
-          </div>
-        `;
-      });
-
+    // Monthly totals
+    Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
+      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
       html += `
         <div class="month-total">
           <span class="total-label">Month Total — ${monthName}</span>
-          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AW &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
+          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AWS &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
     });
 
-    html += `<div class="section-heading">Weekly Summary</div>`;
+    // Weekly summary
+    html += `<div class="section-divider"></div>`;
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
       const [startStr, endStr] = weekKey.split('_');
       const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
@@ -577,7 +534,7 @@ function generatePdfHtml(
       html += `
         <div class="week-total">
           <span class="total-label">Week (${startDate} – ${endDate})</span>
-          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AW &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
+          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AWS &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
     });
@@ -590,7 +547,7 @@ function generatePdfHtml(
   html += `
       </div><!-- /content -->
       <div class="footer">
-        Generated by <strong>Tech Times</strong> &nbsp;·&nbsp; ${generatedDate}
+        <strong>Tech Times</strong> &nbsp;·&nbsp; Professional job tracking for vehicle technicians &nbsp;·&nbsp; ${generatedDate}
       </div>
     </body>
     </html>
