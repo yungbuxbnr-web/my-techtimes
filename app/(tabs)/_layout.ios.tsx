@@ -90,6 +90,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="media"
+        options={{
+          title: 'Media',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="photo.stack.fill"
+              android_material_icon_name="photo_library"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',

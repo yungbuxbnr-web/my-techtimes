@@ -12,7 +12,11 @@ import {
   Alert,
   Platform,
   Modal,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculations';
@@ -21,6 +25,7 @@ import { api, Job } from '@/utils/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { exportToPdf } from '@/utils/exportUtils';
 import { updateWidgetData } from '@/utils/widgetManager';
+import { getJobImages, saveJobImage, saveImageRecord, deleteJobImage, StoredImage } from '@/utils/imageStorage';
 
 export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -32,7 +37,7 @@ export default function JobRecordsScreen() {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [technicianName, setTechnicianName] = useState('Technician');
-  
+
   const [editWip, setEditWip] = useState('');
   const [editReg, setEditReg] = useState('');
   const [editAw, setEditAw] = useState('');
@@ -41,6 +46,10 @@ export default function JobRecordsScreen() {
   const [editDate, setEditDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Image state for edit modal
+  const [editImages, setEditImages] = useState<StoredImage[]>([]);
+  const [editImageLoading, setEditImageLoading] = useState(false);
 
   function getCurrentMonth() {
     const now = new Date();
@@ -51,8 +60,6 @@ export default function JobRecordsScreen() {
     try {
       console.log('JobRecordsScreen: Fetching jobs for month:', selectedMonth);
       const fetchedJobs = await api.getJobsForMonth(selectedMonth);
-      // Sort descending: newest first. Use id timestamp prefix as tiebreaker
-      // since createdAt can be edited by the user.
       const sorted = [...fetchedJobs].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -114,7 +121,7 @@ export default function JobRecordsScreen() {
     console.log('JobRecordsScreen: Selected jobs count:', newSelection.size);
   };
 
-  const handleEditJob = (job: Job) => {
+  const handleEditJob = async (job: Job) => {
     console.log('JobRecordsScreen: User editing job:', job.id);
     setEditingJob(job);
     setEditWip(job.wipNumber);
@@ -123,7 +130,65 @@ export default function JobRecordsScreen() {
     setEditNotes(job.notes || '');
     setEditVhc(job.vhcStatus || 'NONE');
     setEditDate(new Date(job.createdAt));
+    setEditImages([]);
     setShowEditModal(true);
+
+    try {
+      const images = await getJobImages(job.id);
+      console.log('JobRecordsScreen: Loaded', images.length, 'images for job:', job.id);
+      setEditImages(images);
+    } catch (e) {
+      console.error('JobRecordsScreen: Error loading job images:', e);
+    }
+  };
+
+  const handleAddEditImage = async (source: 'camera' | 'gallery') => {
+    if (!editingJob) return;
+    console.log('JobRecordsScreen: User adding image to job from', source, 'jobId:', editingJob.id);
+    setEditImageLoading(true);
+    try {
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('JobRecordsScreen: Image selected, saving to storage...');
+        const stored = await saveJobImage(editingJob.id, result.assets[0].uri);
+        await saveImageRecord(stored);
+        console.log('JobRecordsScreen: Image saved, updating job imageUri:', stored.uri);
+        await api.updateJob(editingJob.id, { imageUri: stored.uri });
+        const updated = await getJobImages(editingJob.id);
+        setEditImages(updated);
+      }
+    } catch (e) {
+      console.error('JobRecordsScreen: Error adding image to job:', e);
+      Alert.alert('Error', 'Failed to add image');
+    } finally {
+      setEditImageLoading(false);
+    }
+  };
+
+  const handleDeleteEditImage = async (imageId: string) => {
+    Alert.alert('Delete Photo', 'Remove this photo from the job?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          console.log('JobRecordsScreen: User confirmed delete image:', imageId);
+          try {
+            await deleteJobImage(imageId);
+            if (editingJob) {
+              const updated = await getJobImages(editingJob.id);
+              setEditImages(updated);
+              console.log('JobRecordsScreen: Image deleted, remaining:', updated.length);
+            }
+          } catch (e) {
+            console.error('JobRecordsScreen: Error deleting image:', e);
+          }
+        },
+      },
+    ]);
   };
 
   const handleSaveEdit = async () => {
@@ -141,7 +206,7 @@ export default function JobRecordsScreen() {
     }
 
     try {
-      console.log('JobRecordsScreen: Saving job edit');
+      console.log('JobRecordsScreen: Saving job edit for:', editingJob.id);
       await api.updateJob(editingJob.id, {
         wipNumber: editWip,
         vehicleReg: editReg.toUpperCase(),
@@ -150,11 +215,10 @@ export default function JobRecordsScreen() {
         vhcStatus: editVhc,
         createdAt: editDate.toISOString(),
       });
-      
-      // Update widget data
+
       console.log('JobRecordsScreen: Updating widget data after edit');
       await updateWidgetData();
-      
+
       setShowEditModal(false);
       await loadJobs();
       Alert.alert('Success', 'Job updated successfully');
@@ -177,11 +241,10 @@ export default function JobRecordsScreen() {
             console.log('JobRecordsScreen: User confirmed delete job:', jobId);
             try {
               await api.deleteJob(jobId);
-              
-              // Update widget data
+
               console.log('JobRecordsScreen: Updating widget data after delete');
               await updateWidgetData();
-              
+
               await loadJobs();
             } catch (error) {
               console.error('JobRecordsScreen: Error deleting job:', error);
@@ -252,6 +315,7 @@ export default function JobRecordsScreen() {
     const date = new Date(item.createdAt);
     const vhcColor = getVhcColor(item.vhcStatus || 'NONE');
     const isSelected = selectedJobs.has(item.id);
+    const hasPhotos = !!item.imageUri;
 
     return (
       <TouchableOpacity
@@ -275,7 +339,7 @@ export default function JobRecordsScreen() {
         {item.vhcStatus && item.vhcStatus !== 'NONE' && (
           <View style={[styles.vhcStrip, { backgroundColor: vhcColor }]} />
         )}
-        
+
         <View style={styles.jobContent}>
           <View style={styles.jobHeader}>
             <View style={styles.jobInfo}>
@@ -348,6 +412,18 @@ export default function JobRecordsScreen() {
             <View style={styles.notesSection}>
               <Text style={[styles.notesLabel, { color: theme.textSecondary }]}>Notes:</Text>
               <Text style={[styles.notesText, { color: theme.text }]}>{item.notes}</Text>
+            </View>
+          )}
+
+          {hasPhotos && (
+            <View style={styles.photoBadgeRow}>
+              <IconSymbol
+                ios_icon_name="photo.fill"
+                android_material_icon_name="image"
+                size={14}
+                color={theme.primary}
+              />
+              <Text style={[styles.photoBadgeText, { color: theme.primary }]}>Has photos</Text>
             </View>
           )}
         </View>
@@ -485,7 +561,6 @@ export default function JobRecordsScreen() {
               const timeB = b.createdAt ? new Date(b.createdAt).getTime() : Number(b.id.split('-')[0]);
               const diff = timeB - timeA;
               if (!isNaN(diff) && diff !== 0) return diff;
-              // Fallback: sort by id timestamp prefix (always reliable)
               return Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]);
             })}
             renderItem={renderJob}
@@ -530,7 +605,12 @@ export default function JobRecordsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.modalContent}>
+              <ScrollView
+                style={styles.modalScrollView}
+                contentContainerStyle={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
                 <Text style={[styles.label, { color: theme.text }]}>WIP Number</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
@@ -568,7 +648,10 @@ export default function JobRecordsScreen() {
                         styles.vhcOption,
                         { backgroundColor: editVhc === vhc ? getVhcColor(vhc) || theme.primary : theme.background },
                       ]}
-                      onPress={() => setEditVhc(vhc)}
+                      onPress={() => {
+                        console.log('JobRecordsScreen: User changed VHC status to:', vhc);
+                        setEditVhc(vhc);
+                      }}
                     >
                       <Text style={[styles.vhcOptionText, { color: editVhc === vhc ? '#ffffff' : theme.text }]}>
                         {vhc}
@@ -581,7 +664,10 @@ export default function JobRecordsScreen() {
                 <View style={styles.dateTimeRow}>
                   <TouchableOpacity
                     style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => {
+                      console.log('JobRecordsScreen: User tapped date picker in edit modal');
+                      setShowDatePicker(true);
+                    }}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.text }]}>
                       {editDate.toLocaleDateString('en-GB')}
@@ -589,7 +675,10 @@ export default function JobRecordsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => setShowTimePicker(true)}
+                    onPress={() => {
+                      console.log('JobRecordsScreen: User tapped time picker in edit modal');
+                      setShowTimePicker(true);
+                    }}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.text }]}>
                       {editDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
@@ -631,13 +720,75 @@ export default function JobRecordsScreen() {
                   placeholderTextColor={theme.textSecondary}
                 />
 
+                {/* Job Photos Section */}
+                <Text style={[styles.label, { color: theme.text }]}>Job Photos</Text>
+
+                {editImages.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.thumbnailScroll}
+                    contentContainerStyle={styles.thumbnailScrollContent}
+                  >
+                    {editImages.map((img) => (
+                      <View key={img.id} style={styles.thumbnailWrapper}>
+                        <ExpoImage
+                          source={{ uri: img.uri }}
+                          style={styles.thumbnail}
+                          contentFit="cover"
+                        />
+                        <TouchableOpacity
+                          style={styles.thumbnailDeleteBtn}
+                          onPress={() => {
+                            console.log('JobRecordsScreen: User tapped delete image button, imageId:', img.id);
+                            handleDeleteEditImage(img.id);
+                          }}
+                        >
+                          <Text style={styles.thumbnailDeleteText}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                {editImageLoading ? (
+                  <View style={styles.imageLoadingRow}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    <Text style={[styles.imageLoadingText, { color: theme.textSecondary }]}>Saving image...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.imageButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.imagePickerButton, { backgroundColor: theme.primary }]}
+                      onPress={() => {
+                        console.log('JobRecordsScreen: User tapped Camera button in edit modal');
+                        handleAddEditImage('camera');
+                      }}
+                    >
+                      <Text style={styles.imagePickerButtonText}>📷 Camera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.imagePickerButton, { backgroundColor: theme.secondary }]}
+                      onPress={() => {
+                        console.log('JobRecordsScreen: User tapped Gallery button in edit modal');
+                        handleAddEditImage('gallery');
+                      }}
+                    >
+                      <Text style={styles.imagePickerButtonText}>🖼 Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 <TouchableOpacity
                   style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                  onPress={handleSaveEdit}
+                  onPress={() => {
+                    console.log('JobRecordsScreen: User tapped Save Changes button');
+                    handleSaveEdit();
+                  }}
                 >
                   <Text style={styles.saveButtonText}>Save Changes</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -888,6 +1039,16 @@ const styles = StyleSheet.create({
   notesText: {
     fontSize: 13,
   },
+  photoBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+  },
+  photoBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -919,8 +1080,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
   },
+  modalScrollView: {
+    flex: 1,
+  },
   modalContent: {
     padding: 20,
+    paddingBottom: 40,
   },
   label: {
     fontSize: 14,
@@ -971,6 +1136,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dateTimeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  thumbnailScroll: {
+    marginBottom: 12,
+  },
+  thumbnailScrollContent: {
+    gap: 10,
+    paddingVertical: 4,
+  },
+  thumbnailWrapper: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+  },
+  thumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  thumbnailDeleteBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#f44336',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbnailDeleteText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  imageLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  imageLoadingText: {
+    fontSize: 14,
+  },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 4,
+  },
+  imagePickerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
+  },
+  imagePickerButtonText: {
+    color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
   },

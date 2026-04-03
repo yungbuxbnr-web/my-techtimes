@@ -11,11 +11,11 @@ import {
   Platform,
   Modal,
   FlatList,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   StatusBar,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validateAW } from '@/utils/jobCalculations';
@@ -27,6 +27,7 @@ import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import * as Haptics from 'expo-haptics';
 import { updateWidgetData } from '@/utils/widgetManager';
+import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 
 
 interface JobSuggestion {
@@ -225,8 +226,22 @@ export default function AddJobModal() {
       };
       
       console.log('AddJobModal: Saving job:', jobData);
-      await api.createJob(jobData);
-      
+      const newJob = await api.createJob(jobData);
+      console.log('AddJobModal: Job created with id:', newJob.id);
+
+      // If a job card photo was picked, compress + store it and update the job's imageUri
+      if (jobCardImageUri && newJob.id) {
+        try {
+          console.log('AddJobModal: Saving job image to storage for job:', newJob.id);
+          const storedImage = await saveJobImage(newJob.id, jobCardImageUri);
+          await saveImageRecord(storedImage);
+          console.log('AddJobModal: Image stored, updating job imageUri to:', storedImage.uri);
+          await api.updateJob(newJob.id, { imageUri: storedImage.uri });
+        } catch (imgError) {
+          console.error('AddJobModal: Error storing job image (non-fatal):', imgError);
+        }
+      }
+
       // Reload suggestions immediately after saving for live updates
       console.log('AddJobModal: Reloading suggestions for live updates');
       await loadJobsForSuggestions();
@@ -849,10 +864,10 @@ export default function AddJobModal() {
               <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Job Card Photo (Optional)</Text>
               {jobCardImageUri ? (
                 <View style={styles.imagePreviewContainer}>
-                  <Image
+                  <ExpoImage
                     source={{ uri: jobCardImageUri }}
                     style={styles.imagePreview}
-                    resizeMode="cover"
+                    contentFit="cover"
                   />
                   <TouchableOpacity
                     style={[styles.removeImageButton, { backgroundColor: '#f44336' }]}

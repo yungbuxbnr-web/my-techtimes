@@ -1,6 +1,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { deleteAllJobImages } from './imageStorage';
 
 // Storage keys
 const KEYS = {
@@ -222,7 +223,12 @@ export const offlineStorage = {
       throw new Error('Job not found');
     }
     await setItem(KEYS.JOBS, filtered);
-    console.log('OfflineStorage: Job deleted');
+    console.log('OfflineStorage: Job deleted, cleaning up images for job:', id);
+    try {
+      await deleteAllJobImages(id);
+    } catch (error) {
+      console.error('OfflineStorage: Error cleaning up images for job:', id, error);
+    }
     return { success: true };
   },
 

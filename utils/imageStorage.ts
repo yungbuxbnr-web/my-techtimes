@@ -1,0 +1,171 @@
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  documentDirectory,
+  getInfoAsync,
+  makeDirectoryAsync,
+  copyAsync,
+  deleteAsync,
+} from 'expo-file-system';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+
+const IMAGE_DIR = (documentDirectory ?? '') + 'job_images/';
+const IMAGES_KEY = '@techtimes_images';
+
+export interface StoredImage {
+  id: string;
+  jobId: string;
+  uri: string;
+  fileName: string;
+  width: number;
+  height: number;
+  fileSizeBytes: number;
+  createdAt: string;
+}
+
+export async function ensureImageDir(): Promise<void> {
+  try {
+    const dirInfo = await getInfoAsync(IMAGE_DIR);
+    if (!dirInfo.exists) {
+      console.log('ImageStorage: Creating image directory:', IMAGE_DIR);
+      await makeDirectoryAsync(IMAGE_DIR, { intermediates: true });
+    }
+  } catch (error) {
+    console.error('ImageStorage: Error ensuring image directory:', error);
+    throw error;
+  }
+}
+
+export async function saveJobImage(jobId: string, sourceUri: string): Promise<StoredImage> {
+  try {
+    console.log('ImageStorage: Saving job image for jobId:', jobId, 'sourceUri:', sourceUri);
+    await ensureImageDir();
+
+    const manipResult = await manipulateAsync(
+      sourceUri,
+      [{ resize: { width: 1920 } }],
+      { compress: 0.82, format: SaveFormat.JPEG }
+    );
+
+    const fileName = `job_${jobId}_${Date.now()}.jpg`;
+    const destUri = IMAGE_DIR + fileName;
+
+    await copyAsync({ from: manipResult.uri, to: destUri });
+
+    const fileInfo = await getInfoAsync(destUri);
+    const fileSizeBytes = fileInfo.exists ? ((fileInfo as any).size ?? 0) : 0;
+
+    const storedImage: StoredImage = {
+      id: Date.now().toString(),
+      jobId,
+      uri: destUri,
+      fileName,
+      width: manipResult.width,
+      height: manipResult.height,
+      fileSizeBytes,
+      createdAt: new Date().toISOString(),
+    };
+
+    console.log('ImageStorage: Image saved successfully:', storedImage.id, 'size:', fileSizeBytes);
+    return storedImage;
+  } catch (error) {
+    console.error('ImageStorage: Error saving job image:', error);
+    throw error;
+  }
+}
+
+export async function getJobImages(jobId: string): Promise<StoredImage[]> {
+  try {
+    console.log('ImageStorage: Getting images for jobId:', jobId);
+    const all = await getAllImages();
+    return all.filter(img => img.jobId === jobId);
+  } catch (error) {
+    console.error('ImageStorage: Error getting job images:', error);
+    return [];
+  }
+}
+
+export async function getAllImages(): Promise<StoredImage[]> {
+  try {
+    console.log('ImageStorage: Getting all images');
+    const raw = await AsyncStorage.getItem(IMAGES_KEY);
+    if (!raw) return [];
+    const parsed: StoredImage[] = JSON.parse(raw);
+    return parsed.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  } catch (error) {
+    console.error('ImageStorage: Error getting all images:', error);
+    return [];
+  }
+}
+
+export async function saveImageRecord(image: StoredImage): Promise<void> {
+  try {
+    console.log('ImageStorage: Saving image record:', image.id);
+    const raw = await AsyncStorage.getItem(IMAGES_KEY);
+    const existing: StoredImage[] = raw ? JSON.parse(raw) : [];
+    existing.push(image);
+    await AsyncStorage.setItem(IMAGES_KEY, JSON.stringify(existing));
+    console.log('ImageStorage: Image record saved, total records:', existing.length);
+  } catch (error) {
+    console.error('ImageStorage: Error saving image record:', error);
+    throw error;
+  }
+}
+
+export async function deleteJobImage(imageId: string): Promise<void> {
+  try {
+    console.log('ImageStorage: Deleting image:', imageId);
+    const raw = await AsyncStorage.getItem(IMAGES_KEY);
+    const existing: StoredImage[] = raw ? JSON.parse(raw) : [];
+    const target = existing.find(img => img.id === imageId);
+    if (target) {
+      await deleteAsync(target.uri, { idempotent: true });
+      console.log('ImageStorage: File deleted:', target.uri);
+    }
+    const updated = existing.filter(img => img.id !== imageId);
+    await AsyncStorage.setItem(IMAGES_KEY, JSON.stringify(updated));
+    console.log('ImageStorage: Image record removed');
+  } catch (error) {
+    console.error('ImageStorage: Error deleting job image:', error);
+    throw error;
+  }
+}
+
+export async function deleteAllJobImages(jobId: string): Promise<void> {
+  try {
+    console.log('ImageStorage: Deleting all images for jobId:', jobId);
+    const images = await getJobImages(jobId);
+    for (const img of images) {
+      await deleteAsync(img.uri, { idempotent: true });
+      console.log('ImageStorage: Deleted file:', img.uri);
+    }
+    const raw = await AsyncStorage.getItem(IMAGES_KEY);
+    const existing: StoredImage[] = raw ? JSON.parse(raw) : [];
+    const updated = existing.filter(img => img.jobId !== jobId);
+    await AsyncStorage.setItem(IMAGES_KEY, JSON.stringify(updated));
+    console.log('ImageStorage: All images deleted for jobId:', jobId, 'count:', images.length);
+  } catch (error) {
+    console.error('ImageStorage: Error deleting all job images:', error);
+    throw error;
+  }
+}
+
+export async function getImageStorageStats(): Promise<{
+  count: number;
+  totalSizeBytes: number;
+  totalSizeMB: string;
+}> {
+  try {
+    console.log('ImageStorage: Getting storage stats');
+    const all = await getAllImages();
+    const totalSizeBytes = all.reduce((sum, img) => sum + img.fileSizeBytes, 0);
+    const totalSizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(2);
+    console.log('ImageStorage: Stats — count:', all.length, 'totalSizeMB:', totalSizeMB);
+    return { count: all.length, totalSizeBytes, totalSizeMB };
+  } catch (error) {
+    console.error('ImageStorage: Error getting storage stats:', error);
+    return { count: 0, totalSizeBytes: 0, totalSizeMB: '0.00' };
+  }
+}
