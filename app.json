@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Tech Times",
-    "slug": "tech-times",
+    "slug": "tech-times-job-tracker-advvxi",
     "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/e941e17d-7723-49a6-b54a-ae47846098d7.jpeg",
@@ -36,7 +36,7 @@
         "backgroundColor": "#ff6b35"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.brcarszw.techtimes",
+      "package": "com.buxrug.techtime",
       "permissions": [
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",
@@ -81,7 +81,7 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://ww55g48qp2uq35abmhy5y726f5u5u5zz.app.specular.dev"
+      "backendUrl": "https://prod-proj-mdcxabuvb9nfudhtdqcvv-liwg5h36mq-ey.a.run.app"
     }
   },
   "scheme": "Tech Times"
