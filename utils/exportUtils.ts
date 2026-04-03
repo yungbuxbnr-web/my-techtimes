@@ -14,75 +14,51 @@ export interface ExportOptions {
   availableHours?: number;
 }
 
-// Group jobs by day
+// ── Grouping helpers ──────────────────────────────────────────────────────────
+
 function groupJobsByDay(jobs: Job[]): Map<string, Job[]> {
   const grouped = new Map<string, Job[]>();
-  
   jobs.forEach(job => {
     const day = job.createdAt.split('T')[0];
-    if (!grouped.has(day)) {
-      grouped.set(day, []);
-    }
+    if (!grouped.has(day)) grouped.set(day, []);
     grouped.get(day)!.push(job);
   });
-  
   return grouped;
 }
 
-// Calculate totals for a group of jobs
 function calculateTotals(jobs: Job[]) {
   const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
   const totalHours = (totalAw * 5) / 60;
   return { totalAw, totalHours, jobCount: jobs.length };
 }
 
-// Get week number from date
-function getWeekNumber(date: Date): number {
-  const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-  const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
-  return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-}
-
-// Get week range (Sunday to Saturday)
 function getWeekRange(date: Date): { start: Date; end: Date } {
   const day = date.getDay();
   const sunday = new Date(date);
-  sunday.setDate(date.getDate() - day); // Go back to Sunday
+  sunday.setDate(date.getDate() - day);
   const saturday = new Date(sunday);
-  saturday.setDate(sunday.getDate() + 6); // Saturday is 6 days after Sunday
+  saturday.setDate(sunday.getDate() + 6);
   return { start: sunday, end: saturday };
 }
 
-// Group days by week (Sunday to Saturday)
 function groupDaysByWeek(days: string[]): Map<string, string[]> {
   const weekGroups = new Map<string, string[]>();
-  
   days.forEach(day => {
-    const date = new Date(day);
-    const weekRange = getWeekRange(new Date(date));
+    const weekRange = getWeekRange(new Date(day));
     const weekKey = `${weekRange.start.toISOString().split('T')[0]}_${weekRange.end.toISOString().split('T')[0]}`;
-    
-    if (!weekGroups.has(weekKey)) {
-      weekGroups.set(weekKey, []);
-    }
+    if (!weekGroups.has(weekKey)) weekGroups.set(weekKey, []);
     weekGroups.get(weekKey)!.push(day);
   });
-  
   return weekGroups;
 }
 
-// Group days by month
 function groupDaysByMonth(days: string[]): Map<string, string[]> {
   const monthGroups = new Map<string, string[]>();
-  
   days.forEach(day => {
-    const month = day.substring(0, 7); // YYYY-MM
-    if (!monthGroups.has(month)) {
-      monthGroups.set(month, []);
-    }
+    const month = day.substring(0, 7);
+    if (!monthGroups.has(month)) monthGroups.set(month, []);
     monthGroups.get(month)!.push(day);
   });
-  
   return monthGroups;
 }
 
@@ -166,8 +142,7 @@ function jobTableColHeaders(): string {
         <th style="${TH}width:6%;text-align:right;">AWS</th>
         <th style="${TH}width:35%;border-right:none;">NOTES</th>
       </tr>
-    </thead>
-  `;
+    </thead>`;
 }
 
 // ── Single job row ───────────────────────────────────────────────────────────
@@ -197,12 +172,10 @@ function monthGroupHeaderRow(monthName: string): string {
       <td colspan="7" style="background:${T.sectionBg};color:${T.headerText};font-weight:700;font-size:12px;padding:9px 14px;letter-spacing:0.5px;">
         ${monthName}
       </td>
-    </tr>
-  `;
+    </tr>`;
 }
 
-// ── Total summary row ────────────────────────────────────────────────────────
-function totalRow(label: string, jobCount: number, totalAw: number, totalHours: string): string {
+function summaryRow(label: string, jobCount: number, totalAw: number, totalHours: string): string {
   return `
     <div style="background:${T.statsBg};padding:11px 18px;margin:10px 0 18px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${T.accentCyan};border:1px solid ${T.colBorder};border-left:3px solid ${T.accentCyan};">
       <span style="color:${T.subtitleText};font-size:11px;font-weight:600;letter-spacing:0.5px;">${label}</span>
@@ -211,7 +184,17 @@ function totalRow(label: string, jobCount: number, totalAw: number, totalHours: 
   `;
 }
 
-// ── Main PDF HTML generator ──────────────────────────────────────────────────
+function statCard(value: string, label: string, isLast: boolean): string {
+  const divider = isLast ? '' : `border-right:1px solid rgba(255,255,255,0.15);`;
+  return `
+    <div style="flex:1;padding:16px 24px;${divider}">
+      <div style="font-size:24px;font-weight:700;color:#00d4ff;font-family:monospace;line-height:1;margin-bottom:5px;">${value}</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#94c8e8;">${label}</div>
+    </div>`;
+}
+
+// ── Main PDF HTML generator ───────────────────────────────────────────────────
+
 function generatePdfHtml(
   jobs: Job[],
   technicianName: string,
@@ -222,16 +205,16 @@ function generatePdfHtml(
   const groupedByDay = groupJobsByDay(jobs);
   const sortedDays = Array.from(groupedByDay.keys()).sort().reverse();
   const overallTotals = calculateTotals(jobs);
-  const availableHours = options.availableHours || 0;
 
   const generatedDate = new Date().toLocaleDateString('en-GB', {
-    day: '2-digit', month: 'long', year: 'numeric',
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   });
 
-  // Period label for header
   let periodLabel = '';
   if (options.type === 'daily' && options.day) {
-    periodLabel = new Date(options.day).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    periodLabel = new Date(options.day).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
   } else if (options.type === 'weekly') {
     periodLabel = 'Weekly Report';
   } else if (options.type === 'monthly') {
@@ -240,23 +223,20 @@ function generatePdfHtml(
     periodLabel = 'All-Time Report';
   }
 
-  // Report type badge label
-  const reportTypeBadge = options.type === 'daily' ? 'DAILY REPORT'
+  const reportTypeBadge =
+    options.type === 'daily' ? 'DAILY REPORT'
     : options.type === 'weekly' ? 'WEEKLY REPORT'
     : options.type === 'monthly' ? 'MONTHLY REPORT'
     : 'ALL-TIME REPORT';
 
-  // Stats bar values
   const avgAwPerJob = overallTotals.jobCount > 0
     ? (overallTotals.totalAw / overallTotals.jobCount).toFixed(1)
     : '0.0';
 
-  // Date range for stats bar
-  const allDates = sortedDays;
-  const dateRangeLabel = allDates.length > 0
-    ? (allDates[allDates.length - 1] === allDates[0]
-        ? new Date(allDates[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-        : `${new Date(allDates[allDates.length - 1]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${new Date(allDates[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
+  const dateRangeLabel = sortedDays.length > 0
+    ? (sortedDays[sortedDays.length - 1] === sortedDays[0]
+        ? new Date(sortedDays[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        : `${new Date(sortedDays[sortedDays.length - 1]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${new Date(sortedDays[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
     : '—';
 
   let html = `<!DOCTYPE html>
@@ -328,7 +308,9 @@ function generatePdfHtml(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     const dayTotals = calculateTotals(dayJobs);
-    const dayName = new Date(options.day!).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const dayName = new Date(options.day!).toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
     const dayTotalHours = dayTotals.totalHours.toFixed(2);
 
     html += `<table style="width:100%;border-collapse:collapse;background:${T.rowOdd};margin-bottom:16px;border:1px solid ${T.colBorder};">`;
@@ -371,7 +353,7 @@ function generatePdfHtml(
   } else if (options.type === 'monthly') {
     const monthGroups = groupDaysByMonth(sortedDays);
     Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
-      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
       const monthJobs = monthDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
       const monthTotalHours = monthTotals.totalHours.toFixed(2);
@@ -379,8 +361,8 @@ function generatePdfHtml(
       html += `<table style="width:100%;border-collapse:collapse;background:${T.rowOdd};margin-bottom:16px;border:1px solid ${T.colBorder};">`;
       html += jobTableColHeaders();
       html += `<tbody>`;
-      html += monthGroupHeaderRow(monthName);
-      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
+      html += monthGroupRow(monthName);
+      monthJobs.forEach((job, i) => { html += jobRow(job, i % 2 === 0); });
       html += `</tbody></table>`;
       html += totalRow(`MONTH TOTAL — ${monthName}`, monthTotals.jobCount, monthTotals.totalAw, monthTotalHours);
       if (availableHours > 0) {
@@ -397,20 +379,18 @@ function generatePdfHtml(
     html += jobTableColHeaders();
     html += `<tbody>`;
     Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
-      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
       const monthJobs = monthDays.sort().reverse().flatMap(day => groupedByDay.get(day)!);
-      html += monthGroupHeaderRow(monthName);
-      monthJobs.forEach((job, i) => { html += jobTableRow(job, i % 2 === 0); });
-    });
-    html += `</tbody></table>`;
-
-    // Monthly totals
-    Array.from(monthGroups.entries()).sort().reverse().forEach(([month, monthDays]) => {
-      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
       const monthTotalHours = monthTotals.totalHours.toFixed(2);
-      html += totalRow(`MONTH TOTAL — ${monthName}`, monthTotals.jobCount, monthTotals.totalAw, monthTotalHours);
+
+      html += `<table style="width:100%;border-collapse:collapse;background:#ffffff;margin-bottom:12px;">`;
+      html += tableColHeaders();
+      html += `<tbody>`;
+      html += monthGroupRow(monthName);
+      monthJobs.forEach((job, i) => { html += jobRow(job, i % 2 === 0); });
+      html += `</tbody></table>`;
+      html += summaryRow(`MONTH TOTAL — ${monthName}`, monthTotals.jobCount, monthTotals.totalAw, monthTotalHours);
     });
 
     // Weekly summary
@@ -422,7 +402,7 @@ function generatePdfHtml(
       const weekTotalHours = weekTotals.totalHours.toFixed(2);
       const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      html += totalRow(`WEEK (${startDate} – ${endDate})`, weekTotals.jobCount, weekTotals.totalAw, weekTotalHours);
+      html += summaryRow(`WEEK (${startDate} – ${endDate})`, weekTotals.jobCount, weekTotals.totalAw, weekTotalHours);
     });
 
     if (availableHours > 0) {
@@ -444,27 +424,25 @@ function generatePdfHtml(
   return html;
 }
 
-// Export to PDF
+// ── Public export functions ───────────────────────────────────────────────────
+
 export async function exportToPdf(
   jobs: Job[],
   technicianName: string,
   options: ExportOptions
 ): Promise<void> {
-  console.log('ExportUtils: Generating PDF with', jobs.length, 'jobs for', options.type, 'export');
-  
+  console.log('ExportUtils: exportToPdf called — type:', options.type, 'jobs:', jobs.length, 'technician:', technicianName);
+
   const html = generatePdfHtml(jobs, technicianName, options);
-  
+
   const { uri } = await Print.printToFileAsync({ html });
   console.log('ExportUtils: PDF generated at', uri);
-  
-  // Move to a permanent location
+
   const fileName = `techtimes_${options.type}_${new Date().toISOString().split('T')[0]}.pdf`;
   const newUri = FileSystem.documentDirectory + fileName;
   await FileSystem.moveAsync({ from: uri, to: newUri });
-  
   console.log('ExportUtils: PDF moved to', newUri);
-  
-  // Share the PDF
+
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(newUri, {
       mimeType: 'application/pdf',
@@ -474,11 +452,9 @@ export async function exportToPdf(
   }
 }
 
-// Export to JSON - Format matching the exact format (PRIORITY)
 export async function exportToJson(jobs: Job[]): Promise<string> {
-  console.log('ExportUtils: Exporting', jobs.length, 'jobs to JSON (PRIORITY FORMAT)');
-  
-  // Format exactly as the user's JSON format
+  console.log('ExportUtils: exportToJson called — jobs:', jobs.length);
+
   const exportData = {
     exportDate: new Date().toISOString(),
     version: '1.0',
@@ -492,15 +468,14 @@ export async function exportToJson(jobs: Job[]): Promise<string> {
       jobDateTime: job.createdAt,
     })),
   };
-  
+
   const jsonString = JSON.stringify(exportData, null, 2);
   const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
   const fileUri = FileSystem.documentDirectory + fileName;
-  
+
   await FileSystem.writeAsStringAsync(fileUri, jsonString);
   console.log('ExportUtils: JSON exported to', fileUri);
-  
-  // Share the JSON
+
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(fileUri, {
       mimeType: 'application/json',
@@ -508,23 +483,20 @@ export async function exportToJson(jobs: Job[]): Promise<string> {
     });
     console.log('ExportUtils: JSON shared successfully');
   }
-  
+
   return fileUri;
 }
 
-// Import from JSON - Parse the exact format from the user (PRIORITY)
 export async function importFromJson(
   fileUri: string,
   onProgress: (current: number, total: number, job: any) => void
 ): Promise<{ imported: number; skipped: number; errors: string[]; jobs: any[] }> {
-  console.log('ExportUtils: Starting import from JSON (PRIORITY FORMAT):', fileUri);
-  
+  console.log('ExportUtils: importFromJson called — fileUri:', fileUri);
+
   try {
-    // Read the file content
     const jsonString = await FileSystem.readAsStringAsync(fileUri);
     console.log('ExportUtils: Read JSON file, length:', jsonString.length);
-    
-    // Parse the JSON
+
     let importData;
     try {
       importData = JSON.parse(jsonString);
@@ -533,112 +505,84 @@ export async function importFromJson(
       console.error('ExportUtils: JSON parse error:', parseError);
       throw new Error('Invalid JSON file format. Please ensure the file is a valid TechTimes backup.');
     }
-    
-    // Validate the JSON structure
-    if (!importData) {
-      throw new Error('Empty JSON file');
-    }
-    
-    if (!importData.jobs) {
-      throw new Error('Invalid JSON format: missing "jobs" array');
-    }
-    
-    if (!Array.isArray(importData.jobs)) {
-      throw new Error('Invalid JSON format: "jobs" must be an array');
-    }
-    
+
+    if (!importData) throw new Error('Empty JSON file');
+    if (!importData.jobs) throw new Error('Invalid JSON format: missing "jobs" array');
+    if (!Array.isArray(importData.jobs)) throw new Error('Invalid JSON format: "jobs" must be an array');
+
     console.log('ExportUtils: Found', importData.jobs.length, 'jobs in import file');
-    console.log('ExportUtils: Export date:', importData.exportDate);
-    console.log('ExportUtils: Version:', importData.version);
-    
+    console.log('ExportUtils: Export date:', importData.exportDate, '| Version:', importData.version);
+
     const results = {
       imported: 0,
       skipped: 0,
       errors: [] as string[],
       jobs: [] as any[],
     };
-    
+
     const total = importData.jobs.length;
-    
     if (total === 0) {
       console.log('ExportUtils: No jobs to import');
       return results;
     }
-    
-    // Process each job
+
     for (let i = 0; i < importData.jobs.length; i++) {
       const job = importData.jobs[i];
-      
+
       try {
-        // Report progress
         onProgress(i + 1, total, job);
-        
-        // Map the JSON format to our internal format
-        // JSON format: wipNumber, vehicleReg, vhcStatus, description, aws, jobDateTime
-        // Internal format: wipNumber, vehicleReg, vhcStatus, notes, aw, createdAt
-        
+
         const wipNumber = job.wipNumber;
         const vehicleReg = job.vehicleReg;
         const awValue = job.aws !== undefined ? job.aws : job.aw;
         const notes = job.description !== undefined ? job.description : (job.notes || '');
         const createdAt = job.jobDateTime !== undefined ? job.jobDateTime : job.createdAt;
         const vhcStatus = job.vhcStatus || 'NONE';
-        
-        // Validate required fields
+
         if (!wipNumber) {
           results.skipped++;
           results.errors.push(`Job ${i + 1}: Missing wipNumber`);
-          console.warn('ExportUtils: Skipping job', i + 1, '- missing wipNumber');
+          console.warn('ExportUtils: Skipping job', i + 1, '— missing wipNumber');
           continue;
         }
-        
         if (!vehicleReg) {
           results.skipped++;
           results.errors.push(`Job ${i + 1}: Missing vehicleReg`);
-          console.warn('ExportUtils: Skipping job', i + 1, '- missing vehicleReg');
+          console.warn('ExportUtils: Skipping job', i + 1, '— missing vehicleReg');
           continue;
         }
-        
         if (awValue === undefined || awValue === null) {
           results.skipped++;
           results.errors.push(`Job ${i + 1}: Missing aws/aw value`);
-          console.warn('ExportUtils: Skipping job', i + 1, '- missing aws/aw value');
+          console.warn('ExportUtils: Skipping job', i + 1, '— missing aws/aw value');
           continue;
         }
-        
         if (!createdAt) {
           results.skipped++;
           results.errors.push(`Job ${i + 1}: Missing jobDateTime/createdAt`);
-          console.warn('ExportUtils: Skipping job', i + 1, '- missing jobDateTime/createdAt');
+          console.warn('ExportUtils: Skipping job', i + 1, '— missing jobDateTime/createdAt');
           continue;
         }
-        
-        // Validate vhcStatus
+
         const validVhcStatuses = ['NONE', 'GREEN', 'ORANGE', 'RED', 'AMBER'];
-        let normalizedVhcStatus = vhcStatus.toUpperCase();
-        
-        // Handle AMBER -> ORANGE conversion
-        if (normalizedVhcStatus === 'AMBER') {
-          normalizedVhcStatus = 'ORANGE';
-        }
-        
+        let normalizedVhcStatus = String(vhcStatus).toUpperCase();
+        if (normalizedVhcStatus === 'AMBER') normalizedVhcStatus = 'ORANGE';
+
         if (!validVhcStatuses.includes(normalizedVhcStatus)) {
           results.skipped++;
-          results.errors.push(`Job ${i + 1}: Invalid vhcStatus "${vhcStatus}". Must be one of: NONE, GREEN, ORANGE/AMBER, RED`);
-          console.warn('ExportUtils: Skipping job', i + 1, '- invalid vhcStatus:', vhcStatus);
+          results.errors.push(`Job ${i + 1}: Invalid vhcStatus "${vhcStatus}"`);
+          console.warn('ExportUtils: Skipping job', i + 1, '— invalid vhcStatus:', vhcStatus);
           continue;
         }
-        
-        // Validate AW value
+
         const awNumber = Number(awValue);
         if (isNaN(awNumber) || awNumber < 0) {
           results.skipped++;
-          results.errors.push(`Job ${i + 1}: Invalid aws value "${awValue}". Must be a positive number`);
-          console.warn('ExportUtils: Skipping job', i + 1, '- invalid aws value:', awValue);
+          results.errors.push(`Job ${i + 1}: Invalid aws value "${awValue}"`);
+          console.warn('ExportUtils: Skipping job', i + 1, '— invalid aws value:', awValue);
           continue;
         }
-        
-        // Create the job object in the format expected by the API
+
         const jobToImport = {
           wipNumber: String(wipNumber).trim(),
           vehicleReg: String(vehicleReg).trim().toUpperCase(),
@@ -647,18 +591,12 @@ export async function importFromJson(
           vhcStatus: normalizedVhcStatus as 'NONE' | 'GREEN' | 'ORANGE' | 'RED',
           createdAt: createdAt,
         };
-        
+
         results.jobs.push(jobToImport);
         results.imported++;
-        
-        console.log('ExportUtils: Prepared job', i + 1, '/', total, ':', {
-          wipNumber: jobToImport.wipNumber,
-          vehicleReg: jobToImport.vehicleReg,
-          aw: jobToImport.aw,
-          vhcStatus: jobToImport.vhcStatus,
-        });
-        
-        // Small delay to show progress
+
+        console.log('ExportUtils: Prepared job', i + 1, '/', total, '—', jobToImport.wipNumber, jobToImport.vehicleReg, 'aw:', jobToImport.aw);
+
         await new Promise(resolve => setTimeout(resolve, 50));
       } catch (error) {
         results.skipped++;
@@ -667,13 +605,10 @@ export async function importFromJson(
         console.error('ExportUtils: Error processing job', i + 1, ':', error);
       }
     }
-    
-    console.log('ExportUtils: Import parsing complete -', results.imported, 'prepared,', results.skipped, 'skipped');
-    
-    if (results.errors.length > 0) {
-      console.log('ExportUtils: Import errors:', results.errors);
-    }
-    
+
+    console.log('ExportUtils: Import complete —', results.imported, 'prepared,', results.skipped, 'skipped');
+    if (results.errors.length > 0) console.log('ExportUtils: Import errors:', results.errors);
+
     return results;
   } catch (error) {
     console.error('ExportUtils: Fatal import error:', error);
