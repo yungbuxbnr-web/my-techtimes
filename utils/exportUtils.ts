@@ -3,7 +3,8 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Job } from './api';
-import { awToMinutes, formatTime } from './jobCalculations';
+import { awToMinutes, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from './jobCalculations';
+import { offlineStorage, Schedule } from './offlineStorage';
 
 export interface ExportOptions {
   type: 'daily' | 'weekly' | 'monthly' | 'all';
@@ -29,16 +30,54 @@ function groupJobsByDay(jobs: Job[]): Map<string, Job[]> {
 
 function getWeekRange(date: Date): { start: Date; end: Date } {
   const day = date.getDay();
-  const sunday = new Date(date);
-  sunday.setDate(date.getDate() - day);
-  const saturday = new Date(sunday);
-  saturday.setDate(sunday.getDate() + 6);
-  return { start: sunday, end: saturday };
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - ((day + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
 }
 
+function getWeekKey(date: Date): string {
+  const range = getWeekRange(date);
+  return range.start.toISOString().split('T')[0];
+}
 
+// ── Available hours calculation ───────────────────────────────────────────────
 
-// ── Stats calculation (uses same logic as jobCalculations.ts) ─────────────────
+function calcAvailableHoursForPeriod(
+  startDate: Date,
+  endDate: Date,
+  schedule: Schedule
+): number {
+  const workingDays = schedule.workingDays ?? [1, 2, 3, 4, 5];
+  const dailyHours = schedule.startTime && schedule.endTime
+    ? calcDailyHoursFromSchedule(
+        schedule.startTime,
+        schedule.endTime,
+        schedule.lunchStartTime ?? '12:00',
+        schedule.lunchEndTime ?? '12:30'
+      )
+    : schedule.dailyWorkingHours ?? 8.5;
+
+  let total = 0;
+  const cursor = new Date(startDate);
+  cursor.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  while (cursor <= end) {
+    const dow = cursor.getDay();
+    if (workingDays.includes(dow)) {
+      total += dailyHours;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return total;
+}
+
+// ── Stats calculation ─────────────────────────────────────────────────────────
 
 interface PeriodStats {
   jobCount: number;
@@ -47,121 +86,151 @@ interface PeriodStats {
   soldHours: number;
   availableHours: number;
   efficiency: number;
+  utilization: number;
   awPerHour: number;
 }
 
 function calcPeriodStats(jobs: Job[], availableHours: number): PeriodStats {
   const jobCount = jobs.length;
-  const totalAw = jobs.reduce((sum, j) => sum + j.aw, 0);
-  const totalMinutes = jobs.reduce((sum, j) => sum + awToMinutes(j.aw), 0);
+  const totalAw = jobs.reduce((sum, j) => sum + (Number(j.aw) || 0), 0);
+  const totalMinutes = jobs.reduce((sum, j) => sum + awToMinutes(Number(j.aw) || 0), 0);
   const soldHours = totalMinutes / 60;
-  const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
+  const rawEfficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
+  const efficiency = Math.min(rawEfficiency, 100);
+  const utilization = efficiency;
   const awPerHour = soldHours > 0 ? totalAw / soldHours : 0;
-  return { jobCount, totalAw, totalMinutes, soldHours, availableHours, efficiency, awPerHour };
+  return { jobCount, totalAw, totalMinutes, soldHours, availableHours, efficiency, utilization, awPerHour };
 }
 
-// ── Theme ─────────────────────────────────────────────────────────────────────
+// ── Format helpers ────────────────────────────────────────────────────────────
 
-const C = {
-  pageBg:      '#0A1628',
-  cardBg:      '#0D1F3C',
-  tableHeader: '#2563EB',
-  rowEven:     '#0D1F3C',
-  rowOdd:      '#0A1628',
-  rowText:     '#E0F4FF',
-  border:      '#1A3A5C',
-  cyan:        '#00E5FF',
-  cyanMid:     '#00B4D8',
-  white:       '#FFFFFF',
-  wipColor:    '#00B4D8',
-  awsColor:    '#00B4D8',
-  footerText:  '#7EC8E3',
-  vhcRed:      '#EF4444',
-  vhcOrange:   '#F97316',
-  vhcGreen:    '#22C55E',
-  vhcGrey:     '#6B7280',
-};
+function fmtTime(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return `${h}h ${m}m`;
+}
+
+function fmtJobDateTime(createdAt: string): string {
+  const d = new Date(createdAt);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+}
+
+function fmtDateShort(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtMonthLabel(yearMonth: string): string {
+  const [y, m] = yearMonth.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
 
 // ── VHC dot + label ───────────────────────────────────────────────────────────
 
 function vhcCell(status?: string): string {
   const s = (status || 'NONE').toUpperCase();
-  let dotColor = C.vhcGrey;
+  let dotColor = '#9CA3AF';
   let label = 'N/A';
-  if (s === 'RED')    { dotColor = C.vhcRed;    label = 'Red'; }
-  if (s === 'ORANGE' || s === 'AMBER') { dotColor = C.vhcOrange; label = 'Orange'; }
-  if (s === 'GREEN')  { dotColor = C.vhcGreen;  label = 'Green'; }
-  return `<span style="display:inline-flex;align-items:center;gap:5px;">
-    <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span>
-    <span style="color:${C.rowText};font-size:11px;">${label}</span>
+  if (s === 'RED')    { dotColor = '#EF4444'; label = 'Red'; }
+  if (s === 'ORANGE' || s === 'AMBER') { dotColor = '#F97316'; label = 'Orange'; }
+  if (s === 'GREEN')  { dotColor = '#22C55E'; label = 'Green'; }
+  return `<span style="display:inline-flex;align-items:center;gap:4px;">
+    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span>
+    <span style="color:#374151;font-size:11px;">${label}</span>
   </span>`;
 }
 
-// ── Format job date/time for the DATE & TIME column ───────────────────────────
+// ── Efficiency Graph card ─────────────────────────────────────────────────────
 
-function formatJobDateTime(createdAt: string): string {
-  const d = new Date(createdAt);
-  const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `<div style="font-size:11px;color:${C.rowText};line-height:1.6;">${date}<br/><span style="color:${C.footerText};">${time}</span></div>`;
-}
-
-// ── Stats cards section ───────────────────────────────────────────────────────
-
-function statsCardsHtml(stats: PeriodStats): string {
+function efficiencyGraphCard(stats: PeriodStats): string {
+  const barPct = Math.min(Math.max(stats.efficiency, 0), 100).toFixed(1);
   const soldHoursDisplay = stats.soldHours.toFixed(2) + 'h';
   const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
   const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(1) + '%' : '—';
-  const awPerHourDisplay = stats.soldHours > 0 ? stats.awPerHour.toFixed(1) : '—';
-
-  const totalMinutesFormatted = formatTime(stats.totalMinutes);
-
-  const cards = [
-    { value: String(stats.jobCount),      label: 'Total Jobs Done' },
-    { value: String(stats.totalAw),        label: 'Total AWS' },
-    { value: totalMinutesFormatted,        label: 'Time Logged' },
-    { value: efficiencyDisplay,            label: 'Efficiency %' },
-    { value: availHoursDisplay,            label: 'Available Hours' },
-    { value: awPerHourDisplay,             label: 'AWS per Hour' },
-  ];
-
-  const cardHtml = cards.map(card => `
-    <div style="
-      flex:1;
-      background:${C.cardBg};
-      border:1px solid ${C.cyanMid};
-      border-radius:6px;
-      padding:14px 10px;
-      text-align:center;
-      margin:0 4px;
-    ">
-      <div style="font-size:20px;font-weight:800;color:${C.cyanMid};font-family:monospace;line-height:1.1;margin-bottom:5px;">${card.value}</div>
-      <div style="font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:${C.white};opacity:0.85;">${card.label}</div>
-    </div>
-  `).join('');
 
   return `
-    <div style="padding:18px 28px 10px;background:${C.pageBg};">
-      <div style="display:flex;gap:0;">${cardHtml}</div>
+    <div style="background:#EEF4FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;margin-bottom:16px;">
+      <div style="text-align:center;font-size:16px;font-weight:700;color:#1565C0;margin-bottom:16px;">Efficiency Graph</div>
+      <div style="background:#E5E7EB;border-radius:999px;height:28px;width:100%;position:relative;overflow:hidden;margin-bottom:12px;">
+        <div style="background:#F59E0B;height:100%;border-radius:999px;width:${barPct}%;position:absolute;top:0;left:0;"></div>
+        <div style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:13px;font-weight:700;color:#1C1917;z-index:1;">${barPct}%</span>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#374151;line-height:2;">
+        Sold Hours: <span style="color:#06B6D4;font-weight:700;">${soldHoursDisplay}</span>
+      </div>
+      <div style="font-size:12px;color:#374151;line-height:2;">
+        Available Hours: <span style="color:#06B6D4;font-weight:700;">${availHoursDisplay}</span>
+      </div>
+      <div style="font-size:12px;color:#374151;line-height:2;">
+        Efficiency: <span style="color:#EAB308;font-weight:700;">${efficiencyDisplay}</span>
+      </div>
     </div>
   `;
 }
 
-// ── Table header row (repeatable) ─────────────────────────────────────────────
+// ── Performance Metrics card ──────────────────────────────────────────────────
 
-const TH_STYLE = `background:${C.tableHeader};color:${C.white};padding:10px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;border-right:1px solid ${C.border};`;
+function performanceMetricsCard(stats: PeriodStats): string {
+  const utilizationDisplay = stats.availableHours > 0 ? stats.utilization.toFixed(1) + '%' : '—';
+  const awPerHourDisplay = stats.soldHours > 0 ? stats.awPerHour.toFixed(1) : '—';
+  const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(0) + '%' : '—';
+  const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
+
+  const metricCard = (value: string, label: string, subtitle: string) => `
+    <div style="flex:1;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:16px 12px;text-align:center;margin:4px;">
+      <div style="font-size:22px;font-weight:700;color:#16A34A;margin-bottom:4px;">${value}</div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;margin-bottom:3px;">${label}</div>
+      <div style="font-size:9px;color:#9CA3AF;">${subtitle}</div>
+    </div>
+  `;
+
+  return `
+    <div style="background:#EEF4FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+      <div style="text-align:center;font-size:16px;font-weight:700;color:#1565C0;margin-bottom:16px;">&#128202; Performance Metrics</div>
+      <div style="display:flex;gap:0;margin-bottom:0;">
+        <div style="display:flex;flex-direction:column;flex:1;gap:0;">
+          <div style="display:flex;gap:0;margin-bottom:0;">
+            ${metricCard(utilizationDisplay, 'UTILIZATION', 'Out of ' + (stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—') + ' available')}
+            ${metricCard(awPerHourDisplay, 'AWS PER HOUR', 'Average productivity')}
+          </div>
+          <div style="display:flex;gap:0;">
+            ${metricCard(efficiencyDisplay, 'EFFICIENCY', 'Since first entry')}
+            ${metricCard(availHoursDisplay, 'AVAILABLE HOURS', 'From first entry')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Summary dashboard (efficiency + metrics) ──────────────────────────────────
+
+function summaryDashboard(stats: PeriodStats): string {
+  return efficiencyGraphCard(stats) + performanceMetricsCard(stats);
+}
+
+// ── Table header row ──────────────────────────────────────────────────────────
+
+const TH = `background:#1565C0;color:#FFFFFF;padding:10px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;border-right:1px solid #1E40AF;`;
 
 function tableHeaderRow(): string {
   return `
     <thead>
       <tr>
-        <th style="${TH_STYLE}width:9%;">WIP<br/>NUMBER</th>
-        <th style="${TH_STYLE}width:11%;">VEHICLE REG</th>
-        <th style="${TH_STYLE}width:10%;">VHC</th>
-        <th style="${TH_STYLE}width:34%;">JOB DESCRIPTION</th>
-        <th style="${TH_STYLE}width:7%;text-align:center;">AWS</th>
-        <th style="${TH_STYLE}width:9%;text-align:center;">TIME</th>
-        <th style="${TH_STYLE}width:14%;border-right:none;text-align:center;">DATE &amp;<br/>TIME</th>
+        <th style="${TH}width:9%;">WIP<br/>NUMBER</th>
+        <th style="${TH}width:12%;">VEHICLE REG</th>
+        <th style="${TH}width:10%;">VHC</th>
+        <th style="${TH}width:34%;">JOB DESCRIPTION</th>
+        <th style="${TH}width:7%;text-align:center;">AWS</th>
+        <th style="${TH}width:9%;text-align:center;">TIME</th>
+        <th style="${TH}width:14%;border-right:none;text-align:center;">DATE &amp;<br/>TIME</th>
       </tr>
     </thead>`;
 }
@@ -169,35 +238,117 @@ function tableHeaderRow(): string {
 // ── Single job row ────────────────────────────────────────────────────────────
 
 function jobRow(job: Job, isEven: boolean): string {
-  const rowBg = isEven ? C.rowEven : C.rowOdd;
-  const TD = `padding:9px 10px;font-size:11px;color:${C.rowText};vertical-align:middle;border-right:1px solid ${C.border};border-bottom:1px solid ${C.border};`;
-  const jobMinutes = awToMinutes(job.aw);
-  const timeFormatted = formatTime(jobMinutes);
+  const rowBg = isEven ? '#FFFFFF' : '#F9FAFB';
+  const TD = `padding:9px 10px;font-size:11px;color:#374151;vertical-align:middle;border-right:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;`;
+  const jobMinutes = awToMinutes(Number(job.aw) || 0);
+  const timeFormatted = fmtTime(jobMinutes);
   const notes = job.notes ? job.notes.trim() : '';
+  const dateTimeStr = fmtJobDateTime(job.createdAt);
+  const datePart = dateTimeStr.split(' ')[0];
+  const timePart = dateTimeStr.split(' ')[1];
   return `
     <tr style="background:${rowBg};">
-      <td style="${TD}font-weight:700;color:${C.wipColor};">${job.wipNumber}</td>
-      <td style="${TD}font-weight:600;">${job.vehicleReg}</td>
+      <td style="${TD}font-weight:700;color:#2563EB;">${job.wipNumber}</td>
+      <td style="${TD}font-weight:500;">${job.vehicleReg}</td>
       <td style="${TD}">${vhcCell(job.vhcStatus)}</td>
       <td style="${TD}line-height:1.5;">${notes}</td>
-      <td style="${TD}font-weight:800;color:${C.awsColor};text-align:center;font-size:13px;">${job.aw}</td>
+      <td style="${TD}font-weight:700;color:#2563EB;text-align:center;font-size:13px;">${job.aw}</td>
       <td style="${TD}text-align:center;">${timeFormatted}</td>
-      <td style="${TD}border-right:none;text-align:center;">${formatJobDateTime(job.createdAt)}</td>
+      <td style="${TD}border-right:none;text-align:center;font-size:11px;color:#374151;">${datePart}<br/><span style="color:#6B7280;">${timePart}</span></td>
     </tr>
+  `;
+}
+
+// ── Week group (header + rows) ────────────────────────────────────────────────
+
+function weekGroupHtml(weekStart: Date, weekEnd: Date, jobs: Job[]): string {
+  const label = `Week of ${fmtDateShort(weekStart.toISOString())} – ${fmtDateShort(weekEnd.toISOString())}`;
+  const rows = jobs.map((job, i) => jobRow(job, i % 2 === 0)).join('');
+  return `
+    <div style="margin-bottom:4px;margin-top:12px;">
+      <div style="font-size:12px;font-weight:600;color:#2563EB;padding:6px 0 4px;border-bottom:1px solid #BFDBFE;margin-bottom:0;">${label}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-bottom:16px;">
+      ${tableHeaderRow()}
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+// ── Month section ─────────────────────────────────────────────────────────────
+
+function monthSectionHtml(yearMonth: string, jobs: Job[]): string {
+  const monthLabel = fmtMonthLabel(yearMonth);
+
+  // Group by week
+  const weekMap = new Map<string, Job[]>();
+  jobs.forEach(job => {
+    const d = new Date(job.createdAt);
+    const wk = getWeekKey(d);
+    if (!weekMap.has(wk)) weekMap.set(wk, []);
+    weekMap.get(wk)!.push(job);
+  });
+
+  // Sort weeks descending
+  const sortedWeeks = Array.from(weekMap.keys()).sort((a, b) => b.localeCompare(a));
+
+  const weeksHtml = sortedWeeks.map(wkKey => {
+    const wkJobs = weekMap.get(wkKey)!.slice().sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const wkStart = new Date(wkKey);
+    const wkEnd = new Date(wkStart);
+    wkEnd.setDate(wkStart.getDate() + 6);
+    return weekGroupHtml(wkStart, wkEnd, wkJobs);
+  }).join('');
+
+  return `
+    <div style="margin-bottom:8px;margin-top:20px;">
+      <div style="font-size:14px;font-weight:700;color:#1565C0;padding:8px 0 6px;border-bottom:2px solid #BFDBFE;">${monthLabel}</div>
+    </div>
+    ${weeksHtml}
+  `;
+}
+
+// ── Year section ──────────────────────────────────────────────────────────────
+
+function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule): string {
+  const yearStart = new Date(year, 0, 1);
+  const yearEnd = new Date(year, 11, 31);
+  const availHours = calcAvailableHoursForPeriod(yearStart, yearEnd, schedule);
+  const stats = calcPeriodStats(jobs, availHours);
+
+  // Group by month
+  const monthMap = new Map<string, Job[]>();
+  jobs.forEach(job => {
+    const ym = job.createdAt.substring(0, 7);
+    if (!monthMap.has(ym)) monthMap.set(ym, []);
+    monthMap.get(ym)!.push(job);
+  });
+
+  const sortedMonths = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
+  const monthsHtml = sortedMonths.map(ym => monthSectionHtml(ym, monthMap.get(ym)!)).join('');
+
+  return `
+    <div style="margin-top:32px;margin-bottom:8px;border-top:3px solid #1565C0;padding-top:16px;">
+      <div style="font-size:20px;font-weight:800;color:#1565C0;margin-bottom:16px;">Year: ${year}</div>
+      <div style="font-size:13px;font-weight:600;color:#1565C0;margin-bottom:12px;">Year Summary</div>
+      ${summaryDashboard(stats)}
+    </div>
+    ${monthsHtml}
   `;
 }
 
 // ── Full PDF HTML ─────────────────────────────────────────────────────────────
 
-function generatePdfHtml(
+async function generatePdfHtml(
   jobs: Job[],
   technicianName: string,
   options: ExportOptions
-): string {
+): Promise<string> {
   console.log('ExportUtils: Generating PDF HTML for', options.type, 'export with', jobs.length, 'jobs');
 
-  const availableHours = options.availableHours ?? 0;
-  const stats = calcPeriodStats(jobs, availableHours);
+  const schedule = await offlineStorage.getSchedule();
 
   const generatedDate = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
@@ -221,21 +372,75 @@ function generatePdfHtml(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  // Build job rows with repeated header every ~20 rows
-  const ROWS_PER_PAGE = 20;
-  let jobRowsHtml = '';
-  sortedJobs.forEach((job, i) => {
-    if (i > 0 && i % ROWS_PER_PAGE === 0) {
-      // Close current tbody/table and open a new one with repeated header
-      jobRowsHtml += `
-        </tbody></table>
-        <table style="width:100%;border-collapse:collapse;border:1px solid ${C.border};margin-top:0;page-break-before:always;">
+  // ── Calculate overall stats ──
+  let availableHours = options.availableHours ?? 0;
+  if (availableHours === 0 && sortedJobs.length > 0) {
+    const oldest = new Date(sortedJobs[sortedJobs.length - 1].createdAt);
+    const newest = new Date(sortedJobs[0].createdAt);
+    availableHours = calcAvailableHoursForPeriod(oldest, newest, schedule);
+  }
+  const overallStats = calcPeriodStats(sortedJobs, availableHours);
+
+  // ── Build body content ──
+  let bodyContent = '';
+
+  if (options.type === 'all') {
+    // Grand overall summary
+    bodyContent += `
+      <div style="font-size:13px;font-weight:600;color:#1565C0;margin-bottom:12px;">Overall Summary</div>
+      ${summaryDashboard(overallStats)}
+    `;
+
+    // Section title
+    bodyContent += `
+      <div style="margin-bottom:12px;margin-top:8px;">
+        <div style="font-size:18px;font-weight:700;color:#1565C0;">&#128295; Detailed Job Records</div>
+      </div>
+    `;
+
+    // Group by year
+    const yearMap = new Map<number, Job[]>();
+    sortedJobs.forEach(job => {
+      const yr = new Date(job.createdAt).getFullYear();
+      if (!yearMap.has(yr)) yearMap.set(yr, []);
+      yearMap.get(yr)!.push(job);
+    });
+
+    const sortedYears = Array.from(yearMap.keys()).sort((a, b) => b - a);
+    sortedYears.forEach(yr => {
+      bodyContent += yearSectionHtml(yr, yearMap.get(yr)!, schedule);
+    });
+
+  } else {
+    // Non-entire exports: summary + flat table
+    bodyContent += summaryDashboard(overallStats);
+
+    bodyContent += `
+      <div style="margin-bottom:12px;margin-top:8px;">
+        <div style="font-size:18px;font-weight:700;color:#1565C0;">&#128295; Detailed Job Records</div>
+      </div>
+    `;
+
+    // Build flat table with repeated header every 20 rows
+    const ROWS_PER_GROUP = 20;
+    let tableRows = '';
+    sortedJobs.forEach((job, i) => {
+      if (i > 0 && i % ROWS_PER_GROUP === 0) {
+        tableRows += `</tbody></table>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-top:0;page-break-before:always;">
+          ${tableHeaderRow()}
+          <tbody>`;
+      }
+      tableRows += jobRow(job, i % 2 === 0);
+    });
+
+    bodyContent += `
+      <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;">
         ${tableHeaderRow()}
-        <tbody>
-      `;
-    }
-    jobRowsHtml += jobRow(job, i % 2 === 0);
-  });
+        <tbody>${tableRows}</tbody>
+      </table>
+    `;
+  }
 
   const html = `<!DOCTYPE html>
 <html>
@@ -245,8 +450,8 @@ function generatePdfHtml(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
-      background: ${C.pageBg};
-      color: ${C.rowText};
+      background: #FFFFFF;
+      color: #374151;
       font-size: 12px;
       line-height: 1.5;
     }
@@ -257,47 +462,22 @@ function generatePdfHtml(
     }
   </style>
 </head>
-<body>
+<body style="padding:24px 28px;">
 
   <!-- ═══ HEADER ═══ -->
-  <div style="
-    background:${C.pageBg};
-    padding:28px 32px 20px;
-    text-align:center;
-    border-bottom:2px solid ${C.cyanMid};
-  ">
-    <div style="font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:${C.cyanMid};margin-bottom:10px;">TECH TIMES</div>
-    <div style="font-size:28px;font-weight:800;color:${C.cyan};letter-spacing:-0.5px;line-height:1.1;margin-bottom:8px;text-shadow:0 0 20px ${C.cyan}55;">${reportType}</div>
-    <div style="font-size:13px;color:${C.footerText};font-weight:500;letter-spacing:0.5px;">${technicianName} &nbsp;·&nbsp; ${periodLabel}</div>
+  <div style="text-align:center;padding:20px 0 16px;border-bottom:2px solid #BFDBFE;margin-bottom:24px;">
+    <div style="font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#2563EB;margin-bottom:6px;">TECH TIMES</div>
+    <div style="font-size:24px;font-weight:800;color:#1565C0;letter-spacing:-0.5px;line-height:1.1;margin-bottom:6px;">${reportType}</div>
+    <div style="font-size:12px;color:#6B7280;font-weight:500;">${technicianName} &nbsp;·&nbsp; ${periodLabel}</div>
   </div>
 
-  <!-- ═══ STATS CARDS ═══ -->
-  ${statsCardsHtml(stats)}
-
-  <!-- ═══ SECTION TITLE ═══ -->
-  <div style="padding:16px 28px 10px;background:${C.pageBg};">
-    <div style="font-size:16px;font-weight:700;color:${C.cyan};letter-spacing:0.3px;">🔧 Detailed Job Records</div>
-  </div>
-
-  <!-- ═══ JOB TABLE ═══ -->
-  <div style="padding:0 28px 28px;background:${C.pageBg};">
-    <table style="width:100%;border-collapse:collapse;border:1px solid ${C.border};">
-      ${tableHeaderRow()}
-      <tbody>
-        ${jobRowsHtml}
-      </tbody>
-    </table>
-  </div>
+  <!-- ═══ BODY ═══ -->
+  ${bodyContent}
 
   <!-- ═══ FOOTER ═══ -->
-  <div style="
-    background:${C.cardBg};
-    border-top:2px solid ${C.cyanMid};
-    text-align:center;
-    padding:12px 32px;
-  ">
-    <span style="font-size:10px;color:${C.footerText};letter-spacing:0.5px;">
-      TECH TIMES &nbsp;•&nbsp; Generated on ${generatedDate} &nbsp;•&nbsp; Page <span class="pageNumber"></span>
+  <div style="border-top:1px solid #BFDBFE;text-align:center;padding:12px 0;margin-top:24px;">
+    <span style="font-size:10px;color:#9CA3AF;letter-spacing:0.5px;">
+      TECH TIMES &nbsp;•&nbsp; Generated on ${generatedDate}
     </span>
   </div>
 
@@ -317,7 +497,7 @@ export async function exportToPdf(
   console.log('ExportUtils: exportToPdf called — type:', options.type, 'jobs:', jobs.length, 'technician:', technicianName, 'availableHours:', options.availableHours);
 
   const safeJobs = Array.isArray(jobs) ? jobs : [];
-  const html = generatePdfHtml(safeJobs, technicianName, options);
+  const html = await generatePdfHtml(safeJobs, technicianName, options);
 
   console.log('ExportUtils: Calling printToFileAsync...');
   const printResult = await Print.printToFileAsync({ html });
@@ -325,18 +505,13 @@ export async function exportToPdf(
   console.log('ExportUtils: PDF generated at', sourceUri);
 
   // Copy to a named file in the cache directory (works cross-platform on Android).
-  // We use copyAsync instead of moveAsync because moveAsync can fail on Android
-  // when the source and destination are on different storage partitions.
   const fileName = `techtimes_${options.type}_${new Date().toISOString().split('T')[0]}.pdf`;
   const cacheDir = FileSystem.cacheDirectory ?? '';
   const destUri = cacheDir + fileName;
 
-  // Only copy if the destination differs from the source (printToFileAsync may
-  // already place the file in cacheDirectory with a random name).
   if (sourceUri !== destUri) {
     await FileSystem.copyAsync({ from: sourceUri, to: destUri });
     console.log('ExportUtils: PDF copied to', destUri);
-    // Clean up the original temp file
     try {
       await FileSystem.deleteAsync(sourceUri, { idempotent: true });
     } catch (cleanupErr) {
