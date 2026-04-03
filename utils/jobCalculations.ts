@@ -24,3 +24,43 @@ export function validateWipNumber(wip: string): boolean {
 export function validateAW(aw: number): boolean {
   return aw >= 0 && aw <= 100 && Number.isInteger(aw);
 }
+
+/**
+ * Count actual working days in a given month based on the user's scheduled working days.
+ * @param year - Full year (e.g. 2025)
+ * @param month - Month 1-12
+ * @param workingDays - Array of day-of-week numbers (0=Sun, 1=Mon … 6=Sat)
+ */
+export function countWorkingDaysInMonth(year: number, month: number, workingDays: number[]): number {
+  const lastDay = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= lastDay; day++) {
+    const dow = new Date(year, month - 1, day).getDay();
+    if (workingDays.includes(dow)) count++;
+  }
+  console.log(`jobCalculations: ${count} working days in ${year}-${month} for schedule`, workingDays);
+  return count;
+}
+
+/**
+ * Calculate daily working hours from start/end time strings (HH:MM) minus lunch break minutes.
+ */
+export function calcDailyHoursFromSchedule(
+  startTime: string,
+  endTime: string,
+  lunchStartTime: string,
+  lunchEndTime: string
+): number {
+  try {
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const workMinutes = toMinutes(endTime) - toMinutes(startTime);
+    const lunchMinutes = toMinutes(lunchEndTime) - toMinutes(lunchStartTime);
+    const net = workMinutes - Math.max(0, lunchMinutes);
+    return net > 0 ? net / 60 : 0;
+  } catch {
+    return 0;
+  }
+}

@@ -133,6 +133,10 @@ function generatePdfHtml(
   // Calculate overall efficiency if available hours provided
   const targetHours = options.targetHours || 0;
   const availableHours = options.availableHours || 0;
+  const generatedDate = new Date().toLocaleString('en-GB', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
   
   let html = `
     <!DOCTYPE html>
@@ -140,502 +144,458 @@ function generatePdfHtml(
     <head>
       <meta charset="utf-8">
       <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-          font-family: Arial, sans-serif;
-          padding: 20px;
+          font-family: Arial, Helvetica, sans-serif;
+          background: #f0f2f5;
+          color: #1a1a2e;
           font-size: 12px;
+          line-height: 1.5;
         }
+        /* ── HEADER ── */
         .header {
-          text-align: center;
-          margin-bottom: 30px;
-          border-bottom: 3px solid #2196F3;
-          padding-bottom: 20px;
+          background: linear-gradient(135deg, #1a237e 0%, #00695c 100%);
+          color: #ffffff;
+          padding: 32px 40px 24px;
+          position: relative;
+          overflow: hidden;
+        }
+        .header::after {
+          content: '';
+          position: absolute;
+          right: -60px;
+          top: -60px;
+          width: 220px;
+          height: 220px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.06);
+        }
+        .header-brand {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          opacity: 0.75;
+          margin-bottom: 6px;
         }
         .header h1 {
-          color: #2196F3;
-          margin: 0;
-          font-size: 24px;
+          font-size: 28px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+          margin-bottom: 4px;
         }
         .header .technician {
-          font-size: 18px;
-          color: #333;
-          margin: 10px 0;
+          font-size: 15px;
+          opacity: 0.9;
+          margin-bottom: 12px;
         }
-        .header .date {
-          color: #666;
-          font-size: 14px;
-        }
-        .header .export-type {
-          color: #2196F3;
-          font-size: 16px;
-          font-weight: bold;
-          margin-top: 10px;
-        }
-        .summary {
-          background: #f5f5f5;
-          padding: 15px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-        }
-        .summary-row {
+        .header-meta {
           display: flex;
-          justify-content: space-between;
-          margin: 5px 0;
+          gap: 24px;
+          margin-top: 16px;
         }
-        .summary-label {
-          font-weight: bold;
-          color: #333;
+        .header-badge {
+          background: rgba(255,255,255,0.15);
+          border: 1px solid rgba(255,255,255,0.25);
+          border-radius: 20px;
+          padding: 4px 14px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          text-transform: uppercase;
         }
-        .summary-value {
-          color: #2196F3;
-          font-weight: bold;
+        /* ── ACCENT BAR ── */
+        .accent-bar {
+          height: 4px;
+          background: linear-gradient(90deg, #00bcd4, #1a237e, #00695c, #ff6f00);
         }
+        /* ── CONTENT WRAPPER ── */
+        .content {
+          padding: 28px 32px;
+        }
+        /* ── SUMMARY CARDS ── */
+        .summary-grid {
+          display: flex;
+          gap: 16px;
+          margin-bottom: 28px;
+        }
+        .summary-card {
+          flex: 1;
+          background: #ffffff;
+          border-radius: 10px;
+          padding: 16px 20px;
+          border-left: 4px solid #1a237e;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .summary-card.green  { border-left-color: #00695c; }
+        .summary-card.amber  { border-left-color: #ff6f00; }
+        .summary-card-label {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: #6b7280;
+          margin-bottom: 6px;
+        }
+        .summary-card-value {
+          font-size: 26px;
+          font-weight: 800;
+          color: #1a237e;
+        }
+        .summary-card.green  .summary-card-value { color: #00695c; }
+        .summary-card.amber  .summary-card-value { color: #ff6f00; }
+        /* ── SECTION HEADERS ── */
+        .section-heading {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #1a237e;
+          margin: 28px 0 12px;
+          padding-bottom: 6px;
+          border-bottom: 2px solid #e8eaf6;
+        }
+        /* ── EFFICIENCY BAR ── */
         .efficiency-section {
-          background: #fff;
-          padding: 15px;
-          border-radius: 8px;
+          background: #ffffff;
+          border-radius: 10px;
+          padding: 18px 20px;
           margin-bottom: 20px;
-          border: 2px solid #2196F3;
+          border-left: 4px solid #00695c;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
         }
         .efficiency-title {
-          font-size: 16px;
-          font-weight: bold;
-          color: #2196F3;
-          margin-bottom: 15px;
-          text-align: center;
-        }
-        .day-section {
-          margin-bottom: 25px;
-          page-break-inside: avoid;
-        }
-        .day-header {
-          background: #2196F3;
-          color: white;
-          padding: 10px;
-          border-radius: 5px;
-          font-weight: bold;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: #6b7280;
           margin-bottom: 10px;
         }
+        /* ── DAY SECTION ── */
+        .day-section {
+          margin-bottom: 20px;
+          page-break-inside: avoid;
+          background: #ffffff;
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .day-header {
+          background: #1a237e;
+          color: #ffffff;
+          padding: 10px 16px;
+          font-weight: 700;
+          font-size: 12px;
+          letter-spacing: 0.3px;
+        }
+        /* ── JOB TABLE ── */
         .job-table {
           width: 100%;
           border-collapse: collapse;
-          margin-bottom: 10px;
         }
         .job-table th {
-          background: #e3f2fd;
-          padding: 8px;
+          background: #e8eaf6;
+          padding: 9px 12px;
           text-align: left;
-          border: 1px solid #ddd;
-          font-weight: bold;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: #3949ab;
+          border-bottom: 2px solid #c5cae9;
         }
         .job-table td {
-          padding: 8px;
-          border: 1px solid #ddd;
+          padding: 9px 12px;
+          border-bottom: 1px solid #f0f2f5;
+          font-size: 12px;
+          color: #374151;
         }
-        .job-table tr:nth-child(even) {
-          background: #f9f9f9;
+        .job-table tr:nth-child(even) td {
+          background: #f5f5f5;
         }
+        .job-table tr:last-child td {
+          border-bottom: none;
+        }
+        /* ── TOTALS ── */
         .day-total {
-          background: #fff3cd;
-          padding: 10px;
-          border-radius: 5px;
-          margin-top: 10px;
-          font-weight: bold;
+          background: #fffde7;
+          padding: 10px 16px;
+          font-weight: 700;
+          font-size: 12px;
+          color: #f57f17;
+          border-top: 2px solid #fff9c4;
+          display: flex;
+          justify-content: space-between;
         }
         .week-total {
-          background: #d1ecf1;
-          padding: 12px;
-          border-radius: 5px;
-          margin: 20px 0;
-          font-weight: bold;
-          border-left: 4px solid #0c5460;
+          background: #e0f7fa;
+          padding: 14px 20px;
+          border-radius: 10px;
+          margin: 16px 0;
+          font-weight: 700;
+          border-left: 4px solid #00838f;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
         .month-total {
-          background: #d4edda;
-          padding: 15px;
-          border-radius: 5px;
-          margin: 25px 0;
-          font-weight: bold;
-          border-left: 4px solid #155724;
+          background: #e8f5e9;
+          padding: 16px 20px;
+          border-radius: 10px;
+          margin: 20px 0;
+          font-weight: 700;
+          border-left: 4px solid #2e7d32;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
-        .total-label {
-          color: #333;
-        }
-        .total-value {
-          color: #2196F3;
-          float: right;
-        }
+        .total-label { color: #374151; font-size: 13px; }
+        .total-value { color: #1a237e; font-size: 14px; font-weight: 800; }
+        /* ── SECTION DIVIDER ── */
         .section-divider {
-          border-top: 2px dashed #ccc;
-          margin: 30px 0;
+          height: 1px;
+          background: linear-gradient(90deg, #e8eaf6, transparent);
+          margin: 28px 0;
         }
+        /* ── FOOTER ── */
+        .footer {
+          background: #1a237e;
+          color: rgba(255,255,255,0.7);
+          text-align: center;
+          padding: 16px 32px;
+          font-size: 11px;
+          margin-top: 40px;
+        }
+        .footer strong { color: #ffffff; }
       </style>
     </head>
     <body>
       <div class="header">
-        <h1>TechTimes Job Report</h1>
+        <div class="header-brand">Tech Times</div>
+        <h1>Job Performance Report</h1>
         <div class="technician">${technicianName}</div>
-        <div class="date">Generated: ${new Date().toLocaleString('en-GB')}</div>
-        <div class="export-type">${options.type.toUpperCase()} EXPORT</div>
-      </div>
-      
-      <div class="summary">
-        <div class="summary-row">
-          <span class="summary-label">Total Jobs:</span>
-          <span class="summary-value">${overallTotals.jobCount}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Total AW:</span>
-          <span class="summary-value">${overallTotals.totalAw}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Total Hours:</span>
-          <span class="summary-value">${overallTotals.totalHours.toFixed(2)}h</span>
+        <div class="header-meta">
+          <span class="header-badge">${options.type.toUpperCase()} EXPORT</span>
+          <span class="header-badge">${generatedDate}</span>
         </div>
       </div>
+      <div class="accent-bar"></div>
+
+      <div class="content">
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="summary-card-label">Total Jobs</div>
+            <div class="summary-card-value">${overallTotals.jobCount}</div>
+          </div>
+          <div class="summary-card green">
+            <div class="summary-card-label">Total AW</div>
+            <div class="summary-card-value">${overallTotals.totalAw}</div>
+          </div>
+          <div class="summary-card amber">
+            <div class="summary-card-label">Total Hours</div>
+            <div class="summary-card-value">${overallTotals.totalHours.toFixed(2)}h</div>
+          </div>
+        </div>
   `;
   
   if (options.type === 'daily') {
-    // Daily export - show the selected day
     const dayJobs = groupedByDay.get(options.day!) || [];
     const dayTotals = calculateTotals(dayJobs);
     const dayDate = new Date(options.day!);
-    const dayName = dayDate.toLocaleDateString('en-GB', { 
-      weekday: 'long', 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    });
-    
+    const dayName = dayDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    html += `<div class="section-heading">Daily Jobs</div>`;
     html += `
       <div class="day-section">
         <div class="day-header">${dayName}</div>
         <table class="job-table">
-          <thead>
-            <tr>
-              <th>WIP Number</th>
-              <th>Vehicle Reg</th>
-              <th>VHC</th>
-              <th>AW</th>
-              <th>Hours</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th>
+          </tr></thead>
           <tbody>
     `;
-    
     dayJobs.forEach(job => {
       const hours = (job.aw * 5) / 60;
-      html += `
-        <tr>
-          <td>${job.wipNumber}</td>
-          <td>${job.vehicleReg}</td>
-          <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
-          <td>${job.aw}</td>
-          <td>${hours.toFixed(2)}h</td>
-        </tr>
-      `;
+      html += `<tr>
+        <td>${job.wipNumber}</td><td>${job.vehicleReg}</td>
+        <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
+        <td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td>
+      </tr>`;
     });
-    
-    html += `
-          </tbody>
-        </table>
+    html += `</tbody></table>
         <div class="day-total">
-          <span class="total-label">Day Total:</span>
-          <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+          <span class="total-label">Day Total</span>
+          <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
         </div>
       </div>
     `;
-    
-    // Add efficiency bar for the day
     if (availableHours > 0) {
       console.log('ExportUtils: Daily efficiency - soldHours:', dayTotals.totalHours, 'availableHours:', availableHours);
-      html += `
-        <div class="efficiency-section">
-          <div class="efficiency-title">Daily Efficiency</div>
-          ${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}
-        </div>
-      `;
+      html += `<div class="efficiency-section"><div class="efficiency-title">Daily Efficiency</div>${generateEfficiencyBar(dayTotals.totalHours, availableHours, 'Day Performance')}</div>`;
     }
   } else if (options.type === 'weekly') {
-    // Weekly export - show each day with totals, then week total
     const weekGroups = groupDaysByWeek(sortedDays);
-    
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
       const [startStr, endStr] = weekKey.split('_');
       const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      
-      html += `<div class="section-divider"></div>`;
-      html += `<h2 style="color: #2196F3;">Week: ${startDate} - ${endDate}</h2>`;
-      
-      // Show each day in the week
+
+      html += `<div class="section-heading">Week: ${startDate} – ${endDate}</div>`;
+
       weekDays.sort().forEach(day => {
         const dayJobs = groupedByDay.get(day)!;
         const dayTotals = calculateTotals(dayJobs);
-        const dayDate = new Date(day);
-        const dayName = dayDate.toLocaleDateString('en-GB', { 
-          weekday: 'long', 
-          day: 'numeric', 
-          month: 'long' 
-        });
-        
+        const dayName = new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
         html += `
           <div class="day-section">
             <div class="day-header">${dayName}</div>
             <table class="job-table">
-              <thead>
-                <tr>
-                  <th>WIP Number</th>
-                  <th>Vehicle Reg</th>
-                  <th>VHC</th>
-                  <th>AW</th>
-                  <th>Hours</th>
-                </tr>
-              </thead>
+              <thead><tr><th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th></tr></thead>
               <tbody>
         `;
-        
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
-          html += `
-            <tr>
-              <td>${job.wipNumber}</td>
-              <td>${job.vehicleReg}</td>
-              <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
-              <td>${job.aw}</td>
-              <td>${hours.toFixed(2)}h</td>
-            </tr>
-          `;
+          html += `<tr><td>${job.wipNumber}</td><td>${job.vehicleReg}</td><td>${getVhcDisplayHtml(job.vhcStatus)}</td><td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td></tr>`;
         });
-        
-        html += `
-              </tbody>
-            </table>
+        html += `</tbody></table>
             <div class="day-total">
-              <span class="total-label">Day Total:</span>
-              <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+              <span class="total-label">Day Total</span>
+              <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
             </div>
           </div>
         `;
       });
-      
-      // Week total
+
       const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
       const weekTotals = calculateTotals(weekJobs);
-      
       html += `
         <div class="week-total">
-          <div><span class="total-label">Week Total (${startDate} - ${endDate}):</span></div>
-          <div><span class="total-value">${weekTotals.jobCount} jobs | ${weekTotals.totalAw} AW | ${weekTotals.totalHours.toFixed(2)}h</span></div>
+          <span class="total-label">Week Total (${startDate} – ${endDate})</span>
+          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AW &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
-      
-      // Add efficiency bar for the week
       if (availableHours > 0) {
         console.log('ExportUtils: Weekly efficiency - soldHours:', weekTotals.totalHours, 'availableHours:', availableHours);
-        html += `
-          <div class="efficiency-section">
-            <div class="efficiency-title">Weekly Efficiency</div>
-            ${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}
-          </div>
-        `;
+        html += `<div class="efficiency-section"><div class="efficiency-title">Weekly Efficiency</div>${generateEfficiencyBar(weekTotals.totalHours, availableHours, 'Week Performance')}</div>`;
       }
     });
   } else if (options.type === 'monthly') {
-    // Monthly export - show each day with totals, then month total
     const monthGroups = groupDaysByMonth(sortedDays);
-    
     Array.from(monthGroups.entries()).sort().forEach(([month, monthDays]) => {
-      const monthDate = new Date(month + '-01');
-      const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      
-      html += `<div class="section-divider"></div>`;
-      html += `<h2 style="color: #2196F3;">${monthName}</h2>`;
-      
-      // Show each day in the month
+      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      html += `<div class="section-heading">${monthName}</div>`;
+
       monthDays.sort().forEach(day => {
         const dayJobs = groupedByDay.get(day)!;
         const dayTotals = calculateTotals(dayJobs);
-        const dayDate = new Date(day);
-        const dayName = dayDate.toLocaleDateString('en-GB', { 
-          weekday: 'long', 
-          day: 'numeric', 
-          month: 'long' 
-        });
-        
+        const dayName = new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
         html += `
           <div class="day-section">
             <div class="day-header">${dayName}</div>
             <table class="job-table">
-              <thead>
-                <tr>
-                  <th>WIP Number</th>
-                  <th>Vehicle Reg</th>
-                  <th>VHC</th>
-                  <th>AW</th>
-                  <th>Hours</th>
-                </tr>
-              </thead>
+              <thead><tr><th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th></tr></thead>
               <tbody>
         `;
-        
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
-          html += `
-            <tr>
-              <td>${job.wipNumber}</td>
-              <td>${job.vehicleReg}</td>
-              <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
-              <td>${job.aw}</td>
-              <td>${hours.toFixed(2)}h</td>
-            </tr>
-          `;
+          html += `<tr><td>${job.wipNumber}</td><td>${job.vehicleReg}</td><td>${getVhcDisplayHtml(job.vhcStatus)}</td><td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td></tr>`;
         });
-        
-        html += `
-              </tbody>
-            </table>
+        html += `</tbody></table>
             <div class="day-total">
-              <span class="total-label">Day Total:</span>
-              <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+              <span class="total-label">Day Total</span>
+              <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
             </div>
           </div>
         `;
       });
-      
-      // Month total
+
       const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
-      
       html += `
         <div class="month-total">
-          <div><span class="total-label">Month Total (${monthName}):</span></div>
-          <div><span class="total-value">${monthTotals.jobCount} jobs | ${monthTotals.totalAw} AW | ${monthTotals.totalHours.toFixed(2)}h</span></div>
+          <span class="total-label">Month Total — ${monthName}</span>
+          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AW &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
-      
-      // Add efficiency bar for the month
       if (availableHours > 0) {
-        html += `
-          <div class="efficiency-section">
-            <div class="efficiency-title">Monthly Efficiency</div>
-            ${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}
-          </div>
-        `;
+        html += `<div class="efficiency-section"><div class="efficiency-title">Monthly Efficiency</div>${generateEfficiencyBar(monthTotals.totalHours, availableHours, 'Month Performance')}</div>`;
       }
     });
   } else {
-    // All/Entire export - show days, week totals, and month totals
+    // All/Entire export
     const weekGroups = groupDaysByWeek(sortedDays);
     const monthGroups = groupDaysByMonth(sortedDays);
-    
-    // Show all days grouped by month
+
     Array.from(monthGroups.entries()).sort().forEach(([month, monthDays]) => {
-      const monthDate = new Date(month + '-01');
-      const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      
-      html += `<div class="section-divider"></div>`;
-      html += `<h2 style="color: #2196F3;">${monthName}</h2>`;
-      
-      // Show each day
+      const monthName = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      html += `<div class="section-heading">${monthName}</div>`;
+
       monthDays.sort().forEach(day => {
         const dayJobs = groupedByDay.get(day)!;
         const dayTotals = calculateTotals(dayJobs);
-        const dayDate = new Date(day);
-        const dayName = dayDate.toLocaleDateString('en-GB', { 
-          weekday: 'long', 
-          day: 'numeric', 
-          month: 'long' 
-        });
-        
+        const dayName = new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
         html += `
           <div class="day-section">
             <div class="day-header">${dayName}</div>
             <table class="job-table">
-              <thead>
-                <tr>
-                  <th>WIP Number</th>
-                  <th>Vehicle Reg</th>
-                  <th>VHC</th>
-                  <th>AW</th>
-                  <th>Hours</th>
-                </tr>
-              </thead>
+              <thead><tr><th>WIP Number</th><th>Vehicle Reg</th><th>VHC</th><th>AW</th><th>Hours</th></tr></thead>
               <tbody>
         `;
-        
         dayJobs.forEach(job => {
           const hours = (job.aw * 5) / 60;
-          html += `
-            <tr>
-              <td>${job.wipNumber}</td>
-              <td>${job.vehicleReg}</td>
-              <td>${getVhcDisplayHtml(job.vhcStatus)}</td>
-              <td>${job.aw}</td>
-              <td>${hours.toFixed(2)}h</td>
-            </tr>
-          `;
+          html += `<tr><td>${job.wipNumber}</td><td>${job.vehicleReg}</td><td>${getVhcDisplayHtml(job.vhcStatus)}</td><td><strong>${job.aw}</strong></td><td>${hours.toFixed(2)}h</td></tr>`;
         });
-        
-        html += `
-              </tbody>
-            </table>
+        html += `</tbody></table>
             <div class="day-total">
-              <span class="total-label">Day Total:</span>
-              <span class="total-value">${dayTotals.jobCount} jobs | ${dayTotals.totalAw} AW | ${dayTotals.totalHours.toFixed(2)}h</span>
+              <span class="total-label">Day Total</span>
+              <span class="total-value">${dayTotals.jobCount} jobs &nbsp;|&nbsp; ${dayTotals.totalAw} AW &nbsp;|&nbsp; ${dayTotals.totalHours.toFixed(2)}h</span>
             </div>
           </div>
         `;
       });
-      
-      // Month total
+
       const monthJobs = monthDays.flatMap(day => groupedByDay.get(day)!);
       const monthTotals = calculateTotals(monthJobs);
-      
       html += `
         <div class="month-total">
-          <div><span class="total-label">Month Total (${monthName}):</span></div>
-          <div><span class="total-value">${monthTotals.jobCount} jobs | ${monthTotals.totalAw} AW | ${monthTotals.totalHours.toFixed(2)}h</span></div>
+          <span class="total-label">Month Total — ${monthName}</span>
+          <span class="total-value">${monthTotals.jobCount} jobs &nbsp;|&nbsp; ${monthTotals.totalAw} AW &nbsp;|&nbsp; ${monthTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
     });
-    
-    // Add week totals summary
-    html += `<div class="section-divider"></div>`;
-    html += `<h2 style="color: #2196F3;">Weekly Summary</h2>`;
-    
+
+    html += `<div class="section-heading">Weekly Summary</div>`;
     Array.from(weekGroups.entries()).forEach(([weekKey, weekDays]) => {
       const [startStr, endStr] = weekKey.split('_');
       const weekJobs = weekDays.flatMap(day => groupedByDay.get(day)!);
       const weekTotals = calculateTotals(weekJobs);
       const startDate = new Date(startStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       const endDate = new Date(endStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      
       html += `
         <div class="week-total">
-          <div><span class="total-label">Week (${startDate} - ${endDate}):</span></div>
-          <div><span class="total-value">${weekTotals.jobCount} jobs | ${weekTotals.totalAw} AW | ${weekTotals.totalHours.toFixed(2)}h</span></div>
+          <span class="total-label">Week (${startDate} – ${endDate})</span>
+          <span class="total-value">${weekTotals.jobCount} jobs &nbsp;|&nbsp; ${weekTotals.totalAw} AW &nbsp;|&nbsp; ${weekTotals.totalHours.toFixed(2)}h</span>
         </div>
       `;
     });
-    
-    // Add overall efficiency section at the end
+
     if (availableHours > 0) {
-      html += `
-        <div class="section-divider"></div>
-        <div class="efficiency-section">
-          <div class="efficiency-title">Overall Efficiency Summary</div>
-          ${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}
-        </div>
-      `;
+      html += `<div class="section-divider"></div><div class="efficiency-section"><div class="efficiency-title">Overall Efficiency Summary</div>${generateEfficiencyBar(overallTotals.totalHours, availableHours, 'Entire Period')}</div>`;
     }
   }
-  
+
   html += `
+      </div><!-- /content -->
+      <div class="footer">
+        Generated by <strong>Tech Times</strong> &nbsp;·&nbsp; ${generatedDate}
+      </div>
     </body>
     </html>
   `;
-  
+
   return html;
 }
 

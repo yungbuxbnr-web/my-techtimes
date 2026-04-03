@@ -9,12 +9,17 @@ import {
   RefreshControl,
   Platform,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { router } from 'expo-router';
 import { api } from '@/utils/api';
 import { formatTime } from '@/utils/jobCalculations';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+const YEAR_START_DATE_KEY = '@techtimes_year_start_date';
 
 export default function StatsScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -38,6 +43,83 @@ export default function StatsScreen() {
   const [selectedWeekStats, setSelectedWeekStats] = useState<any>(null);
   const [selectedMonthStats, setSelectedMonthStats] = useState<any>(null);
   const [dailyWorkingHours, setDailyWorkingHours] = useState(8.5);
+
+  // Yearly stats state
+  const [yearStartDate, setYearStartDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setMonth(0);
+    d.setDate(1);
+    return d;
+  });
+  const [showYearDatePicker, setShowYearDatePicker] = useState(false);
+  const [yearlyStats, setYearlyStats] = useState<{
+    soldHours: number;
+    targetHours: number;
+    remainingHours: number;
+    progress: number;
+    yearEnd: Date;
+  } | null>(null);
+
+  const loadYearStartDate = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(YEAR_START_DATE_KEY);
+      if (stored) {
+        setYearStartDate(new Date(stored));
+        console.log('StatsScreen: Loaded year start date:', stored);
+      }
+    } catch (error) {
+      console.error('StatsScreen: Error loading year start date:', error);
+    }
+  }, []);
+
+  const saveYearStartDate = async (date: Date) => {
+    try {
+      await AsyncStorage.setItem(YEAR_START_DATE_KEY, date.toISOString());
+      console.log('StatsScreen: Saved year start date:', date.toISOString());
+    } catch (error) {
+      console.error('StatsScreen: Error saving year start date:', error);
+    }
+  };
+
+  const loadYearlyStats = useCallback(async (startDate: Date) => {
+    try {
+      console.log('StatsScreen: Calculating yearly stats from', startDate.toLocaleDateString());
+      const yearEnd = new Date(startDate);
+      yearEnd.setFullYear(yearEnd.getFullYear() + 1);
+      yearEnd.setDate(yearEnd.getDate() - 1);
+
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = new Date() < yearEnd
+        ? new Date().toISOString().split('T')[0]
+        : yearEnd.toISOString().split('T')[0];
+
+      const [allJobs, sched, settings] = await Promise.all([
+        api.getAllJobs(),
+        api.getSchedule(),
+        api.getSettings(),
+      ]);
+
+      const yearJobs = allJobs.filter(job => {
+        const d = job.createdAt.split('T')[0];
+        return d >= startStr && d <= endStr;
+      });
+
+      const totalAw = yearJobs.reduce((sum, job) => sum + job.aw, 0);
+      const soldHours = (totalAw * 5) / 60;
+
+      // Yearly target = monthly target × 12
+      const monthlyTarget = settings.monthlyTarget || 180;
+      const targetHours = monthlyTarget * 12;
+
+      const progress = targetHours > 0 ? Math.min((soldHours / targetHours) * 100, 100) : 0;
+      const remainingHours = Math.max(0, targetHours - soldHours);
+
+      setYearlyStats({ soldHours, targetHours, remainingHours, progress, yearEnd });
+      console.log('StatsScreen: Yearly stats - sold:', soldHours.toFixed(2), 'target:', targetHours, 'progress:', progress.toFixed(1) + '%');
+    } catch (error) {
+      console.error('StatsScreen: Error loading yearly stats:', error);
+    }
+  }, []);
 
   const loadStats = useCallback(async () => {
     try {
@@ -170,6 +252,16 @@ export default function StatsScreen() {
     loadMonthStats(newDate);
     console.log('StatsScreen: Navigating to month:', newDate.toLocaleDateString());
   };
+
+  // Load year start date once on mount, then trigger yearly stats
+  useEffect(() => {
+    loadYearStartDate();
+  }, [loadYearStartDate]);
+
+  // Re-run yearly stats whenever yearStartDate changes
+  useEffect(() => {
+    loadYearlyStats(yearStartDate);
+  }, [yearStartDate, loadYearlyStats]);
 
   useEffect(() => {
     console.log('StatsScreen: Loading statistics');
@@ -435,6 +527,144 @@ export default function StatsScreen() {
               </View>
             </View>
           </View>
+
+          {/* Yearly Target vs Sold Hours */}
+          <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Yearly Performance</Text>
+
+          <View style={[styles.yearlyCard, { backgroundColor: theme.card }]}>
+            <View style={styles.yearlyHeader}>
+              <View style={styles.yearlyTitleRow}>
+                <IconSymbol
+                  ios_icon_name="calendar.badge.clock"
+                  android_material_icon_name="event"
+                  size={22}
+                  color={theme.primary}
+                />
+                <Text style={[styles.yearlyTitle, { color: theme.text }]}>Work Year Target</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.yearDateButton, { backgroundColor: theme.background }]}
+                onPress={() => {
+                  console.log('StatsScreen: User tapped year start date picker');
+                  setShowYearDatePicker(true);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="calendar"
+                  android_material_icon_name="calendar-today"
+                  size={14}
+                  color={theme.primary}
+                />
+                <Text style={[styles.yearDateButtonText, { color: theme.primary }]}>
+                  {yearStartDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {yearlyStats && (
+              <>
+                <Text style={[styles.yearPeriodText, { color: theme.textSecondary }]}>
+                  {yearStartDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {' – '}
+                  {yearlyStats.yearEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </Text>
+
+                <View style={styles.yearlyProgressContainer}>
+                  <View style={[styles.yearlyProgressBar, { backgroundColor: theme.background }]}>
+                    <View
+                      style={[
+                        styles.yearlyProgressFill,
+                        {
+                          width: `${yearlyStats.progress}%`,
+                          backgroundColor: yearlyStats.progress >= 65 ? theme.chartGreen : yearlyStats.progress >= 31 ? theme.chartYellow : theme.chartRed,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.yearlyProgressPercent, { color: yearlyStats.progress >= 65 ? theme.chartGreen : yearlyStats.progress >= 31 ? theme.chartYellow : theme.chartRed }]}>
+                    {yearlyStats.progress.toFixed(1)}%
+                  </Text>
+                </View>
+
+                <View style={styles.yearlyStatsRow}>
+                  <View style={styles.yearlyStat}>
+                    <Text style={[styles.yearlyStatValue, { color: theme.primary }]}>
+                      {yearlyStats.soldHours.toFixed(1)}h
+                    </Text>
+                    <Text style={[styles.yearlyStatLabel, { color: theme.textSecondary }]}>Sold Hours</Text>
+                  </View>
+                  <View style={[styles.yearlyStatDivider, { backgroundColor: theme.border }]} />
+                  <View style={styles.yearlyStat}>
+                    <Text style={[styles.yearlyStatValue, { color: theme.text }]}>
+                      {yearlyStats.targetHours.toFixed(0)}h
+                    </Text>
+                    <Text style={[styles.yearlyStatLabel, { color: theme.textSecondary }]}>Target Hours</Text>
+                  </View>
+                  <View style={[styles.yearlyStatDivider, { backgroundColor: theme.border }]} />
+                  <View style={styles.yearlyStat}>
+                    <Text style={[styles.yearlyStatValue, { color: theme.chartYellow }]}>
+                      {yearlyStats.remainingHours.toFixed(1)}h
+                    </Text>
+                    <Text style={[styles.yearlyStatLabel, { color: theme.textSecondary }]}>Remaining</Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Year Start Date Picker Modal */}
+          {showYearDatePicker && (
+            <Modal
+              visible={showYearDatePicker}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowYearDatePicker(false)}
+            >
+              <View style={styles.yearPickerOverlay}>
+                <View style={[styles.yearPickerContent, { backgroundColor: theme.card }]}>
+                  <View style={styles.yearPickerHeader}>
+                    <Text style={[styles.yearPickerTitle, { color: theme.text }]}>Set Year Start Date</Text>
+                    <TouchableOpacity onPress={() => setShowYearDatePicker(false)}>
+                      <IconSymbol
+                        ios_icon_name="xmark.circle.fill"
+                        android_material_icon_name="close"
+                        size={28}
+                        color={theme.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.yearPickerSubtitle, { color: theme.textSecondary }]}>
+                    Choose the date your work year begins (e.g. 1 Apr for an April–March year)
+                  </Text>
+                  <DateTimePicker
+                    value={yearStartDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(event, date) => {
+                      if (Platform.OS === 'android') {
+                        setShowYearDatePicker(false);
+                      }
+                      if (date) {
+                        console.log('StatsScreen: User selected year start date:', date.toLocaleDateString());
+                        setYearStartDate(date);
+                        saveYearStartDate(date);
+                        loadYearlyStats(date);
+                      }
+                    }}
+                    style={styles.datePicker}
+                  />
+                  {Platform.OS === 'ios' && (
+                    <TouchableOpacity
+                      style={[styles.yearPickerDone, { backgroundColor: theme.primary }]}
+                      onPress={() => setShowYearDatePicker(false)}
+                    >
+                      <Text style={styles.yearPickerDoneText}>Done</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </Modal>
+          )}
 
           {/* Period Statistics */}
           <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Period Statistics</Text>
@@ -902,5 +1132,132 @@ const styles = StyleSheet.create({
   },
   recentJobTime: {
     fontSize: 12,
+  },
+  // Yearly stats card
+  yearlyCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  yearlyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  yearlyTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  yearlyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  yearDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  yearDateButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  yearPeriodText: {
+    fontSize: 12,
+    marginBottom: 14,
+  },
+  yearlyProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  yearlyProgressBar: {
+    flex: 1,
+    height: 14,
+    borderRadius: 7,
+    overflow: 'hidden',
+  },
+  yearlyProgressFill: {
+    height: '100%',
+    borderRadius: 7,
+  },
+  yearlyProgressPercent: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    minWidth: 48,
+    textAlign: 'right',
+  },
+  yearlyStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  yearlyStat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  yearlyStatValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  yearlyStatLabel: {
+    fontSize: 11,
+  },
+  yearlyStatDivider: {
+    width: 1,
+    height: 36,
+    opacity: 0.3,
+  },
+  // Year date picker modal
+  yearPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  yearPickerContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  yearPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  yearPickerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  yearPickerSubtitle: {
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  datePicker: {
+    width: '100%',
+  },
+  yearPickerDone: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  yearPickerDoneText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
