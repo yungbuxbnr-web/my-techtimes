@@ -686,26 +686,39 @@ export default function JobRecordsScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {showDatePicker && (
+                {showDatePicker && Platform.OS === 'ios' && (
                   <DateTimePicker
                     value={editDate}
                     mode="date"
-                    display="default"
+                    display="spinner"
                     onChange={(event, selectedDate) => {
+                      console.log('JobRecordsScreen: Date picker event:', event.type, selectedDate);
                       setShowDatePicker(false);
-                      if (selectedDate) setEditDate(selectedDate);
+                      if (event.type !== 'dismissed' && selectedDate) {
+                        const updated = new Date(editDate);
+                        updated.setFullYear(selectedDate.getFullYear());
+                        updated.setMonth(selectedDate.getMonth());
+                        updated.setDate(selectedDate.getDate());
+                        setEditDate(updated);
+                      }
                     }}
                   />
                 )}
 
-                {showTimePicker && (
+                {showTimePicker && Platform.OS === 'ios' && (
                   <DateTimePicker
                     value={editDate}
                     mode="time"
-                    display="default"
+                    display="spinner"
                     onChange={(event, selectedDate) => {
+                      console.log('JobRecordsScreen: Time picker event:', event.type, selectedDate);
                       setShowTimePicker(false);
-                      if (selectedDate) setEditDate(selectedDate);
+                      if (event.type !== 'dismissed' && selectedDate) {
+                        const updated = new Date(editDate);
+                        updated.setHours(selectedDate.getHours());
+                        updated.setMinutes(selectedDate.getMinutes());
+                        setEditDate(updated);
+                      }
                     }}
                   />
                 )}
@@ -793,6 +806,45 @@ export default function JobRecordsScreen() {
           </View>
         </Modal>
       </View>
+
+      {/* Android date/time pickers must live outside the Modal to render as native dialogs */}
+      {showDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={editDate}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            console.log('JobRecordsScreen: Android date picker event:', event.type, selectedDate);
+            setShowDatePicker(false);
+            if (event.type !== 'dismissed' && selectedDate) {
+              const updated = new Date(editDate);
+              updated.setFullYear(selectedDate.getFullYear());
+              updated.setMonth(selectedDate.getMonth());
+              updated.setDate(selectedDate.getDate());
+              setEditDate(updated);
+            }
+          }}
+        />
+      )}
+
+      {showTimePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={editDate}
+          mode="time"
+          display="default"
+          is24Hour={true}
+          onChange={(event, selectedDate) => {
+            console.log('JobRecordsScreen: Android time picker event:', event.type, selectedDate);
+            setShowTimePicker(false);
+            if (event.type !== 'dismissed' && selectedDate) {
+              const updated = new Date(editDate);
+              updated.setHours(selectedDate.getHours());
+              updated.setMinutes(selectedDate.getMinutes());
+              setEditDate(updated);
+            }
+          }}
+        />
+      )}
     </ImageBackground>
   );
 }
