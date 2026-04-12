@@ -294,6 +294,15 @@ function RootLayoutContent() {
       <Stack.Screen name="hours-remaining-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
       <Stack.Screen name="today-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
       <Stack.Screen name="week-details" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen
+        name="edit-job"
+        options={{
+          title: 'Edit Job',
+          headerShown: true,
+          presentation: 'card',
+          headerBackTitle: 'Back',
+        }}
+      />
     </Stack>
   );
 }

@@ -7,51 +7,26 @@ import {
   FlatList,
   TouchableOpacity,
   ImageBackground,
-  TextInput,
   RefreshControl,
   Alert,
   Platform,
-  Modal,
-  ScrollView,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Dimensions,
 } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculations';
-import { router } from 'expo-router';
+import { awToMinutes, formatTime } from '@/utils/jobCalculations';
+import { router, useFocusEffect } from 'expo-router';
 import { api, Job } from '@/utils/api';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { exportToPdf } from '@/utils/exportUtils';
 import { updateWidgetData } from '@/utils/widgetManager';
-import { getJobImages, saveJobImage, saveImageRecord, deleteJobImage, StoredImage } from '@/utils/imageStorage';
 
 export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [technicianName, setTechnicianName] = useState('Technician');
-
-  const [editWip, setEditWip] = useState('');
-  const [editReg, setEditReg] = useState('');
-  const [editAw, setEditAw] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-  const [editVhc, setEditVhc] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
-  const [editDate, setEditDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-
-  // Image state for edit modal
-  const [editImages, setEditImages] = useState<StoredImage[]>([]);
-  const [editImageLoading, setEditImageLoading] = useState(false);
 
   function getCurrentMonth() {
     const now = new Date();
@@ -123,112 +98,12 @@ export default function JobRecordsScreen() {
     console.log('JobRecordsScreen: Selected jobs count:', newSelection.size);
   };
 
-  const handleEditJob = async (job: Job) => {
-    console.log('JobRecordsScreen: User editing job:', job.id);
-    setEditingJob(job);
-    setEditWip(job.wipNumber);
-    setEditReg(job.vehicleReg);
-    setEditAw(job.aw.toString());
-    setEditNotes(job.notes || '');
-    setEditVhc(job.vhcStatus || 'NONE');
-    setEditDate(new Date(job.createdAt));
-    setEditImages([]);
-    setShowEditModal(true);
-
-    try {
-      const images = await getJobImages(job.id);
-      console.log('JobRecordsScreen: Loaded', images.length, 'images for job:', job.id);
-      setEditImages(images);
-    } catch (e) {
-      console.error('JobRecordsScreen: Error loading job images:', e);
-    }
-  };
-
-  const handleAddEditImage = async (source: 'camera' | 'gallery') => {
-    if (!editingJob) return;
-    console.log('JobRecordsScreen: User adding image to job from', source, 'jobId:', editingJob.id);
-    setEditImageLoading(true);
-    try {
-      const result = source === 'camera'
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
-
-      if (!result.canceled && result.assets[0]) {
-        console.log('JobRecordsScreen: Image selected, saving to storage...');
-        const stored = await saveJobImage(editingJob.id, result.assets[0].uri);
-        await saveImageRecord(stored);
-        console.log('JobRecordsScreen: Image saved, updating job imageUri:', stored.uri);
-        await api.updateJob(editingJob.id, { imageUri: stored.uri });
-        const updated = await getJobImages(editingJob.id);
-        setEditImages(updated);
-      }
-    } catch (e) {
-      console.error('JobRecordsScreen: Error adding image to job:', e);
-      Alert.alert('Error', 'Failed to add image');
-    } finally {
-      setEditImageLoading(false);
-    }
-  };
-
-  const handleDeleteEditImage = async (imageId: string) => {
-    Alert.alert('Delete Photo', 'Remove this photo from the job?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          console.log('JobRecordsScreen: User confirmed delete image:', imageId);
-          try {
-            await deleteJobImage(imageId);
-            if (editingJob) {
-              const updated = await getJobImages(editingJob.id);
-              setEditImages(updated);
-              console.log('JobRecordsScreen: Image deleted, remaining:', updated.length);
-            }
-          } catch (e) {
-            console.error('JobRecordsScreen: Error deleting image:', e);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingJob) return;
-
-    const aw = parseInt(editAw);
-    if (isNaN(aw) || aw < 0 || aw > 100) {
-      Alert.alert('Invalid AW', 'AW must be between 0 and 100');
-      return;
-    }
-
-    if (editWip.length !== 5 || !/^\d+$/.test(editWip)) {
-      Alert.alert('Invalid WIP', 'WIP must be exactly 5 digits');
-      return;
-    }
-
-    try {
-      console.log('JobRecordsScreen: Saving job edit for:', editingJob.id);
-      await api.updateJob(editingJob.id, {
-        wipNumber: editWip,
-        vehicleReg: editReg.toUpperCase(),
-        aw,
-        notes: editNotes,
-        vhcStatus: editVhc,
-        createdAt: editDate.toISOString(),
-      });
-
-      console.log('JobRecordsScreen: Updating widget data after edit');
-      await updateWidgetData();
-
-      setShowEditModal(false);
-      await loadJobs();
-      Alert.alert('Success', 'Job updated successfully');
-    } catch (error) {
-      console.error('JobRecordsScreen: Error updating job:', error);
-      Alert.alert('Error', 'Failed to update job');
-    }
-  };
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('JobRecordsScreen: Screen focused, reloading jobs');
+      loadJobs();
+    }, [loadJobs])
+  );
 
   const handleDeleteJob = (jobId: string) => {
     Alert.alert(
@@ -369,7 +244,10 @@ export default function JobRecordsScreen() {
             {!selectionMode && (
               <View style={styles.jobActions}>
                 <TouchableOpacity
-                  onPress={() => handleEditJob(item)}
+                  onPress={() => {
+                    console.log('JobRecordsScreen: User tapped Edit button for job:', item.id);
+                    router.push({ pathname: '/edit-job', params: { id: item.id } });
+                  }}
                   style={[styles.actionButton, { backgroundColor: theme.primary }]}
                 >
                   <Text style={styles.actionButtonText}>Edit</Text>
@@ -586,278 +464,7 @@ export default function JobRecordsScreen() {
             }
           />
         </View>
-
-        <Modal
-          visible={showEditModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowEditModal(false)}
-          statusBarTranslucent={true}
-        >
-          <KeyboardAvoidingView
-            style={styles.modalOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={() => setShowEditModal(false)}
-            />
-            <View style={[styles.modal, { backgroundColor: theme.card, paddingBottom: Platform.OS === 'android' ? 16 : 0, elevation: Platform.OS === 'android' ? 24 : undefined }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Job</Text>
-                <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.modalScrollView}
-                contentContainerStyle={styles.modalContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                <Text style={[styles.label, { color: theme.text }]}>WIP Number</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editWip}
-                  onChangeText={setEditWip}
-                  keyboardType="number-pad"
-                  maxLength={5}
-                  placeholderTextColor={theme.textSecondary}
-                />
-
-                <Text style={[styles.label, { color: theme.text }]}>Vehicle Registration</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editReg}
-                  onChangeText={(text) => setEditReg(text.toUpperCase())}
-                  autoCapitalize="characters"
-                  placeholderTextColor={theme.textSecondary}
-                />
-
-                <Text style={[styles.label, { color: theme.text }]}>AW Value</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editAw}
-                  onChangeText={setEditAw}
-                  keyboardType="number-pad"
-                  placeholderTextColor={theme.textSecondary}
-                />
-
-                <Text style={[styles.label, { color: theme.text }]}>VHC Status</Text>
-                <View style={styles.vhcSelector}>
-                  {(['NONE', 'GREEN', 'ORANGE', 'RED'] as const).map((vhc) => (
-                    <TouchableOpacity
-                      key={vhc}
-                      style={[
-                        styles.vhcOption,
-                        { backgroundColor: editVhc === vhc ? getVhcColor(vhc) || theme.primary : theme.background },
-                      ]}
-                      onPress={() => {
-                        console.log('JobRecordsScreen: User changed VHC status to:', vhc);
-                        setEditVhc(vhc);
-                      }}
-                    >
-                      <Text style={[styles.vhcOptionText, { color: editVhc === vhc ? '#ffffff' : theme.text }]}>
-                        {vhc}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={[styles.label, { color: theme.text }]}>Date & Time</Text>
-                <View style={styles.dateTimeRow}>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => {
-                      console.log('JobRecordsScreen: User tapped date picker in edit modal');
-                      setShowDatePicker(true);
-                    }}
-                  >
-                    <Text style={[styles.dateTimeText, { color: theme.text }]}>
-                      {editDate.toLocaleDateString('en-GB')}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => {
-                      console.log('JobRecordsScreen: User tapped time picker in edit modal');
-                      setShowTimePicker(true);
-                    }}
-                  >
-                    <Text style={[styles.dateTimeText, { color: theme.text }]}>
-                      {editDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {showDatePicker && Platform.OS === 'ios' && (
-                  <DateTimePicker
-                    value={editDate}
-                    mode="date"
-                    display="spinner"
-                    onChange={(event, selectedDate) => {
-                      console.log('JobRecordsScreen: iOS date picker event:', event.type, selectedDate);
-                      setShowDatePicker(false);
-                      if (event.type !== 'dismissed' && selectedDate) {
-                        const updated = new Date(editDate);
-                        updated.setFullYear(selectedDate.getFullYear());
-                        updated.setMonth(selectedDate.getMonth());
-                        updated.setDate(selectedDate.getDate());
-                        setEditDate(updated);
-                      }
-                    }}
-                  />
-                )}
-
-                {showTimePicker && Platform.OS === 'ios' && (
-                  <DateTimePicker
-                    value={editDate}
-                    mode="time"
-                    display="spinner"
-                    onChange={(event, selectedDate) => {
-                      console.log('JobRecordsScreen: iOS time picker event:', event.type, selectedDate);
-                      setShowTimePicker(false);
-                      if (event.type !== 'dismissed' && selectedDate) {
-                        const updated = new Date(editDate);
-                        updated.setHours(selectedDate.getHours());
-                        updated.setMinutes(selectedDate.getMinutes());
-                        setEditDate(updated);
-                      }
-                    }}
-                  />
-                )}
-
-                <Text style={[styles.label, { color: theme.text }]}>Notes</Text>
-                <TextInput
-                  style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  value={editNotes}
-                  onChangeText={setEditNotes}
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={theme.textSecondary}
-                />
-
-                {/* Job Photos Section */}
-                <Text style={[styles.label, { color: theme.text }]}>Job Photos</Text>
-
-                {editImages.length > 0 && (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.thumbnailScroll}
-                    contentContainerStyle={styles.thumbnailScrollContent}
-                  >
-                    {editImages.map((img) => (
-                      <View key={img.id} style={styles.thumbnailWrapper}>
-                        <ExpoImage
-                          source={{ uri: img.uri }}
-                          style={styles.thumbnail}
-                          contentFit="cover"
-                        />
-                        <TouchableOpacity
-                          style={styles.thumbnailDeleteBtn}
-                          onPress={() => {
-                            console.log('JobRecordsScreen: User tapped delete image button, imageId:', img.id);
-                            handleDeleteEditImage(img.id);
-                          }}
-                        >
-                          <Text style={styles.thumbnailDeleteText}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
-
-                {editImageLoading ? (
-                  <View style={styles.imageLoadingRow}>
-                    <ActivityIndicator size="small" color={theme.primary} />
-                    <Text style={[styles.imageLoadingText, { color: theme.textSecondary }]}>Saving image...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.imageButtonsRow}>
-                    <TouchableOpacity
-                      style={[styles.imagePickerButton, { backgroundColor: theme.primary }]}
-                      onPress={() => {
-                        console.log('JobRecordsScreen: User tapped Camera button in edit modal');
-                        handleAddEditImage('camera');
-                      }}
-                    >
-                      <Text style={styles.imagePickerButtonText}>📷 Camera</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.imagePickerButton, { backgroundColor: theme.secondary }]}
-                      onPress={() => {
-                        console.log('JobRecordsScreen: User tapped Gallery button in edit modal');
-                        handleAddEditImage('gallery');
-                      }}
-                    >
-                      <Text style={styles.imagePickerButtonText}>🖼 Gallery</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
-                  onPress={() => {
-                    console.log('JobRecordsScreen: User tapped Save Changes button');
-                    handleSaveEdit();
-                  }}
-                >
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
       </View>
-
-      {/* Android date/time pickers must live outside the Modal to render as native dialogs */}
-      {showDatePicker && Platform.OS === 'android' && (
-        <DateTimePicker
-          value={editDate}
-          mode="date"
-          display="default"
-          onChange={(event, selectedDate) => {
-            console.log('JobRecordsScreen: Android date picker event:', event.type, selectedDate);
-            setShowDatePicker(false);
-            if (event.type === 'set' && selectedDate) {
-              const updated = new Date(editDate);
-              updated.setFullYear(selectedDate.getFullYear());
-              updated.setMonth(selectedDate.getMonth());
-              updated.setDate(selectedDate.getDate());
-              setEditDate(updated);
-              // Chain to time picker on Android
-              setShowTimePicker(true);
-            }
-          }}
-        />
-      )}
-
-      {showTimePicker && Platform.OS === 'android' && (
-        <DateTimePicker
-          value={editDate}
-          mode="time"
-          display="default"
-          is24Hour={true}
-          onChange={(event, selectedDate) => {
-            console.log('JobRecordsScreen: Android time picker event:', event.type, selectedDate);
-            setShowTimePicker(false);
-            if (event.type === 'set' && selectedDate) {
-              const updated = new Date(editDate);
-              updated.setHours(selectedDate.getHours());
-              updated.setMinutes(selectedDate.getMinutes());
-              setEditDate(updated);
-            }
-          }}
-        />
-      )}
     </ImageBackground>
   );
 }
@@ -1122,48 +729,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     marginTop: 16,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modal: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: Dimensions.get('window').height * 0.88,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  modalScrollView: {
-    flex: 1,
-  },
-  modalContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
   },
   textArea: {
     height: 80,
