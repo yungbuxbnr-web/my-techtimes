@@ -29,7 +29,6 @@ import * as Haptics from 'expo-haptics';
 import { updateWidgetData } from '@/utils/widgetManager';
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 
-
 interface JobSuggestion {
   wipNumber: string;
   vehicleReg: string;
@@ -39,6 +38,11 @@ interface JobSuggestion {
   lastUsed: string;
   usageCount: number;
 }
+
+// Android status bar height for KeyboardAvoidingView offset
+const ANDROID_STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
+// Approximate header height on Android
+const ANDROID_HEADER_HEIGHT = 56;
 
 export default function AddJobModal() {
   const { theme, overlayStrength, isDarkMode } = useThemeContext();
@@ -58,6 +62,7 @@ export default function AddJobModal() {
 
   const [wipNumber, setWipNumber] = useState('');
   const [vehicleReg, setVehicleReg] = useState('');
+  // aw is always a number; parse from string param on Android
   const [aw, setAw] = useState(0);
   const [notes, setNotes] = useState('');
   const [vhcStatus, setVhcStatus] = useState<'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('NONE');
@@ -69,7 +74,7 @@ export default function AddJobModal() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [jobCardImageUri, setJobCardImageUri] = useState<string | undefined>(undefined);
-  
+
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [suggestions, setSuggestions] = useState<JobSuggestion[]>([]);
@@ -81,18 +86,29 @@ export default function AddJobModal() {
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
 
   // Pre-fill fields when editing an existing job
+  // All params arrive as strings on Android — parse numerics explicitly
   useEffect(() => {
     if (isEditMode) {
       console.log('AddJobModal: Pre-filling fields for edit mode, job id:', params.editId);
-      if (params.editWipNumber) setWipNumber(params.editWipNumber);
-      if (params.editVehicleReg) setVehicleReg(params.editVehicleReg);
-      if (params.editAw) setAw(parseInt(params.editAw, 10) || 0);
-      if (params.editNotes) setNotes(params.editNotes);
-      if (params.editVhcStatus && ['NONE', 'GREEN', 'ORANGE', 'RED'].includes(params.editVhcStatus)) {
-        setVhcStatus(params.editVhcStatus as 'NONE' | 'GREEN' | 'ORANGE' | 'RED');
+      if (params.editWipNumber) setWipNumber(String(params.editWipNumber));
+      if (params.editVehicleReg) setVehicleReg(String(params.editVehicleReg));
+      if (params.editAw) {
+        const parsedAw = parseInt(String(params.editAw), 10);
+        setAw(isNaN(parsedAw) ? 0 : parsedAw);
       }
-      if (params.editCreatedAt) setJobDateTime(new Date(params.editCreatedAt));
-      if (params.editImageUri) setJobCardImageUri(params.editImageUri || undefined);
+      if (params.editNotes) setNotes(String(params.editNotes));
+      const rawVhc = String(params.editVhcStatus || '');
+      if (['NONE', 'GREEN', 'ORANGE', 'RED'].includes(rawVhc)) {
+        setVhcStatus(rawVhc as 'NONE' | 'GREEN' | 'ORANGE' | 'RED');
+      }
+      if (params.editCreatedAt) {
+        const parsedDate = new Date(String(params.editCreatedAt));
+        if (!isNaN(parsedDate.getTime())) {
+          setJobDateTime(parsedDate);
+        }
+      }
+      const rawImageUri = String(params.editImageUri || '');
+      if (rawImageUri) setJobCardImageUri(rawImageUri);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,7 +116,7 @@ export default function AddJobModal() {
   useEffect(() => {
     loadJobsForSuggestions();
   }, []);
-  
+
   const loadJobsForSuggestions = async () => {
     try {
       console.log('AddJobModal: Loading jobs for suggestions');
@@ -111,25 +127,23 @@ export default function AddJobModal() {
       console.error('AddJobModal: Error loading jobs for suggestions:', error);
     }
   };
-  
+
   // Generate suggestions based on input
   const generateSuggestions = (input: string, field: 'wip' | 'reg'): JobSuggestion[] => {
     if (!input || input.length === 0) {
       return [];
     }
-    
+
     const upperInput = input.toUpperCase();
     const suggestionMap = new Map<string, JobSuggestion>();
-    
-    // Group jobs by WIP or Reg and track usage
+
     allJobs.forEach(job => {
       const key = field === 'wip' ? job.wipNumber : job.vehicleReg.toUpperCase();
       const matchValue = field === 'wip' ? job.wipNumber : job.vehicleReg.toUpperCase();
-      
-      // Check if it matches (starts with or contains)
+
       const startsWithMatch = matchValue.startsWith(upperInput);
       const containsMatch = matchValue.includes(upperInput);
-      
+
       if (startsWithMatch || containsMatch) {
         const existing = suggestionMap.get(key);
         if (existing) {
@@ -153,26 +167,26 @@ export default function AddJobModal() {
         }
       }
     });
-    
+
     const suggestionsList = Array.from(suggestionMap.values()).sort((a, b) => {
       const aKey = field === 'wip' ? a.wipNumber : a.vehicleReg;
       const bKey = field === 'wip' ? b.wipNumber : b.vehicleReg;
       const aStartsWith = aKey.startsWith(upperInput);
       const bStartsWith = bKey.startsWith(upperInput);
-      
+
       if (aStartsWith && !bStartsWith) return -1;
       if (!aStartsWith && bStartsWith) return 1;
-      
+
       return new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime();
     });
-    
+
     return suggestionsList.slice(0, 5);
   };
-  
+
   const handleWipChange = (text: string) => {
     setWipNumber(text);
     setActiveField('wip');
-    
+
     if (text.length > 0) {
       const newSuggestions = generateSuggestions(text, 'wip');
       setSuggestions(newSuggestions);
@@ -181,12 +195,12 @@ export default function AddJobModal() {
       setShowSuggestions(false);
     }
   };
-  
+
   const handleRegChange = (text: string) => {
     const upperText = text.toUpperCase();
     setVehicleReg(upperText);
     setActiveField('reg');
-    
+
     if (upperText.length > 0) {
       const newSuggestions = generateSuggestions(upperText, 'reg');
       setSuggestions(newSuggestions);
@@ -195,23 +209,21 @@ export default function AddJobModal() {
       setShowSuggestions(false);
     }
   };
-  
+
   const selectSuggestion = (suggestion: JobSuggestion) => {
     console.log('AddJobModal: User selected suggestion - auto-filling all fields:', suggestion);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Auto-fill all fields from the selected suggestion
+
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
     setAw(suggestion.aw);
     setNotes(suggestion.notes || '');
     setVhcStatus(suggestion.vhcStatus || 'NONE');
-    
-    // Close suggestions and dismiss keyboard
+
     setShowSuggestions(false);
     setActiveField(null);
     Keyboard.dismiss();
-    
+
     const awMinutes = awToMinutes(suggestion.aw);
     const awTimeFormatted = formatTime(awMinutes);
     toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
@@ -220,7 +232,7 @@ export default function AddJobModal() {
 
   const handleSave = async (saveAnother: boolean = false) => {
     console.log('AddJobModal: User tapped Save button, isEditMode:', isEditMode, 'saveAnother:', saveAnother);
-    
+
     if (!validateWipNumber(wipNumber)) {
       toastManager.error('WIP number must be exactly 5 digits');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -242,7 +254,7 @@ export default function AddJobModal() {
     setSaving(true);
     setShowSaveNotification(true);
     setSaveNotificationType('loading');
-    
+
     try {
       const jobData = {
         wipNumber,
@@ -256,17 +268,19 @@ export default function AddJobModal() {
 
       if (isEditMode && params.editId) {
         // Edit existing job
-        console.log('AddJobModal: Updating existing job:', params.editId, jobData);
-        await api.updateJob(params.editId, jobData);
+        const editId = String(params.editId);
+        console.log('AddJobModal: Updating existing job:', editId, jobData);
+        await api.updateJob(editId, jobData);
         console.log('AddJobModal: Job updated successfully');
 
         // Handle image update if a new image was picked (not the original URI)
-        if (jobCardImageUri && jobCardImageUri !== params.editImageUri) {
+        const originalImageUri = String(params.editImageUri || '');
+        if (jobCardImageUri && jobCardImageUri !== originalImageUri) {
           try {
-            console.log('AddJobModal: Saving new job image for edited job:', params.editId);
-            const storedImage = await saveJobImage(params.editId, jobCardImageUri);
+            console.log('AddJobModal: Saving new job image for edited job:', editId);
+            const storedImage = await saveJobImage(editId, jobCardImageUri);
             await saveImageRecord(storedImage);
-            await api.updateJob(params.editId, { imageUri: storedImage.uri });
+            await api.updateJob(editId, { imageUri: storedImage.uri });
           } catch (imgError) {
             console.error('AddJobModal: Error storing job image (non-fatal):', imgError);
           }
@@ -284,7 +298,6 @@ export default function AddJobModal() {
         const newJob = await api.createJob(jobData);
         console.log('AddJobModal: Job created with id:', newJob.id);
 
-        // If a job card photo was picked, compress + store it and update the job's imageUri
         if (jobCardImageUri && newJob.id) {
           try {
             console.log('AddJobModal: Saving job image to storage for job:', newJob.id);
@@ -297,17 +310,16 @@ export default function AddJobModal() {
           }
         }
 
-        // Reload suggestions immediately after saving for live updates
         console.log('AddJobModal: Reloading suggestions for live updates');
         await loadJobsForSuggestions();
-        
+
         console.log('AddJobModal: Updating widget data for live dashboard updates');
         await updateWidgetData();
-        
+
         setSaveNotificationType('success');
         toastManager.success('Job saved successfully!');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
+
         console.log('AddJobModal: Job saved - all stats will update live');
         console.log('AddJobModal: Closing modal after successful save');
         router.back();
@@ -317,7 +329,7 @@ export default function AddJobModal() {
       setSaveNotificationType('error');
       toastManager.error(error instanceof Error ? error.message : 'Failed to save job');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      
+
       setTimeout(() => {
         setShowSaveNotification(false);
       }, 2000);
@@ -346,11 +358,11 @@ export default function AddJobModal() {
       if (!result.canceled && result.assets[0]) {
         console.log('AddJobModal: Image selected, scanning...');
         toastManager.info('Scanning registration...');
-        
+
         const ocrResult: OCRRegResult = await api.scanRegistration(result.assets[0].uri);
-        
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
+
         Alert.alert(
           'Confirm Registration',
           `Detected: ${ocrResult.registration}\n\nAlternatives:\n${ocrResult.alternatives.join('\n')}`,
@@ -393,11 +405,11 @@ export default function AddJobModal() {
       if (!result.canceled && result.assets[0]) {
         console.log('AddJobModal: Image selected, scanning job card...');
         toastManager.info('Scanning job card...');
-        
+
         const ocrResult: OCRJobCardResult = await api.scanJobCard(result.assets[0].uri);
-        
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
+
         Alert.alert(
           'Confirm Job Card Details',
           `WIP: ${ocrResult.wipNumber}\nReg: ${ocrResult.registration}\n\nAlternatives:\nWIP: ${ocrResult.wipAlternatives.join(', ')}\nReg: ${ocrResult.regAlternatives.join(', ')}`,
@@ -526,7 +538,13 @@ export default function AddJobModal() {
   };
 
   const calculatedMinutes = awToMinutes(aw);
-  
+  const calculatedTimeDisplay = formatTime(calculatedMinutes);
+  const calculatedDecimalDisplay = formatDecimalHours(calculatedMinutes);
+  const dateDisplay = jobDateTime.toLocaleDateString('en-GB');
+  const timeDisplay = jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const awDisplay = `${aw} AW`;
+  const saveButtonLabel = saving ? 'Saving...' : isEditMode ? 'Update Record' : 'Save Record';
+
   const getVhcColor = (status: string) => {
     switch (status) {
       case 'GREEN': return '#4CAF50';
@@ -536,6 +554,12 @@ export default function AddJobModal() {
     }
   };
 
+  // KeyboardAvoidingView: use 'height' on Android (not 'padding' which can cause double-offset)
+  const kavBehavior = Platform.OS === 'android' ? 'height' : 'padding';
+  const kavOffset = Platform.OS === 'android'
+    ? ANDROID_STATUS_BAR_HEIGHT + ANDROID_HEADER_HEIGHT
+    : 90;
+
   return (
     <>
       <Stack.Screen
@@ -544,7 +568,13 @@ export default function AddJobModal() {
           title: isEditMode ? 'Edit Job' : 'Add Job',
           headerShown: true,
           headerLeft: () => (
-            <TouchableOpacity onPress={() => router.back()}>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('AddJobModal: User tapped close/back button');
+                router.back();
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol
                 ios_icon_name="xmark.circle.fill"
                 android_material_icon_name="close"
@@ -557,14 +587,16 @@ export default function AddJobModal() {
       />
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}
-        behavior="padding"
-        keyboardVerticalOffset={Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 56 : 90}
+        behavior={kavBehavior}
+        keyboardVerticalOffset={kavOffset}
       >
         <ScrollView
           contentContainerStyle={styles.contentContainer}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets={true}
+          // Do NOT use automaticallyAdjustKeyboardInsets together with KeyboardAvoidingView on Android
+          // as it causes double-offset. Only use it on iOS.
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
             <View style={styles.formGroup}>
@@ -593,10 +625,10 @@ export default function AddJobModal() {
               </View>
               <TextInput
                 ref={wipInputRef}
-                style={[styles.input, { 
+                style={[styles.input, {
                   backgroundColor: isDarkMode ? '#000' : '#fff',
                   color: isDarkMode ? '#fff' : '#000',
-                  borderColor: theme.primary
+                  borderColor: theme.primary,
                 }]}
                 value={wipNumber}
                 onChangeText={handleWipChange}
@@ -624,9 +656,9 @@ export default function AddJobModal() {
             </View>
 
             {showSuggestions && suggestions.length > 0 && (
-              <View style={[styles.suggestionsContainer, { 
+              <View style={[styles.suggestionsContainer, {
                 backgroundColor: isDarkMode ? '#2a2a2a' : '#ffffff',
-                borderColor: theme.primary
+                borderColor: theme.primary,
               }]}>
                 <View style={styles.suggestionsHeader}>
                   <Text style={[styles.suggestionsHeaderText, { color: isDarkMode ? '#fff' : '#000' }]}>
@@ -638,6 +670,7 @@ export default function AddJobModal() {
                       setActiveField(null);
                       Keyboard.dismiss();
                     }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <IconSymbol
                       ios_icon_name="xmark.circle.fill"
@@ -651,41 +684,47 @@ export default function AddJobModal() {
                   data={suggestions}
                   keyExtractor={(item, index) => `${item.wipNumber}-${item.vehicleReg}-${index}`}
                   keyboardShouldPersistTaps="always"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
-                      onPress={() => {
-                        console.log('AddJobModal: User tapped suggestion:', item);
-                        selectSuggestion(item);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.suggestionContent}>
-                        <View style={styles.suggestionRow}>
-                          <Text style={[styles.suggestionWip, { color: theme.primary }]}>
-                            {item.wipNumber}
-                          </Text>
-                          <Text style={[styles.suggestionReg, { color: isDarkMode ? '#fff' : '#000' }]}>
-                            {item.vehicleReg}
-                          </Text>
+                  renderItem={({ item }) => {
+                    const suggestionAwMinutes = awToMinutes(item.aw);
+                    const suggestionAwTime = formatTime(suggestionAwMinutes);
+                    const suggestionAwLabel = `${item.aw} AW (${suggestionAwTime})`;
+                    const suggestionDateLabel = new Date(item.lastUsed).toLocaleDateString('en-GB');
+                    return (
+                      <TouchableOpacity
+                        style={[styles.suggestionItem, { borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
+                        onPress={() => {
+                          console.log('AddJobModal: User tapped suggestion:', item);
+                          selectSuggestion(item);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.suggestionContent}>
+                          <View style={styles.suggestionRow}>
+                            <Text style={[styles.suggestionWip, { color: theme.primary }]}>
+                              {item.wipNumber}
+                            </Text>
+                            <Text style={[styles.suggestionReg, { color: isDarkMode ? '#fff' : '#000' }]}>
+                              {item.vehicleReg}
+                            </Text>
+                          </View>
+                          <View style={styles.suggestionRow}>
+                            <Text style={[styles.suggestionAw, { color: theme.secondary }]}>
+                              {suggestionAwLabel}
+                            </Text>
+                            <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
+                              {suggestionDateLabel}
+                            </Text>
+                          </View>
                         </View>
-                        <View style={styles.suggestionRow}>
-                          <Text style={[styles.suggestionAw, { color: theme.secondary }]}>
-                            {item.aw} AW ({formatTime(awToMinutes(item.aw))})
-                          </Text>
-                          <Text style={[styles.suggestionDate, { color: isDarkMode ? '#888' : '#666' }]}>
-                            {new Date(item.lastUsed).toLocaleDateString('en-GB')}
-                          </Text>
-                        </View>
-                      </View>
-                      <IconSymbol
-                        ios_icon_name="arrow.right.circle.fill"
-                        android_material_icon_name="arrow-forward"
-                        size={24}
-                        color={theme.primary}
-                      />
-                    </TouchableOpacity>
-                  )}
+                        <IconSymbol
+                          ios_icon_name="arrow.right.circle.fill"
+                          android_material_icon_name="arrow-forward"
+                          size={24}
+                          color={theme.primary}
+                        />
+                      </TouchableOpacity>
+                    );
+                  }}
                   scrollEnabled={true}
                   style={styles.suggestionsList}
                 />
@@ -718,10 +757,10 @@ export default function AddJobModal() {
               </View>
               <TextInput
                 ref={regInputRef}
-                style={[styles.input, { 
+                style={[styles.input, {
                   backgroundColor: isDarkMode ? '#000' : '#fff',
                   color: isDarkMode ? '#fff' : '#000',
-                  borderColor: theme.primary
+                  borderColor: theme.primary,
                 }]}
                 value={vehicleReg}
                 onChangeText={handleRegChange}
@@ -750,17 +789,18 @@ export default function AddJobModal() {
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>AW Value *</Text>
               <TouchableOpacity
-                style={[styles.pickerButton, { 
+                style={[styles.pickerButton, {
                   backgroundColor: isDarkMode ? '#000' : '#fff',
-                  borderColor: theme.primary
+                  borderColor: theme.primary,
                 }]}
                 onPress={() => {
+                  console.log('AddJobModal: User tapped AW picker button');
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setShowAwPicker(true);
                 }}
               >
                 <Text style={[styles.pickerButtonText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                  {aw} AW
+                  {awDisplay}
                 </Text>
                 <IconSymbol
                   ios_icon_name="chevron.down"
@@ -770,7 +810,7 @@ export default function AddJobModal() {
                 />
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>VHC Status</Text>
               <View style={styles.vhcButtonsRow}>
@@ -855,13 +895,13 @@ export default function AddJobModal() {
               <View style={styles.timeItem}>
                 <Text style={[styles.timeLabel, { color: isDarkMode ? '#888' : '#666' }]}>Time</Text>
                 <Text style={[styles.timeValue, { color: theme.primary }]}>
-                  {formatTime(calculatedMinutes)}
+                  {calculatedTimeDisplay}
                 </Text>
               </View>
               <View style={styles.timeItem}>
                 <Text style={[styles.timeLabel, { color: isDarkMode ? '#888' : '#666' }]}>Decimal Hours</Text>
                 <Text style={[styles.timeValue, { color: theme.primary }]}>
-                  {formatDecimalHours(calculatedMinutes)}h
+                  {calculatedDecimalDisplay}h
                 </Text>
               </View>
             </View>
@@ -870,9 +910,9 @@ export default function AddJobModal() {
               <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Date & Time</Text>
               <View style={styles.dateTimeRow}>
                 <TouchableOpacity
-                  style={[styles.dateTimeButton, { 
+                  style={[styles.dateTimeButton, {
                     backgroundColor: isDarkMode ? '#000' : '#fff',
-                    borderColor: theme.primary
+                    borderColor: theme.primary,
                   }]}
                   onPress={() => {
                     console.log('AddJobModal: User tapped date picker button');
@@ -887,13 +927,13 @@ export default function AddJobModal() {
                     color={theme.primary}
                   />
                   <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                    {jobDateTime.toLocaleDateString('en-GB')}
+                    {dateDisplay}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.dateTimeButton, { 
+                  style={[styles.dateTimeButton, {
                     backgroundColor: isDarkMode ? '#000' : '#fff',
-                    borderColor: theme.primary
+                    borderColor: theme.primary,
                   }]}
                   onPress={() => {
                     console.log('AddJobModal: User tapped time picker button');
@@ -908,7 +948,7 @@ export default function AddJobModal() {
                     color={theme.primary}
                   />
                   <Text style={[styles.dateTimeText, { color: isDarkMode ? '#fff' : '#000' }]}>
-                    {jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    {timeDisplay}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -917,17 +957,20 @@ export default function AddJobModal() {
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Notes (Optional)</Text>
               <TextInput
-                style={[styles.textArea, { 
+                style={[styles.textArea, {
                   backgroundColor: isDarkMode ? '#000' : '#fff',
                   color: isDarkMode ? '#fff' : '#000',
-                  borderColor: theme.primary
+                  borderColor: theme.primary,
                 }]}
                 value={notes}
-                onChangeText={setNotes}
+                onChangeText={(text) => {
+                  setNotes(text);
+                }}
                 multiline
                 numberOfLines={4}
                 placeholder="Add any additional notes..."
                 placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                textAlignVertical="top"
               />
             </View>
 
@@ -994,10 +1037,12 @@ export default function AddJobModal() {
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: theme.primary }]}
               onPress={() => {
+                console.log('AddJobModal: User tapped Save/Update Record button');
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 handleSave(false);
               }}
               disabled={saving}
+              activeOpacity={0.8}
             >
               <IconSymbol
                 ios_icon_name="checkmark.circle.fill"
@@ -1006,7 +1051,7 @@ export default function AddJobModal() {
                 color="#ffffff"
               />
               <Text style={styles.saveButtonText}>
-                {saving ? 'Saving...' : isEditMode ? 'Update Record' : 'Save Record'}
+                {saveButtonLabel}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1014,43 +1059,55 @@ export default function AddJobModal() {
       </KeyboardAvoidingView>
 
       <ProcessNotification
-          visible={showSaveNotification}
-          title={
-            saveNotificationType === 'loading'
-              ? 'Saving Job...'
-              : saveNotificationType === 'success'
-              ? 'Job Saved!'
-              : 'Save Failed'
-          }
-          type={saveNotificationType}
-        />
+        visible={showSaveNotification}
+        title={
+          saveNotificationType === 'loading'
+            ? 'Saving Job...'
+            : saveNotificationType === 'success'
+            ? 'Job Saved!'
+            : 'Save Failed'
+        }
+        type={saveNotificationType}
+      />
 
-        <Modal
-          visible={showAwPicker}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowAwPicker(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.pickerModal, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff' }]}>
-              <View style={styles.pickerHeader}>
-                <Text style={[styles.pickerTitle, { color: isDarkMode ? '#fff' : '#000' }]}>Select AW Value</Text>
-                <TouchableOpacity onPress={() => setShowAwPicker(false)}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={28}
-                    color={isDarkMode ? '#888' : '#999'}
-                  />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.pickerScroll}>
-                {awOptions.map((value) => (
+      <Modal
+        visible={showAwPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          console.log('AddJobModal: AW picker dismissed via back button');
+          setShowAwPicker(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.pickerModal, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff' }]}>
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: isDarkMode ? '#fff' : '#000' }]}>Select AW Value</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  console.log('AddJobModal: User closed AW picker');
+                  setShowAwPicker(false);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="close"
+                  size={28}
+                  color={isDarkMode ? '#888' : '#999'}
+                />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerScroll}>
+              {awOptions.map((value) => {
+                const optionLabel = `${value} AW (${formatTime(awToMinutes(value))})`;
+                const isSelected = aw === value;
+                return (
                   <TouchableOpacity
                     key={value}
                     style={[
                       styles.pickerOption,
-                      { backgroundColor: aw === value ? theme.primary : 'transparent' },
+                      { backgroundColor: isSelected ? theme.primary : 'transparent' },
                     ]}
                     onPress={() => {
                       console.log('AddJobModal: User selected AW value:', value);
@@ -1062,37 +1119,38 @@ export default function AddJobModal() {
                     <Text
                       style={[
                         styles.pickerOptionText,
-                        { color: aw === value ? '#ffffff' : (isDarkMode ? '#fff' : '#000') },
+                        { color: isSelected ? '#ffffff' : (isDarkMode ? '#fff' : '#000') },
                       ]}
                     >
-                      {value} AW ({formatTime(awToMinutes(value))})
+                      {optionLabel}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+                );
+              })}
+            </ScrollView>
           </View>
-        </Modal>
+        </View>
+      </Modal>
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={jobDateTime}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleDateChange}
-            maximumDate={new Date()}
-          />
-        )}
+      {showDatePicker && (
+        <DateTimePicker
+          value={jobDateTime}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          maximumDate={new Date()}
+        />
+      )}
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={jobDateTime}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleTimeChange}
-            is24Hour={true}
-          />
-        )}
+      {showTimePicker && (
+        <DateTimePicker
+          value={jobDateTime}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleTimeChange}
+          is24Hour={true}
+        />
+      )}
     </>
   );
 }
@@ -1109,10 +1167,7 @@ const styles = StyleSheet.create({
   card: {
     padding: 20,
     borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    // elevation replaces shadow* on Android
     elevation: 5,
   },
   formGroup: {
@@ -1132,9 +1187,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 8,
     gap: 4,
+    minHeight: 36,
   },
   scanButtonText: {
     color: '#ffffff',
@@ -1217,7 +1273,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
   },
   pickerTitle: {
     fontSize: 20,
@@ -1267,6 +1323,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 3,
     gap: 6,
+    minHeight: 52,
   },
   vhcButtonText: {
     fontSize: 14,
@@ -1285,6 +1342,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     gap: 8,
+    minHeight: 52,
   },
   imageButtonText: {
     color: '#ffffff',
@@ -1306,6 +1364,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     gap: 8,
+    minHeight: 48,
   },
   removeImageText: {
     color: '#ffffff',
@@ -1317,10 +1376,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     maxHeight: 250,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 5,
   },
   suggestionsHeader: {
@@ -1330,7 +1385,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
   },
   suggestionsHeaderText: {
     fontSize: 14,
@@ -1346,6 +1401,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     gap: 12,
+    minHeight: 60,
   },
   suggestionContent: {
     flex: 1,

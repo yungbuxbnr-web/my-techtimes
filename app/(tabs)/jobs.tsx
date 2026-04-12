@@ -7,10 +7,12 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  Pressable,
   ImageBackground,
   RefreshControl,
   Alert,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -19,6 +21,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { api, Job } from '@/utils/api';
 import { exportToPdf } from '@/utils/exportUtils';
 import { updateWidgetData } from '@/utils/widgetManager';
+
+// Android status bar height helper
+const ANDROID_STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
 export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -154,17 +159,18 @@ export default function JobRecordsScreen() {
 
   const openEditModal = (job: Job) => {
     console.log('JobRecordsScreen: Opening add-job-modal pre-filled for edit, job:', job.id);
+    // All params must be strings for Android React Navigation compatibility
     router.push({
       pathname: '/add-job-modal',
       params: {
-        editId: job.id,
-        editWipNumber: job.wipNumber,
-        editVehicleReg: job.vehicleReg,
+        editId: String(job.id),
+        editWipNumber: String(job.wipNumber),
+        editVehicleReg: String(job.vehicleReg),
         editAw: String(job.aw),
-        editNotes: job.notes || '',
-        editVhcStatus: job.vhcStatus,
-        editCreatedAt: job.createdAt,
-        editImageUri: job.imageUri || '',
+        editNotes: String(job.notes || ''),
+        editVhcStatus: String(job.vhcStatus || 'NONE'),
+        editCreatedAt: String(job.createdAt),
+        editImageUri: String(job.imageUri || ''),
       },
     });
   };
@@ -202,7 +208,8 @@ export default function JobRecordsScreen() {
   };
 
   const totals = calculateTotals();
-  const selectedTotals = calculateSelectedTotals();
+  // selectedTotals kept for potential future use
+  void calculateSelectedTotals;
   const monthName = new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const renderJob = ({ item }: { item: Job }) => {
@@ -229,9 +236,10 @@ export default function JobRecordsScreen() {
 
         <View style={styles.jobContent}>
           <View style={styles.jobHeader}>
-            <TouchableOpacity
+            {/* Use Pressable for reliable long-press on Android */}
+            <Pressable
               style={styles.jobInfo}
-              activeOpacity={0.7}
+              android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
               onPress={() => {
                 if (selectionMode) {
                   console.log('JobRecordsScreen: User tapped job to toggle selection:', item.id);
@@ -245,6 +253,7 @@ export default function JobRecordsScreen() {
                   toggleJobSelection(item.id);
                 }
               }}
+              delayLongPress={300}
             >
               {selectionMode && (
                 <View style={[styles.checkbox, isSelected && { backgroundColor: theme.primary }]}>
@@ -263,10 +272,12 @@ export default function JobRecordsScreen() {
               </Text>
               {item.vhcStatus && item.vhcStatus !== 'NONE' && (
                 <View style={[styles.vhcBadge, { backgroundColor: vhcColor }]}>
-                  <Text style={styles.vhcText}>● VHC: {item.vhcStatus}</Text>
+                  <Text style={styles.vhcText}>
+                    VHC: {item.vhcStatus}
+                  </Text>
                 </View>
               )}
-            </TouchableOpacity>
+            </Pressable>
 
             {!selectionMode && (
               <View style={styles.jobActions}>
@@ -276,6 +287,7 @@ export default function JobRecordsScreen() {
                     openEditModal(item);
                   }}
                   style={[styles.actionButton, { backgroundColor: theme.primary }]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={styles.actionButtonText}>Edit</Text>
                 </TouchableOpacity>
@@ -285,6 +297,7 @@ export default function JobRecordsScreen() {
                     handleDeleteJob(item.id);
                   }}
                   style={[styles.actionButton, { backgroundColor: theme.error }]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol
                     ios_icon_name="xmark"
@@ -297,8 +310,7 @@ export default function JobRecordsScreen() {
             )}
           </View>
 
-          <TouchableOpacity
-            activeOpacity={selectionMode ? 0.6 : 1}
+          <Pressable
             onPress={() => {
               if (selectionMode) {
                 console.log('JobRecordsScreen: User tapped job details to toggle selection:', item.id);
@@ -312,6 +324,8 @@ export default function JobRecordsScreen() {
                 toggleJobSelection(item.id);
               }
             }}
+            delayLongPress={300}
+            android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
           >
             <View style={styles.jobDetails}>
               <View style={styles.detailRow}>
@@ -354,190 +368,205 @@ export default function JobRecordsScreen() {
                 <Text style={[styles.photoBadgeText, { color: theme.primary }]}>Has photos</Text>
               </View>
             )}
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
     );
   };
 
+  // Header top padding: on Android add status bar height + extra breathing room
+  const headerPaddingTop = Platform.OS === 'android' ? ANDROID_STATUS_BAR_HEIGHT + 12 : 16;
+
   return (
     <View style={{ flex: 1 }}>
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1530124566582-a618bc2615dc?w=1200' }}
-      style={styles.background}
-    >
-      <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
-        <View style={styles.container}>
-          <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-            <Text style={[styles.title, { color: '#ffffff' }]}>Job Records</Text>
-            {!selectionMode && (
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1530124566582-a618bc2615dc?w=1200' }}
+        style={styles.background}
+      >
+        <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
+          <View style={styles.container}>
+            <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
+              <Text style={[styles.title, { color: '#ffffff' }]}>Job Records</Text>
+              {!selectionMode && (
+                <TouchableOpacity
+                  style={[styles.addButton, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    console.log('JobRecordsScreen: User tapped Add Job button');
+                    router.push('/add-job-modal');
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus"
+                    android_material_icon_name="add"
+                    size={20}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.addButtonText}>Add Job</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={[styles.monthSelector, { backgroundColor: theme.card }]}>
               <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  console.log('JobRecordsScreen: User tapped Add Job button');
-                  router.push('/add-job-modal');
-                }}
+                onPress={handlePreviousMonth}
+                style={styles.monthArrow}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <IconSymbol
-                  ios_icon_name="plus"
-                  android_material_icon_name="add"
-                  size={20}
-                  color="#ffffff"
+                  ios_icon_name="chevron.left"
+                  android_material_icon_name="arrow-back"
+                  size={24}
+                  color={theme.text}
                 />
-                <Text style={styles.addButtonText}>Add Job</Text>
               </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={[styles.monthSelector, { backgroundColor: theme.card }]}>
-            <TouchableOpacity onPress={handlePreviousMonth} style={styles.monthArrow}>
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={24}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-            <View style={styles.monthInfo}>
-              <Text style={[styles.monthText, { color: theme.text }]}>{monthName}</Text>
-              <Text style={[styles.monthSubtext, { color: theme.textSecondary }]}>
-                {totals.count} jobs
-              </Text>
+              <View style={styles.monthInfo}>
+                <Text style={[styles.monthText, { color: theme.text }]}>{monthName}</Text>
+                <Text style={[styles.monthSubtext, { color: theme.textSecondary }]}>
+                  {totals.count} jobs
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                style={styles.monthArrow}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={24}
+                  color={theme.text}
+                />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={handleNextMonth} style={styles.monthArrow}>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="arrow-forward"
-                size={24}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-          </View>
 
-          {selectionMode ? (
-            <View style={[styles.selectionBar, { backgroundColor: theme.primary }]}>
-              <Text style={styles.selectionText} numberOfLines={1}>
-                {selectedJobs.size} selected
-              </Text>
-              <View style={styles.selectionActions}>
-                {selectedJobs.size === 1 && (
+            {selectionMode ? (
+              <View style={[styles.selectionBar, { backgroundColor: theme.primary }]}>
+                {/* Fixed-width label so it never wraps */}
+                <Text style={styles.selectionText} numberOfLines={1} ellipsizeMode="clip">
+                  {selectedJobs.size} selected
+                </Text>
+                <View style={styles.selectionActions}>
+                  {selectedJobs.size === 1 && (
+                    <TouchableOpacity
+                      style={styles.selectionButton}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                      onPress={() => {
+                        const selectedId = Array.from(selectedJobs)[0];
+                        const selectedJob = jobs.find(j => j.id === selectedId);
+                        console.log('JobRecordsScreen: User tapped Edit Record for job:', selectedId);
+                        if (selectedJob) {
+                          setSelectionMode(false);
+                          setSelectedJobs(new Set());
+                          openEditModal(selectedJob);
+                        }
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="pencil"
+                        android_material_icon_name="edit"
+                        size={14}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.selectionButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={styles.selectionButton}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     onPress={() => {
-                      const selectedId = Array.from(selectedJobs)[0];
-                      const selectedJob = jobs.find(j => j.id === selectedId);
-                      console.log('JobRecordsScreen: User tapped Edit Record for job:', selectedId);
-                      if (selectedJob) {
-                        setSelectionMode(false);
-                        setSelectedJobs(new Set());
-                        openEditModal(selectedJob);
-                      }
+                      console.log('JobRecordsScreen: User tapped Export PDF for', selectedJobs.size, 'jobs');
+                      handleExportSelected();
                     }}
                   >
                     <IconSymbol
-                      ios_icon_name="pencil"
-                      android_material_icon_name="edit"
+                      ios_icon_name="square.and.arrow.up"
+                      android_material_icon_name="share"
                       size={14}
                       color="#ffffff"
                     />
-                    <Text style={styles.selectionButtonText}>Edit</Text>
+                    <Text style={styles.selectionButtonText}>Export PDF</Text>
                   </TouchableOpacity>
-                )}
+                  <TouchableOpacity
+                    style={styles.selectionButton}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                    onPress={() => {
+                      console.log('JobRecordsScreen: User cancelled selection mode');
+                      setSelectionMode(false);
+                      setSelectedJobs(new Set());
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark"
+                      android_material_icon_name="close"
+                      size={14}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.selectionButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.totalsRow, { backgroundColor: theme.card }]}>
+                <View style={styles.totalItem}>
+                  <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.count}</Text>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Jobs</Text>
+                </View>
+                <View style={styles.totalItem}>
+                  <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalAw}</Text>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>AWs</Text>
+                </View>
+                <View style={styles.totalItem}>
+                  <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalTime}</Text>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Time</Text>
+                </View>
                 <TouchableOpacity
-                  style={styles.selectionButton}
+                  style={[styles.selectButton, { backgroundColor: theme.secondary }]}
                   onPress={() => {
-                    console.log('JobRecordsScreen: User tapped Export PDF for', selectedJobs.size, 'jobs');
-                    handleExportSelected();
+                    console.log('JobRecordsScreen: User enabled selection mode');
+                    setSelectionMode(true);
                   }}
                 >
                   <IconSymbol
-                    ios_icon_name="square.and.arrow.up"
-                    android_material_icon_name="share"
-                    size={14}
+                    ios_icon_name="checkmark.circle"
+                    android_material_icon_name="check-circle"
+                    size={20}
                     color="#ffffff"
                   />
-                  <Text style={styles.selectionButtonText}>Export PDF</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.selectionButton}
-                  onPress={() => {
-                    console.log('JobRecordsScreen: User cancelled selection mode');
-                    setSelectionMode(false);
-                    setSelectedJobs(new Set());
-                  }}
-                >
-                  <IconSymbol
-                    ios_icon_name="xmark"
-                    android_material_icon_name="close"
-                    size={14}
-                    color="#ffffff"
-                  />
-                  <Text style={styles.selectionButtonText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          ) : (
-            <View style={[styles.totalsRow, { backgroundColor: theme.card }]}>
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.count}</Text>
-                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Jobs</Text>
-              </View>
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalAw}</Text>
-                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>AWs</Text>
-              </View>
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{totals.totalTime}</Text>
-                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Time</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.selectButton, { backgroundColor: theme.secondary }]}
-                onPress={() => {
-                  console.log('JobRecordsScreen: User enabled selection mode');
-                  setSelectionMode(true);
-                }}
-              >
-                <IconSymbol
-                  ios_icon_name="checkmark.circle"
-                  android_material_icon_name="check-circle"
-                  size={20}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-            </View>
-          )}
+            )}
 
-          <FlatList
-            data={[...jobs].sort((a, b) => {
-              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : Number(a.id.split('-')[0]);
-              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : Number(b.id.split('-')[0]);
-              const diff = timeB - timeA;
-              if (!isNaN(diff) && diff !== 0) return diff;
-              return Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]);
-            })}
-            renderItem={renderJob}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <IconSymbol
-                  ios_icon_name="tray.fill"
-                  android_material_icon_name="inbox"
-                  size={64}
-                  color={theme.textSecondary}
-                />
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                  No jobs found for this month
-                </Text>
-              </View>
-            }
-          />
+            <FlatList
+              data={[...jobs].sort((a, b) => {
+                const timeA = a.createdAt ? new Date(a.createdAt).getTime() : Number(a.id.split('-')[0]);
+                const timeB = b.createdAt ? new Date(b.createdAt).getTime() : Number(b.id.split('-')[0]);
+                const diff = timeB - timeA;
+                if (!isNaN(diff) && diff !== 0) return diff;
+                return Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]);
+              })}
+              renderItem={renderJob}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <IconSymbol
+                    ios_icon_name="tray.fill"
+                    android_material_icon_name="inbox"
+                    size={64}
+                    color={theme.textSecondary}
+                  />
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                    No jobs found for this month
+                  </Text>
+                </View>
+              }
+            />
+          </View>
         </View>
-      </View>
-    </ImageBackground>
+      </ImageBackground>
     </View>
   );
 }
@@ -556,8 +585,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 32,
@@ -567,9 +596,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
     gap: 4,
+    minHeight: 44,
   },
   addButtonText: {
     color: '#ffffff',
@@ -584,14 +614,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 16,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
   monthArrow: {
     padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   monthInfo: {
     alignItems: 'center',
@@ -612,10 +642,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 16,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
   totalItem: {
@@ -630,12 +656,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   selectButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Selection bar: single horizontal row, no wrapping
   selectionBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -643,20 +670,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 5,
+    minHeight: 52,
   },
   selectionText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     flexShrink: 0,
     marginRight: 8,
+    // Fixed minimum width so it never causes layout shift
+    minWidth: 80,
   },
   selectionActions: {
     flex: 1,
@@ -670,11 +696,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     gap: 4,
     flexShrink: 0,
+    minHeight: 36,
   },
   selectionButtonText: {
     color: '#ffffff',
@@ -690,10 +717,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
   vhcStrip: {
@@ -719,6 +742,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
+    minHeight: 44,
   },
   checkbox: {
     width: 24,
@@ -749,8 +773,11 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 6,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     color: '#ffffff',
@@ -775,7 +802,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: 'rgba(128, 128, 128, 0.2)',
   },
   notesLabel: {
     fontSize: 12,
@@ -802,117 +829,5 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     marginTop: 16,
-  },
-  textArea: {
-    height: 80,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    textAlignVertical: 'top',
-  },
-  vhcSelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  vhcOption: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  vhcOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  dateTimeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  dateTimeButton: {
-    flex: 1,
-    height: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dateTimeText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  thumbnailScroll: {
-    marginBottom: 12,
-  },
-  thumbnailScrollContent: {
-    gap: 10,
-    paddingVertical: 4,
-  },
-  thumbnailWrapper: {
-    position: 'relative',
-    width: 80,
-    height: 80,
-  },
-  thumbnail: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-  },
-  thumbnailDeleteBtn: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#f44336',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  thumbnailDeleteText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  imageLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-  },
-  imageLoadingText: {
-    fontSize: 14,
-  },
-  imageButtonsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 4,
-  },
-  imagePickerButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 6,
-  },
-  imagePickerButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  saveButton: {
-    height: 56,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
   },
 });
