@@ -14,6 +14,8 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -590,9 +592,18 @@ export default function JobRecordsScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowEditModal(false)}
+          statusBarTranslucent={true}
         >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modal, { backgroundColor: theme.card }]}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => setShowEditModal(false)}
+            />
+            <View style={[styles.modal, { backgroundColor: theme.card, paddingBottom: Platform.OS === 'android' ? 16 : 0, elevation: Platform.OS === 'android' ? 24 : undefined }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Job</Text>
                 <TouchableOpacity onPress={() => setShowEditModal(false)}>
@@ -803,7 +814,7 @@ export default function JobRecordsScreen() {
                 </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
 
@@ -1120,7 +1131,7 @@ const styles = StyleSheet.create({
   modal: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '90%',
+    maxHeight: Dimensions.get('window').height * 0.88,
   },
   modalHeader: {
     flexDirection: 'row',
