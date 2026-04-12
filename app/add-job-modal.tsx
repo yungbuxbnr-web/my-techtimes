@@ -21,7 +21,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validateAW } from '@/utils/jobCalculations';
 import { api, OCRRegResult, OCRJobCardResult, Job } from '@/utils/api';
 import * as ImagePicker from 'expo-image-picker';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
@@ -43,6 +43,19 @@ interface JobSuggestion {
 export default function AddJobModal() {
   const { theme, overlayStrength, isDarkMode } = useThemeContext();
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    editId?: string;
+    editWipNumber?: string;
+    editVehicleReg?: string;
+    editAw?: string;
+    editNotes?: string;
+    editVhcStatus?: string;
+    editCreatedAt?: string;
+    editImageUri?: string;
+  }>();
+
+  const isEditMode = !!params.editId;
+
   const [wipNumber, setWipNumber] = useState('');
   const [vehicleReg, setVehicleReg] = useState('');
   const [aw, setAw] = useState(0);
@@ -66,6 +79,22 @@ export default function AddJobModal() {
   const regInputRef = useRef<TextInput>(null);
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
+
+  // Pre-fill fields when editing an existing job
+  useEffect(() => {
+    if (isEditMode) {
+      console.log('AddJobModal: Pre-filling fields for edit mode, job id:', params.editId);
+      if (params.editWipNumber) setWipNumber(params.editWipNumber);
+      if (params.editVehicleReg) setVehicleReg(params.editVehicleReg);
+      if (params.editAw) setAw(parseInt(params.editAw, 10) || 0);
+      if (params.editNotes) setNotes(params.editNotes);
+      if (params.editVhcStatus && ['NONE', 'GREEN', 'ORANGE', 'RED'].includes(params.editVhcStatus)) {
+        setVhcStatus(params.editVhcStatus as 'NONE' | 'GREEN' | 'ORANGE' | 'RED');
+      }
+      if (params.editCreatedAt) setJobDateTime(new Date(params.editCreatedAt));
+      if (params.editImageUri) setJobCardImageUri(params.editImageUri || undefined);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load all jobs for suggestions
   useEffect(() => {
@@ -190,7 +219,7 @@ export default function AddJobModal() {
   };
 
   const handleSave = async (saveAnother: boolean = false) => {
-    console.log('AddJobModal: User tapped Save button, saveAnother:', saveAnother);
+    console.log('AddJobModal: User tapped Save button, isEditMode:', isEditMode, 'saveAnother:', saveAnother);
     
     if (!validateWipNumber(wipNumber)) {
       toastManager.error('WIP number must be exactly 5 digits');
@@ -224,38 +253,65 @@ export default function AddJobModal() {
         createdAt: jobDateTime.toISOString(),
         imageUri: jobCardImageUri,
       };
-      
-      console.log('AddJobModal: Saving job:', jobData);
-      const newJob = await api.createJob(jobData);
-      console.log('AddJobModal: Job created with id:', newJob.id);
 
-      // If a job card photo was picked, compress + store it and update the job's imageUri
-      if (jobCardImageUri && newJob.id) {
-        try {
-          console.log('AddJobModal: Saving job image to storage for job:', newJob.id);
-          const storedImage = await saveJobImage(newJob.id, jobCardImageUri);
-          await saveImageRecord(storedImage);
-          console.log('AddJobModal: Image stored, updating job imageUri to:', storedImage.uri);
-          await api.updateJob(newJob.id, { imageUri: storedImage.uri });
-        } catch (imgError) {
-          console.error('AddJobModal: Error storing job image (non-fatal):', imgError);
+      if (isEditMode && params.editId) {
+        // Edit existing job
+        console.log('AddJobModal: Updating existing job:', params.editId, jobData);
+        await api.updateJob(params.editId, jobData);
+        console.log('AddJobModal: Job updated successfully');
+
+        // Handle image update if a new image was picked (not the original URI)
+        if (jobCardImageUri && jobCardImageUri !== params.editImageUri) {
+          try {
+            console.log('AddJobModal: Saving new job image for edited job:', params.editId);
+            const storedImage = await saveJobImage(params.editId, jobCardImageUri);
+            await saveImageRecord(storedImage);
+            await api.updateJob(params.editId, { imageUri: storedImage.uri });
+          } catch (imgError) {
+            console.error('AddJobModal: Error storing job image (non-fatal):', imgError);
+          }
         }
-      }
 
-      // Reload suggestions immediately after saving for live updates
-      console.log('AddJobModal: Reloading suggestions for live updates');
-      await loadJobsForSuggestions();
-      
-      console.log('AddJobModal: Updating widget data for live dashboard updates');
-      await updateWidgetData();
-      
-      setSaveNotificationType('success');
-      toastManager.success('Job saved successfully!');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      console.log('AddJobModal: Job saved - all stats will update live');
-      console.log('AddJobModal: Closing modal after successful save');
-      router.back();
+        await updateWidgetData();
+        setSaveNotificationType('success');
+        toastManager.success('Job updated successfully!');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        console.log('AddJobModal: Closing modal after successful update');
+        router.back();
+      } else {
+        // Create new job
+        console.log('AddJobModal: Saving new job:', jobData);
+        const newJob = await api.createJob(jobData);
+        console.log('AddJobModal: Job created with id:', newJob.id);
+
+        // If a job card photo was picked, compress + store it and update the job's imageUri
+        if (jobCardImageUri && newJob.id) {
+          try {
+            console.log('AddJobModal: Saving job image to storage for job:', newJob.id);
+            const storedImage = await saveJobImage(newJob.id, jobCardImageUri);
+            await saveImageRecord(storedImage);
+            console.log('AddJobModal: Image stored, updating job imageUri to:', storedImage.uri);
+            await api.updateJob(newJob.id, { imageUri: storedImage.uri });
+          } catch (imgError) {
+            console.error('AddJobModal: Error storing job image (non-fatal):', imgError);
+          }
+        }
+
+        // Reload suggestions immediately after saving for live updates
+        console.log('AddJobModal: Reloading suggestions for live updates');
+        await loadJobsForSuggestions();
+        
+        console.log('AddJobModal: Updating widget data for live dashboard updates');
+        await updateWidgetData();
+        
+        setSaveNotificationType('success');
+        toastManager.success('Job saved successfully!');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        console.log('AddJobModal: Job saved - all stats will update live');
+        console.log('AddJobModal: Closing modal after successful save');
+        router.back();
+      }
     } catch (error) {
       console.error('AddJobModal: Error saving job:', error);
       setSaveNotificationType('error');
@@ -485,7 +541,7 @@ export default function AddJobModal() {
       <Stack.Screen
         options={{
           presentation: 'modal',
-          title: 'Add Job',
+          title: isEditMode ? 'Edit Job' : 'Add Job',
           headerShown: true,
           headerLeft: () => (
             <TouchableOpacity onPress={() => router.back()}>
@@ -950,7 +1006,7 @@ export default function AddJobModal() {
                 color="#ffffff"
               />
               <Text style={styles.saveButtonText}>
-                {saving ? 'Saving...' : 'Save Record'}
+                {saving ? 'Saving...' : isEditMode ? 'Update Record' : 'Save Record'}
               </Text>
             </TouchableOpacity>
           </View>

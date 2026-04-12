@@ -196,7 +196,7 @@ export default function InsightsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dateRange, customStartDate, customEndDate, shiftFilter, getDateRangeForFilter]);
+  }, [dateRange, shiftFilter, getDateRangeForFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadInsightsData();
