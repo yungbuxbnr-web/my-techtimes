@@ -416,14 +416,9 @@ export default function JobRecordsScreen() {
 
           {selectionMode ? (
             <View style={[styles.selectionBar, { backgroundColor: theme.primary }]}>
-              <View style={styles.selectionInfo}>
-                <Text style={styles.selectionText}>
-                  {selectedJobs.size} selected
-                </Text>
-                <Text style={styles.selectionSubtext}>
-                  {selectedTotals.totalAw} AW • {selectedTotals.totalHours.toFixed(2)}h
-                </Text>
-              </View>
+              <Text style={styles.selectionText} numberOfLines={1}>
+                {selectedJobs.size} selected
+              </Text>
               <View style={styles.selectionActions}>
                 {selectedJobs.size === 1 && (
                   <TouchableOpacity
@@ -442,10 +437,10 @@ export default function JobRecordsScreen() {
                     <IconSymbol
                       ios_icon_name="pencil"
                       android_material_icon_name="edit"
-                      size={20}
+                      size={14}
                       color="#ffffff"
                     />
-                    <Text style={styles.selectionButtonText}>Edit Record</Text>
+                    <Text style={styles.selectionButtonText}>Edit</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -458,7 +453,7 @@ export default function JobRecordsScreen() {
                   <IconSymbol
                     ios_icon_name="square.and.arrow.up"
                     android_material_icon_name="share"
-                    size={20}
+                    size={14}
                     color="#ffffff"
                   />
                   <Text style={styles.selectionButtonText}>Export PDF</Text>
@@ -474,7 +469,7 @@ export default function JobRecordsScreen() {
                   <IconSymbol
                     ios_icon_name="xmark"
                     android_material_icon_name="close"
-                    size={20}
+                    size={14}
                     color="#ffffff"
                   />
                   <Text style={styles.selectionButtonText}>Cancel</Text>
@@ -643,11 +638,12 @@ const styles = StyleSheet.create({
   },
   selectionBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'nowrap',
     marginHorizontal: 16,
     marginBottom: 12,
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -655,31 +651,30 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  selectionInfo: {
-    flex: 1,
-  },
   selectionText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
-  },
-  selectionSubtext: {
-    color: '#ffffff',
-    fontSize: 12,
-    marginTop: 2,
+    flexShrink: 0,
+    marginRight: 8,
   },
   selectionActions: {
+    flex: 1,
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    flexWrap: 'nowrap',
   },
   selectionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     gap: 4,
+    flexShrink: 0,
   },
   selectionButtonText: {
     color: '#ffffff',
