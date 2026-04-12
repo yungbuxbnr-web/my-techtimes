@@ -369,8 +369,24 @@ export default function AddJobScreen() {
           });
 
       if (!result.canceled && result.assets[0]) {
-        console.log('AddJobScreen: Job card photo selected:', result.assets[0].uri);
-        setJobCardImageUri(result.assets[0].uri);
+        const pickedUri = result.assets[0].uri;
+        console.log('AddJobScreen: Job card photo selected, copying to document directory:', pickedUri);
+        // Copy to app document directory immediately so the URI is stable on Android
+        try {
+          const { documentDirectory, copyAsync, makeDirectoryAsync, getInfoAsync } = await import('expo-file-system');
+          const dir = (documentDirectory ?? '') + 'job_images/';
+          const dirInfo = await getInfoAsync(dir);
+          if (!dirInfo.exists) {
+            await makeDirectoryAsync(dir, { intermediates: true });
+          }
+          const destUri = dir + `temp_${Date.now()}.jpg`;
+          await copyAsync({ from: pickedUri, to: destUri });
+          console.log('AddJobScreen: Photo copied to stable path:', destUri);
+          setJobCardImageUri(destUri);
+        } catch (copyErr) {
+          console.warn('AddJobScreen: Could not copy photo, using original URI:', copyErr);
+          setJobCardImageUri(pickedUri);
+        }
         Alert.alert('Success', 'Job card photo attached!');
       }
     } catch (error) {

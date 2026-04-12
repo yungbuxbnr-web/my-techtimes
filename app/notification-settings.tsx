@@ -17,14 +17,27 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { offlineStorage } from '@/utils/offlineStorage';
-import { scheduleAllNotifications, sendTestNotification } from '@/utils/notificationScheduler';
+import {
+  scheduleAllNotifications,
+  sendTestNotification,
+  setupAndroidNotificationChannels,
+} from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, openNotificationSettings } from '@/utils/permissions';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const SOUND_OPTIONS = [
-  { id: 'default', label: 'Default Sound' },
-  { id: 'none', label: 'No Sound (Silent)' },
+// On Android, sound is controlled via notification channels.
+// We expose channel-based options to the user.
+const ANDROID_SOUND_OPTIONS = [
+  { id: 'default', label: 'Default Sound', description: 'System default notification sound', channelId: 'default' },
+  { id: 'work', label: 'Work Alert', description: 'High-priority sound for work events', channelId: 'work-schedule' },
+  { id: 'reminder', label: 'Reminder', description: 'Softer sound for reminders', channelId: 'reminders' },
+  { id: 'none', label: 'Silent', description: 'No sound', channelId: 'silent' },
+];
+
+const IOS_SOUND_OPTIONS = [
+  { id: 'default', label: 'Default Sound', description: 'System default notification sound' },
+  { id: 'none', label: 'Silent', description: 'No sound' },
 ];
 
 const VIBRATION_PATTERNS = [
@@ -38,17 +51,16 @@ export default function NotificationSettingsScreen() {
   console.log('NotificationSettingsScreen: Rendering notification settings');
   const { theme } = useThemeContext();
   const router = useRouter();
-  
+
   const [dailyReminder, setDailyReminder] = useState(true);
   const [dailyReminderTime, setDailyReminderTime] = useState('08:00');
   const [weeklyReport, setWeeklyReport] = useState(true);
-  const [weeklyReportDay, setWeeklyReportDay] = useState(1); // Monday
+  const [weeklyReportDay, setWeeklyReportDay] = useState(1);
   const [monthlyReport, setMonthlyReport] = useState(true);
   const [targetReminder, setTargetReminder] = useState(true);
   const [efficiencyAlert, setEfficiencyAlert] = useState(true);
   const [lowEfficiencyThreshold, setLowEfficiencyThreshold] = useState('75');
-  
-  // New notification options
+
   const [workStartNotification, setWorkStartNotification] = useState(true);
   const [workEndNotification, setWorkEndNotification] = useState(true);
   const [lunchStartNotification, setLunchStartNotification] = useState(true);
@@ -56,11 +68,13 @@ export default function NotificationSettingsScreen() {
   const [notificationSound, setNotificationSound] = useState('default');
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [vibrationPattern, setVibrationPattern] = useState('default');
-  
+
   const [showSoundPicker, setShowSoundPicker] = useState(false);
   const [showVibrationPicker, setShowVibrationPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const soundOptions = Platform.OS === 'android' ? ANDROID_SOUND_OPTIONS : IOS_SOUND_OPTIONS;
 
   useEffect(() => {
     loadSettings();
@@ -70,7 +84,7 @@ export default function NotificationSettingsScreen() {
     console.log('NotificationSettingsScreen: Loading notification settings');
     try {
       const settings = await offlineStorage.getNotificationSettings();
-      
+
       setDailyReminder(settings.dailyReminder);
       setDailyReminderTime(settings.dailyReminderTime);
       setWeeklyReport(settings.weeklyReport);
@@ -79,8 +93,7 @@ export default function NotificationSettingsScreen() {
       setTargetReminder(settings.targetReminder);
       setEfficiencyAlert(settings.efficiencyAlert);
       setLowEfficiencyThreshold(settings.lowEfficiencyThreshold.toString());
-      
-      // New settings
+
       setWorkStartNotification(settings.workStartNotification ?? true);
       setWorkEndNotification(settings.workEndNotification ?? true);
       setLunchStartNotification(settings.lunchStartNotification ?? true);
@@ -88,7 +101,7 @@ export default function NotificationSettingsScreen() {
       setNotificationSound(settings.notificationSound ?? 'default');
       setVibrationEnabled(settings.vibrationEnabled ?? true);
       setVibrationPattern(settings.vibrationPattern ?? 'default');
-      
+
       console.log('NotificationSettingsScreen: Settings loaded');
     } catch (error) {
       console.error('NotificationSettingsScreen: Error loading settings:', error);
@@ -99,14 +112,13 @@ export default function NotificationSettingsScreen() {
 
   const handleTestNotification = async () => {
     console.log('NotificationSettingsScreen: User tapped Test Notification');
-    
-    // Check permissions first
+
     const hasPermission = await requestNotificationPermissions();
     if (!hasPermission) {
       Alert.alert('Permission Required', 'Please enable notifications in your device settings to test notifications.');
       return;
     }
-    
+
     try {
       const settings = {
         dailyReminder,
@@ -125,7 +137,7 @@ export default function NotificationSettingsScreen() {
         vibrationEnabled,
         vibrationPattern,
       };
-      
+
       await sendTestNotification(settings);
       Alert.alert('Test Sent', 'A test notification has been sent with your current settings.');
     } catch (error) {
@@ -140,18 +152,17 @@ export default function NotificationSettingsScreen() {
   };
 
   const handleSave = async () => {
-    console.log('NotificationSettingsScreen: Saving notification settings');
-    
+    console.log('NotificationSettingsScreen: User tapped Save Settings');
+
     const threshold = parseInt(lowEfficiencyThreshold);
     if (isNaN(threshold) || threshold < 0 || threshold > 100) {
       Alert.alert('Error', 'Efficiency threshold must be between 0 and 100');
       return;
     }
-    
+
     setSaving(true);
-    
+
     try {
-      // Check permissions
       const hasPermission = await requestNotificationPermissions();
       if (!hasPermission) {
         Alert.alert(
@@ -165,8 +176,12 @@ export default function NotificationSettingsScreen() {
         setSaving(false);
         return;
       }
-      
-      // Save settings to storage
+
+      // Set up Android channels before saving
+      if (Platform.OS === 'android') {
+        await setupAndroidNotificationChannels();
+      }
+
       const settingsToSave = {
         dailyReminder,
         dailyReminderTime,
@@ -184,16 +199,15 @@ export default function NotificationSettingsScreen() {
         vibrationEnabled,
         vibrationPattern,
       };
-      
+
       console.log('NotificationSettingsScreen: Saving settings:', settingsToSave);
       await offlineStorage.updateNotificationSettings(settingsToSave);
       console.log('NotificationSettingsScreen: Settings saved to storage');
-      
-      // Reschedule all notifications with new settings
+
       console.log('NotificationSettingsScreen: Rescheduling notifications');
       await scheduleAllNotifications();
       console.log('NotificationSettingsScreen: Notifications rescheduled');
-      
+
       Alert.alert(
         'Success',
         'Notification settings updated successfully. All notifications have been rescheduled based on your work schedule.',
@@ -225,7 +239,7 @@ export default function NotificationSettingsScreen() {
     );
   }
 
-  const selectedSound = SOUND_OPTIONS.find(s => s.id === notificationSound);
+  const selectedSound = soundOptions.find(s => s.id === notificationSound);
   const selectedVibration = VIBRATION_PATTERNS.find(v => v.id === vibrationPattern);
 
   return (
@@ -271,7 +285,7 @@ export default function NotificationSettingsScreen() {
                 Device Notification Settings
               </Text>
               <Text style={[styles.deviceSettingsSubtitle, { color: theme.textSecondary }]}>
-                Open system settings to manage notification sounds and permissions
+                Open system settings to manage notification permissions
               </Text>
             </View>
             <IconSymbol
@@ -288,7 +302,7 @@ export default function NotificationSettingsScreen() {
             <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>
               Receive notifications based on your work schedule times
             </Text>
-            
+
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Work Start</Text>
@@ -298,11 +312,11 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={workStartNotification}
-                onValueChange={setWorkStartNotification}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Work start toggled:', v); setWorkStartNotification(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Work End</Text>
@@ -312,11 +326,11 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={workEndNotification}
-                onValueChange={setWorkEndNotification}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Work end toggled:', v); setWorkEndNotification(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Lunch Start</Text>
@@ -326,11 +340,11 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={lunchStartNotification}
-                onValueChange={setLunchStartNotification}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Lunch start toggled:', v); setLunchStartNotification(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Lunch End</Text>
@@ -340,7 +354,7 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={lunchEndNotification}
-                onValueChange={setLunchEndNotification}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Lunch end toggled:', v); setLunchEndNotification(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
@@ -350,18 +364,29 @@ export default function NotificationSettingsScreen() {
           <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionHeader, { color: theme.text }]}>Sound & Vibration</Text>
             <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-              Customize notification sound and vibration
+              {Platform.OS === 'android'
+                ? 'Select a notification channel — each has its own sound configured in Android settings'
+                : 'Customize notification sound and vibration'}
             </Text>
-            
+
             <View style={styles.pickerContainer}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Notification Sound</Text>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>
+                {Platform.OS === 'android' ? 'Notification Channel / Sound' : 'Notification Sound'}
+              </Text>
               <TouchableOpacity
                 style={[styles.pickerButton, { backgroundColor: theme.background }]}
-                onPress={() => setShowSoundPicker(true)}
+                onPress={() => { console.log('NotificationSettingsScreen: User tapped sound picker'); setShowSoundPicker(true); }}
               >
-                <Text style={[styles.pickerButtonText, { color: theme.text }]}>
-                  {selectedSound?.label || 'Default Sound'}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.pickerButtonText, { color: theme.text }]}>
+                    {selectedSound?.label ?? 'Default Sound'}
+                  </Text>
+                  {'description' in (selectedSound ?? {}) && (
+                    <Text style={[styles.pickerButtonSubtext, { color: theme.textSecondary }]}>
+                      {(selectedSound as any).description}
+                    </Text>
+                  )}
+                </View>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="arrow-forward"
@@ -370,7 +395,21 @@ export default function NotificationSettingsScreen() {
                 />
               </TouchableOpacity>
             </View>
-            
+
+            {Platform.OS === 'android' && (
+              <View style={[styles.androidChannelNote, { backgroundColor: theme.background }]}>
+                <IconSymbol
+                  ios_icon_name="info.circle"
+                  android_material_icon_name="info"
+                  size={16}
+                  color={theme.primary}
+                />
+                <Text style={[styles.androidChannelNoteText, { color: theme.textSecondary }]}>
+                  To change the actual sound, tap "Device Notification Settings" above and select the channel to customise its sound.
+                </Text>
+              </View>
+            )}
+
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Vibration</Text>
@@ -380,24 +419,24 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={vibrationEnabled}
-                onValueChange={setVibrationEnabled}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Vibration toggled:', v); setVibrationEnabled(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             {vibrationEnabled && (
               <View style={styles.pickerContainer}>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Vibration Pattern</Text>
                 <TouchableOpacity
                   style={[styles.pickerButton, { backgroundColor: theme.background }]}
-                  onPress={() => setShowVibrationPicker(true)}
+                  onPress={() => { console.log('NotificationSettingsScreen: User tapped vibration picker'); setShowVibrationPicker(true); }}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.pickerButtonText, { color: theme.text }]}>
-                      {selectedVibration?.label || 'Default'}
+                      {selectedVibration?.label ?? 'Default'}
                     </Text>
                     <Text style={[styles.pickerButtonSubtext, { color: theme.textSecondary }]}>
-                      {selectedVibration?.description || 'Standard vibration'}
+                      {selectedVibration?.description ?? 'Standard vibration'}
                     </Text>
                   </View>
                   <IconSymbol
@@ -409,7 +448,7 @@ export default function NotificationSettingsScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            
+
             <TouchableOpacity
               style={[styles.testButton, { backgroundColor: theme.accent }]}
               onPress={handleTestNotification}
@@ -435,11 +474,11 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={dailyReminder}
-                onValueChange={setDailyReminder}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Daily reminder toggled:', v); setDailyReminder(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             {dailyReminder && (
               <View style={styles.timeInputContainer}>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Reminder Time</Text>
@@ -469,11 +508,11 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={weeklyReport}
-                onValueChange={setWeeklyReport}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Weekly report toggled:', v); setWeeklyReport(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             {weeklyReport && (
               <View style={styles.dayPickerContainer}>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Report Day</Text>
@@ -486,7 +525,7 @@ export default function NotificationSettingsScreen() {
                         { borderColor: theme.border },
                         weeklyReportDay === index && { backgroundColor: theme.primary, borderColor: theme.primary },
                       ]}
-                      onPress={() => setWeeklyReportDay(index)}
+                      onPress={() => { console.log('NotificationSettingsScreen: Weekly report day selected:', day); setWeeklyReportDay(index); }}
                     >
                       <Text
                         style={[
@@ -514,7 +553,7 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={monthlyReport}
-                onValueChange={setMonthlyReport}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Monthly report toggled:', v); setMonthlyReport(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
@@ -531,7 +570,7 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={targetReminder}
-                onValueChange={setTargetReminder}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Target reminder toggled:', v); setTargetReminder(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
@@ -548,11 +587,11 @@ export default function NotificationSettingsScreen() {
               </View>
               <Switch
                 value={efficiencyAlert}
-                onValueChange={setEfficiencyAlert}
+                onValueChange={(v) => { console.log('NotificationSettingsScreen: Efficiency alert toggled:', v); setEfficiencyAlert(v); }}
                 trackColor={{ false: theme.border, true: theme.primary }}
               />
             </View>
-            
+
             {efficiencyAlert && (
               <View style={styles.thresholdInputContainer}>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Low Efficiency Threshold (%)</Text>
@@ -588,7 +627,7 @@ export default function NotificationSettingsScreen() {
 
           <View style={{ height: 40 }} />
         </ScrollView>
-        
+
         {/* Sound Picker Modal */}
         <Modal
           visible={showSoundPicker}
@@ -599,7 +638,9 @@ export default function NotificationSettingsScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Select Notification Sound</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>
+                  {Platform.OS === 'android' ? 'Select Notification Channel' : 'Select Notification Sound'}
+                </Text>
                 <TouchableOpacity onPress={() => setShowSoundPicker(false)}>
                   <IconSymbol
                     ios_icon_name="xmark.circle.fill"
@@ -609,8 +650,13 @@ export default function NotificationSettingsScreen() {
                   />
                 </TouchableOpacity>
               </View>
+              {Platform.OS === 'android' && (
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                  Each channel uses a different sound. Customise sounds in Device Notification Settings.
+                </Text>
+              )}
               <ScrollView style={styles.optionsList}>
-                {SOUND_OPTIONS.map((sound) => {
+                {soundOptions.map((sound) => {
                   const isSelected = notificationSound === sound.id;
                   return (
                     <TouchableOpacity
@@ -620,13 +666,21 @@ export default function NotificationSettingsScreen() {
                         { backgroundColor: isSelected ? theme.primary : theme.background },
                       ]}
                       onPress={() => {
+                        console.log('NotificationSettingsScreen: User selected sound:', sound.id);
                         setNotificationSound(sound.id);
                         setShowSoundPicker(false);
                       }}
                     >
-                      <Text style={[styles.optionText, { color: isSelected ? '#ffffff' : theme.text }]}>
-                        {sound.label}
-                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.optionText, { color: isSelected ? '#ffffff' : theme.text }]}>
+                          {sound.label}
+                        </Text>
+                        {'description' in sound && (
+                          <Text style={[styles.optionSubtext, { color: isSelected ? 'rgba(255,255,255,0.75)' : theme.textSecondary }]}>
+                            {(sound as any).description}
+                          </Text>
+                        )}
+                      </View>
                       {isSelected && (
                         <IconSymbol
                           ios_icon_name="checkmark"
@@ -642,7 +696,7 @@ export default function NotificationSettingsScreen() {
             </View>
           </View>
         </Modal>
-        
+
         {/* Vibration Pattern Picker Modal */}
         <Modal
           visible={showVibrationPicker}
@@ -674,6 +728,7 @@ export default function NotificationSettingsScreen() {
                         { backgroundColor: isSelected ? theme.primary : theme.background },
                       ]}
                       onPress={() => {
+                        console.log('NotificationSettingsScreen: User selected vibration pattern:', pattern.id);
                         setVibrationPattern(pattern.id);
                         setShowVibrationPicker(false);
                       }}
@@ -682,7 +737,7 @@ export default function NotificationSettingsScreen() {
                         <Text style={[styles.optionText, { color: isSelected ? '#ffffff' : theme.text }]}>
                           {pattern.label}
                         </Text>
-                        <Text style={[styles.optionSubtext, { color: isSelected ? '#ffffff' : theme.textSecondary }]}>
+                        <Text style={[styles.optionSubtext, { color: isSelected ? 'rgba(255,255,255,0.75)' : theme.textSecondary }]}>
                           {pattern.description}
                         </Text>
                       </View>
@@ -851,6 +906,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  androidChannelNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  androidChannelNoteText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   testButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -889,7 +957,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    maxHeight: '70%',
+    maxHeight: '75%',
     padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -898,12 +966,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     flex: 1,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 12,
   },
   optionsList: {
     maxHeight: 400,
