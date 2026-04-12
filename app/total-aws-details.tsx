@@ -31,6 +31,7 @@ export default function TotalAwsDetailsScreen() {
 
   useEffect(() => {
     loadAwDetails();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
   const getCurrentMonth = () => {

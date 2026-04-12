@@ -47,6 +47,7 @@ export default function StreaksScreen() {
     } catch (error) {
       console.error('StreaksScreen: Error loading streak data:', error);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
 
   const loadMonthlyData = async () => {

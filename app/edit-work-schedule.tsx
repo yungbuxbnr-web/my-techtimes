@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -17,6 +18,12 @@ import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import {
+  fetchAndStoreBankHolidays,
+  getCachedBankHolidays,
+  BankHoliday,
+} from '@/utils/bankHolidays';
+import { toastManager } from '@/utils/toastManager';
 
 const DAYS_OF_WEEK = [
   { id: 1, name: 'Monday', short: 'Mon' },
@@ -60,9 +67,36 @@ export default function EditWorkScheduleScreen() {
   const [showSaturdayPicker, setShowSaturdayPicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Bank holidays
+  const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
+  const [bankHolidaysLoading, setBankHolidaysLoading] = useState(false);
+  const [excludeBankHolidays, setExcludeBankHolidays] = useState(false);
+
   useEffect(() => {
     loadSchedule();
+    loadCachedBankHolidays();
   }, []);
+
+  const loadCachedBankHolidays = async () => {
+    const cached = await getCachedBankHolidays();
+    setBankHolidays(cached);
+  };
+
+  const handleImportBankHolidays = async () => {
+    console.log('EditWorkScheduleScreen: User tapped Import England Bank Holidays');
+    setBankHolidaysLoading(true);
+    try {
+      const holidays = await fetchAndStoreBankHolidays();
+      setBankHolidays(holidays);
+      console.log('EditWorkScheduleScreen: Imported', holidays.length, 'bank holidays');
+      toastManager.success(`${holidays.length} bank holidays imported`);
+    } catch (error) {
+      console.error('EditWorkScheduleScreen: Error importing bank holidays:', error);
+      toastManager.error('Failed to import bank holidays');
+    } finally {
+      setBankHolidaysLoading(false);
+    }
+  };
 
   const loadSchedule = async () => {
     console.log('EditWorkScheduleScreen: Loading current schedule');
@@ -770,6 +804,76 @@ export default function EditWorkScheduleScreen() {
           </View>
         </View>
 
+        {/* Bank Holidays Section */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Bank Holidays</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+            Import England &amp; Wales bank holidays from the UK Government
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.importButton, { backgroundColor: theme.primary }, bankHolidaysLoading && { opacity: 0.6 }]}
+            onPress={handleImportBankHolidays}
+            disabled={bankHolidaysLoading}
+          >
+            {bankHolidaysLoading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <IconSymbol
+                ios_icon_name="arrow.down.circle.fill"
+                android_material_icon_name="download"
+                size={20}
+                color="#ffffff"
+              />
+            )}
+            <Text style={styles.importButtonText}>
+              {bankHolidaysLoading ? 'Importing...' : 'Import England Bank Holidays'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={[styles.switchRow2, { marginTop: 12 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: theme.text, marginBottom: 2 }]}>Exclude bank holidays</Text>
+              <Text style={[styles.hint, { color: theme.textSecondary }]}>
+                Skip bank holidays when calculating available working hours
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.toggleButton,
+                { backgroundColor: excludeBankHolidays ? theme.primary : theme.background },
+              ]}
+              onPress={() => {
+                console.log('EditWorkScheduleScreen: Exclude bank holidays toggled:', !excludeBankHolidays);
+                setExcludeBankHolidays(!excludeBankHolidays);
+              }}
+            >
+              <Text style={[styles.toggleButtonText, { color: excludeBankHolidays ? '#ffffff' : theme.textSecondary }]}>
+                {excludeBankHolidays ? 'ON' : 'OFF'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {bankHolidays.length > 0 && (
+            <View style={[styles.holidayList, { backgroundColor: theme.background }]}>
+              <Text style={[styles.holidayListTitle, { color: theme.textSecondary }]}>
+                {bankHolidays.length} holidays loaded
+              </Text>
+              {bankHolidays.slice(0, 10).map((h) => (
+                <View key={h.date} style={styles.holidayRow}>
+                  <Text style={[styles.holidayDate, { color: theme.primary }]}>{h.date}</Text>
+                  <Text style={[styles.holidayTitle, { color: theme.text }]}>{h.title}</Text>
+                </View>
+              ))}
+              {bankHolidays.length > 10 && (
+                <Text style={[styles.hint, { color: theme.textSecondary, marginTop: 4 }]}>
+                  +{bankHolidays.length - 10} more
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.saveButton, { backgroundColor: theme.primary }]}
@@ -1144,5 +1248,59 @@ const styles = StyleSheet.create({
   saturdayOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  importButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  importButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  switchRow2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toggleButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    minWidth: 56,
+    alignItems: 'center',
+  },
+  toggleButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  holidayList: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+  },
+  holidayListTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  holidayRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 6,
+    alignItems: 'center',
+  },
+  holidayDate: {
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 90,
+  },
+  holidayTitle: {
+    fontSize: 13,
+    flex: 1,
   },
 });

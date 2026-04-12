@@ -29,6 +29,7 @@ export default function TimeLoggedDetailsScreen() {
 
   useEffect(() => {
     loadTimeDetails();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
   const getCurrentMonth = () => {

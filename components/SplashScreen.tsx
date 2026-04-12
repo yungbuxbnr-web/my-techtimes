@@ -48,6 +48,7 @@ function AnimatedGear({ delay = 0, size = 80, x = 0, y = 0 }: { delay?: number; 
         false
       )
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -113,6 +114,7 @@ function AnimatedWrench({ delay = 0 }: { delay?: number }) {
         withSpring(0, { damping: 10 })
       )
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -173,6 +175,7 @@ function AnimatedScrewdriver({ delay = 0 }: { delay?: number }) {
         withSpring(0, { damping: 10 })
       )
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -222,6 +225,7 @@ function AnimatedSpark({ delay = 0, x = 0, y = 0 }: { delay?: number; x?: number
         withTiming(0, { duration: 400 })
       )
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -273,6 +277,7 @@ function AnimatedPiston({ delay = 0 }: { delay?: number }) {
         false
       )
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -334,6 +339,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
         }
       })
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const titleStyle = useAnimatedStyle(() => {

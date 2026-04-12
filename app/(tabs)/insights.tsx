@@ -97,11 +97,37 @@ export default function InsightsScreen() {
   const [weeklyTarget, setWeeklyTarget] = useState(40);
   const [dailyTarget, setDailyTarget] = useState(8);
 
-  useEffect(() => {
-    loadInsightsData();
-  }, [dateRange, customStartDate, customEndDate, shiftFilter, loadInsightsData]);
+  const getDateRangeForFilter = useCallback((range: DateRange): { start: string; end: string } => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(today);
+    let startDate = new Date(today);
+    
+    switch (range) {
+      case 'today':
+        break;
+      case '7days':
+        startDate.setDate(today.getDate() - 6);
+        break;
+      case '30days':
+        startDate.setDate(today.getDate() - 29);
+        break;
+      case 'thisMonth':
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'custom':
+        startDate = new Date(customStartDate);
+        endDate.setTime(customEndDate.getTime());
+        break;
+    }
+    
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    
+    return { start: startStr, end: endStr };
+  }, [customStartDate, customEndDate]);
 
-  const loadInsightsData = async () => {
+  const loadInsightsData = useCallback(async () => {
     try {
       console.log('InsightsScreen: Loading insights data for range:', dateRange);
       setLoading(true);
@@ -170,37 +196,11 @@ export default function InsightsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange, customStartDate, customEndDate, shiftFilter, getDateRangeForFilter]);
 
-  const getDateRangeForFilter = (range: DateRange): { start: string; end: string } => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endDate = new Date(today);
-    let startDate = new Date(today);
-    
-    switch (range) {
-      case 'today':
-        break;
-      case '7days':
-        startDate.setDate(today.getDate() - 6);
-        break;
-      case '30days':
-        startDate.setDate(today.getDate() - 29);
-        break;
-      case 'thisMonth':
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        break;
-      case 'custom':
-        startDate = new Date(customStartDate);
-        endDate.setTime(customEndDate.getTime());
-        break;
-    }
-    
-    const startStr = startDate.toISOString().split('T')[0];
-    const endStr = endDate.toISOString().split('T')[0];
-    
-    return { start: startStr, end: endStr };
-  };
+  useEffect(() => {
+    loadInsightsData();
+  }, [loadInsightsData]);
 
   const calculateJobTypeStats = (jobList: Job[]): JobTypeStats[] => {
     console.log('InsightsScreen: Calculating job type stats');
@@ -292,7 +292,7 @@ export default function InsightsScreen() {
     setRefreshing(true);
     await loadInsightsData();
     setRefreshing(false);
-  }, [dateRange, customStartDate, customEndDate, shiftFilter]);
+  }, [loadInsightsData]);
 
   const handleDateRangeChange = (range: DateRange) => {
     console.log('InsightsScreen: User changed date range to:', range);

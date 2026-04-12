@@ -30,6 +30,7 @@ export default function JobsDoneDetailsScreen() {
 
   useEffect(() => {
     loadJobsDetails();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
   const getCurrentMonth = () => {

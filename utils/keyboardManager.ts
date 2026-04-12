@@ -43,7 +43,7 @@ export class KeyboardManager {
     fontScale: Dimensions.get('window').fontScale,
   };
   
-  private listeners: Array<(state: KeyboardState) => void> = [];
+  private listeners: ((state: KeyboardState) => void)[] = [];
   
   private constructor() {
     this.initializeListeners();

@@ -68,6 +68,7 @@ function EnginePart({
         stiffness: 100,
       })
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -93,6 +94,7 @@ function ExplodedEngineView() {
       damping: 10,
       stiffness: 100,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const containerStyle = useAnimatedStyle(() => {
@@ -231,6 +233,7 @@ export function SetupCompleteScreen({ technicianName, onComplete }: SetupComplet
         }
       })
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const titleStyle = useAnimatedStyle(() => {

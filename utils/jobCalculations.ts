@@ -27,16 +27,29 @@ export function validateAW(aw: number): boolean {
 
 /**
  * Count actual working days in a given month based on the user's scheduled working days.
+ * Optionally skips bank holidays.
  * @param year - Full year (e.g. 2025)
  * @param month - Month 1-12
  * @param workingDays - Array of day-of-week numbers (0=Sun, 1=Mon … 6=Sat)
+ * @param bankHolidays - Optional array of bank holidays to exclude
  */
-export function countWorkingDaysInMonth(year: number, month: number, workingDays: number[]): number {
+export function countWorkingDaysInMonth(
+  year: number,
+  month: number,
+  workingDays: number[],
+  bankHolidays?: { date: string }[]
+): number {
   const lastDay = new Date(year, month, 0).getDate();
   let count = 0;
   for (let day = 1; day <= lastDay; day++) {
-    const dow = new Date(year, month - 1, day).getDay();
-    if (workingDays.includes(dow)) count++;
+    const date = new Date(year, month - 1, day);
+    const dow = date.getDay();
+    if (!workingDays.includes(dow)) continue;
+    if (bankHolidays && bankHolidays.length > 0) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (bankHolidays.some(h => h.date === dateStr)) continue;
+    }
+    count++;
   }
   console.log(`jobCalculations: ${count} working days in ${year}-${month} for schedule`, workingDays);
   return count;

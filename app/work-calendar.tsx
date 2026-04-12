@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Absence, Schedule } from '@/utils/api';
+import { getCachedBankHolidays, BankHoliday } from '@/utils/bankHolidays';
 
 interface DayInfo {
   date: Date;
@@ -21,6 +22,8 @@ interface DayInfo {
   isWorkingDay: boolean;
   absenceType: 'holiday' | 'sickness' | 'training' | null;
   absenceId?: string;
+  isBankHoliday?: boolean;
+  bankHolidayTitle?: string;
 }
 
 export default function WorkCalendarScreen() {
@@ -33,9 +36,12 @@ export default function WorkCalendarScreen() {
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [calendarDays, setCalendarDays] = useState<DayInfo[]>([]);
   const [dailyHours, setDailyHours] = useState(8.5);
+  const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
 
   useEffect(() => {
     loadScheduleAndAbsences();
+    getCachedBankHolidays().then(setBankHolidays);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
 
   const loadScheduleAndAbsences = async () => {
@@ -66,13 +72,15 @@ export default function WorkCalendarScreen() {
       const monthAbsences = await api.getAbsences(monthStr);
       setAbsences(monthAbsences);
       
-      generateCalendar(effectiveWorkingDays, monthAbsences, schedule);
+      const cachedHolidays = await getCachedBankHolidays();
+      setBankHolidays(cachedHolidays);
+      generateCalendar(effectiveWorkingDays, monthAbsences, schedule, cachedHolidays);
     } catch (error) {
       console.error('WorkCalendarScreen: Error loading data:', error);
     }
   };
 
-  const generateCalendar = (workDays: number[], monthAbsences: Absence[], schedule: Schedule) => {
+  const generateCalendar = (workDays: number[], monthAbsences: Absence[], schedule: Schedule, bankHolidaysRef: BankHoliday[] = []) => {
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -132,6 +140,9 @@ export default function WorkCalendarScreen() {
       
       // Check if there's an absence for this date
       const absence = monthAbsences.find(a => a.absenceDate === dateString);
+
+      // Check bank holiday
+      const bhMatch = bankHolidaysRef.find(h => h.date === dateString);
       
       days.push({
         date,
@@ -139,6 +150,8 @@ export default function WorkCalendarScreen() {
         isWorkingDay,
         absenceType: absence?.absenceType || null,
         absenceId: absence?.id,
+        isBankHoliday: !!bhMatch,
+        bankHolidayTitle: bhMatch?.title,
       });
     }
     
@@ -342,7 +355,8 @@ export default function WorkCalendarScreen() {
               const isToday = dayInfo.dateString === new Date().toISOString().split('T')[0];
               const absenceColor = getAbsenceColor(dayInfo.absenceType);
               const absenceIcon = getAbsenceIcon(dayInfo.absenceType);
-              
+              const isBH = dayInfo.isBankHoliday;
+
               return (
                 <TouchableOpacity
                   key={dayInfo.dateString}
@@ -352,6 +366,7 @@ export default function WorkCalendarScreen() {
                     !dayInfo.isWorkingDay && { opacity: 0.3 },
                     isToday && { borderWidth: 2, borderColor: theme.primary },
                     dayInfo.absenceType && { backgroundColor: absenceColor },
+                    isBH && !dayInfo.absenceType && { backgroundColor: '#ffebee' },
                   ]}
                   onPress={() => handleDayPress(dayInfo)}
                   disabled={!dayInfo.isWorkingDay}
@@ -361,13 +376,16 @@ export default function WorkCalendarScreen() {
                       styles.dayNumber,
                       { color: dayInfo.absenceType ? '#ffffff' : theme.text },
                       !dayInfo.isWorkingDay && { color: theme.textSecondary },
+                      isBH && !dayInfo.absenceType && { color: '#c62828' },
                     ]}
                   >
                     {dayInfo.date.getDate()}
                   </Text>
-                  {absenceIcon && (
+                  {absenceIcon ? (
                     <Text style={styles.absenceIcon}>{absenceIcon}</Text>
-                  )}
+                  ) : isBH ? (
+                    <Text style={styles.bankHolidayIcon}>BH</Text>
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -543,6 +561,12 @@ const styles = StyleSheet.create({
   absenceIcon: {
     fontSize: 10,
     color: '#ffffff',
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  bankHolidayIcon: {
+    fontSize: 8,
+    color: '#c62828',
     fontWeight: 'bold',
     marginTop: 2,
   },

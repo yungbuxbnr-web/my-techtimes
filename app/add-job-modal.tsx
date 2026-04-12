@@ -403,54 +403,69 @@ export default function AddJobModal() {
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     console.log('AddJobModal: Date picker event:', event.type, selectedDate);
-    
+
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        const newDateTime = new Date(jobDateTime);
+        newDateTime.setFullYear(selectedDate.getFullYear());
+        newDateTime.setMonth(selectedDate.getMonth());
+        newDateTime.setDate(selectedDate.getDate());
+        setJobDateTime(newDateTime);
+        console.log('AddJobModal: Android date updated to:', newDateTime.toLocaleDateString());
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        // Chain to time picker on Android
+        setShowTimePicker(true);
+      }
+      return;
     }
-    
+
+    // iOS
     if (event.type === 'dismissed') {
       setShowDatePicker(false);
       return;
     }
-    
     if (selectedDate) {
       const newDateTime = new Date(jobDateTime);
       newDateTime.setFullYear(selectedDate.getFullYear());
       newDateTime.setMonth(selectedDate.getMonth());
       newDateTime.setDate(selectedDate.getDate());
       setJobDateTime(newDateTime);
-      console.log('AddJobModal: Date updated to:', newDateTime.toLocaleDateString());
+      console.log('AddJobModal: iOS date updated to:', newDateTime.toLocaleDateString());
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
-      if (Platform.OS === 'ios') {
-        setShowDatePicker(false);
-      }
+      setShowDatePicker(false);
     }
   };
 
   const handleTimeChange = (event: any, selectedDate?: Date) => {
     console.log('AddJobModal: Time picker event:', event.type, selectedDate);
-    
+
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        const newDateTime = new Date(jobDateTime);
+        newDateTime.setHours(selectedDate.getHours());
+        newDateTime.setMinutes(selectedDate.getMinutes());
+        setJobDateTime(newDateTime);
+        console.log('AddJobModal: Android time updated to:', newDateTime.toLocaleTimeString());
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      return;
     }
-    
+
+    // iOS
     if (event.type === 'dismissed') {
       setShowTimePicker(false);
       return;
     }
-    
     if (selectedDate) {
       const newDateTime = new Date(jobDateTime);
       newDateTime.setHours(selectedDate.getHours());
       newDateTime.setMinutes(selectedDate.getMinutes());
       setJobDateTime(newDateTime);
-      console.log('AddJobModal: Time updated to:', newDateTime.toLocaleTimeString());
+      console.log('AddJobModal: iOS time updated to:', newDateTime.toLocaleTimeString());
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
-      if (Platform.OS === 'ios') {
-        setShowTimePicker(false);
-      }
+      setShowTimePicker(false);
     }
   };
 

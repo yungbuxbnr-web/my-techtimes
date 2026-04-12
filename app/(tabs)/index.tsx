@@ -84,6 +84,7 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('DashboardScreen: Error loading dashboard data:', error);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
 
   const loadCalendarData = async (schedule: any) => {
@@ -176,6 +177,7 @@ export default function DashboardScreen() {
       clearInterval(timer);
       clearInterval(statsRefresh);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - loadDashboardData is stable via useCallback
 
   // Reload data immediately when screen comes into focus (e.g., after closing add-job-modal)

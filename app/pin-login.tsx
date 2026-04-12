@@ -47,6 +47,7 @@ export default function PinLoginScreen() {
         handleBiometricAuth();
       }, 300);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [biometricsEnabled, biometricsAvailable, hasAutoTriggered]);
 
   const loadTechnicianName = async () => {

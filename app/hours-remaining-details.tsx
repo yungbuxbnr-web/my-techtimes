@@ -32,6 +32,7 @@ export default function HoursRemainingDetailsScreen() {
 
   useEffect(() => {
     loadRemainingDetails();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
   const getCurrentMonth = () => {

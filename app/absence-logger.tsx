@@ -31,6 +31,7 @@ export default function AbsenceLoggerScreen() {
 
   useEffect(() => {
     loadData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
   const loadData = async () => {

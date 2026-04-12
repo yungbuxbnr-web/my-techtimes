@@ -58,6 +58,7 @@ export function Toast({ message, type, visible, onHide, duration = 3000 }: Toast
 
       return () => clearTimeout(timer);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, type, message, duration, onHide]);
 
   const animatedStyle = useAnimatedStyle(() => {

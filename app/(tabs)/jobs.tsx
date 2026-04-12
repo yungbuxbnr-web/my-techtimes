@@ -692,7 +692,7 @@ export default function JobRecordsScreen() {
                     mode="date"
                     display="spinner"
                     onChange={(event, selectedDate) => {
-                      console.log('JobRecordsScreen: Date picker event:', event.type, selectedDate);
+                      console.log('JobRecordsScreen: iOS date picker event:', event.type, selectedDate);
                       setShowDatePicker(false);
                       if (event.type !== 'dismissed' && selectedDate) {
                         const updated = new Date(editDate);
@@ -711,7 +711,7 @@ export default function JobRecordsScreen() {
                     mode="time"
                     display="spinner"
                     onChange={(event, selectedDate) => {
-                      console.log('JobRecordsScreen: Time picker event:', event.type, selectedDate);
+                      console.log('JobRecordsScreen: iOS time picker event:', event.type, selectedDate);
                       setShowTimePicker(false);
                       if (event.type !== 'dismissed' && selectedDate) {
                         const updated = new Date(editDate);
@@ -816,12 +816,14 @@ export default function JobRecordsScreen() {
           onChange={(event, selectedDate) => {
             console.log('JobRecordsScreen: Android date picker event:', event.type, selectedDate);
             setShowDatePicker(false);
-            if (event.type !== 'dismissed' && selectedDate) {
+            if (event.type === 'set' && selectedDate) {
               const updated = new Date(editDate);
               updated.setFullYear(selectedDate.getFullYear());
               updated.setMonth(selectedDate.getMonth());
               updated.setDate(selectedDate.getDate());
               setEditDate(updated);
+              // Chain to time picker on Android
+              setShowTimePicker(true);
             }
           }}
         />
@@ -836,7 +838,7 @@ export default function JobRecordsScreen() {
           onChange={(event, selectedDate) => {
             console.log('JobRecordsScreen: Android time picker event:', event.type, selectedDate);
             setShowTimePicker(false);
-            if (event.type !== 'dismissed' && selectedDate) {
+            if (event.type === 'set' && selectedDate) {
               const updated = new Date(editDate);
               updated.setHours(selectedDate.getHours());
               updated.setMinutes(selectedDate.getMinutes());

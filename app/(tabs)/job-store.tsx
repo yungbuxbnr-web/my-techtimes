@@ -103,7 +103,7 @@ export default function JobStoreScreen() {
 
     setFilteredJobs(jobs);
     console.log('JobStoreScreen: Filtered to', jobs.length, 'jobs');
-  }, [allJobs, searchQuery, filterType, sortType, vhcFilter, theme]);
+  }, [allJobs, searchQuery, filterType, sortType, vhcFilter]);
 
   useEffect(() => {
     console.log('JobStoreScreen: Applying filters and search');

@@ -46,6 +46,7 @@ function DoodleAnimation() {
       -1,
       true
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -106,6 +107,7 @@ export function ProcessNotification({
         }
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, title]);
 
   useEffect(() => {
