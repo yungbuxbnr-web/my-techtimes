@@ -134,7 +134,8 @@ config.server.enhanceMiddleware = (middleware) => {
             const parsed = JSON.parse(body);
             const raw = parsed.message || parsed.errors?.[0]?.message || JSON.stringify(parsed, null, 2);
             // Strip ANSI escape codes (terminal colors)
-            errorMessage = raw.replace(/\x1b\[[0-9;]*m/g, ''); // eslint-disable-line no-control-regex
+            // eslint-disable-next-line no-control-regex
+            errorMessage = raw.replace(/\x1b\[[0-9;]*m/g, '');
             const nameMatch = errorMessage.match(/^(\w+Error):/);
             if (nameMatch) errorName = nameMatch[1];
             const fileMatch = errorMessage.match(/\/expo-project\/([^:]+)/);

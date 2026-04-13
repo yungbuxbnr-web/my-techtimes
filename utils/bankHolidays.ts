@@ -52,3 +52,30 @@ export async function isBankHoliday(dateStr: string): Promise<boolean> {
 export function isBankHolidaySync(dateStr: string, holidays: BankHoliday[]): boolean {
   return holidays.some(h => h.date === dateStr);
 }
+
+/**
+ * Fetches UK bank holidays for England/Wales and returns an array of date strings (YYYY-MM-DD).
+ * Results are cached in AsyncStorage. Falls back to cache on network failure.
+ */
+export async function fetchBankHolidays(): Promise<string[]> {
+  try {
+    console.log('BankHolidays: fetchBankHolidays — checking cache freshness');
+    const lastFetch = await AsyncStorage.getItem(LAST_FETCH_KEY);
+    const cacheAgeMs = lastFetch ? Date.now() - new Date(lastFetch).getTime() : Infinity;
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+    if (cacheAgeMs < ONE_DAY_MS) {
+      console.log('BankHolidays: Cache is fresh, returning cached date strings');
+      const cached = await getCachedBankHolidays();
+      return cached.map(h => h.date);
+    }
+
+    console.log('BankHolidays: Cache stale, fetching from UK Government API');
+    const holidays = await fetchAndStoreBankHolidays();
+    return holidays.map(h => h.date);
+  } catch (error) {
+    console.error('BankHolidays: fetchBankHolidays failed, returning cached:', error);
+    const cached = await getCachedBankHolidays();
+    return cached.map(h => h.date);
+  }
+}

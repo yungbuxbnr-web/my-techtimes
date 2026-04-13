@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   Animated,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -169,8 +170,9 @@ export default function MediaScreen() {
   const sizeMBText = stats.totalSizeMB + ' MB';
   const selectedReg = selectedImage?.vehicleReg ?? '';
   const selectedWip = selectedImage?.wipNumber ?? '';
+  const androidStatusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
   const containerStyle = [styles.container, { backgroundColor: theme.background }];
-  const headerStyle = [styles.header, { paddingTop: insets.top + 12 }];
+  const headerStyle = [styles.header, { paddingTop: (insets.top || androidStatusBarHeight) + 12 }];
   const statsBarStyle = [styles.statsBar, { backgroundColor: theme.card, borderColor: theme.border }];
   const emptyIconWrapStyle = [styles.emptyIconWrap, { backgroundColor: theme.card, borderColor: theme.border }];
   const modalHeaderStyle = [styles.modalHeader, { paddingTop: insets.top + 8 }];

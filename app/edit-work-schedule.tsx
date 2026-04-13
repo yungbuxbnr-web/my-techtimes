@@ -63,7 +63,6 @@ export default function EditWorkScheduleScreen() {
   
   const [saturdayFrequency, setSaturdayFrequency] = useState<string>('none');
   const [nextWorkingSaturday, setNextWorkingSaturday] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showSaturdayPicker, setShowSaturdayPicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -77,9 +76,12 @@ export default function EditWorkScheduleScreen() {
     loadCachedBankHolidays();
   }, []);
 
+  // Remove unused showDatePicker state — date picking is handled inline via TextInput
+
   const loadCachedBankHolidays = async () => {
     const cached = await getCachedBankHolidays();
     setBankHolidays(cached);
+    console.log('EditWorkScheduleScreen: Loaded', cached.length, 'cached bank holidays');
   };
 
   const handleImportBankHolidays = async () => {
@@ -143,6 +145,12 @@ export default function EditWorkScheduleScreen() {
       
       if (schedule.nextWorkingSaturday) {
         setNextWorkingSaturday(new Date(schedule.nextWorkingSaturday));
+      }
+
+      // Load bank holiday exclusion preference
+      if (schedule.excludeBankHolidays !== undefined) {
+        setExcludeBankHolidays(schedule.excludeBankHolidays);
+        console.log('EditWorkScheduleScreen: excludeBankHolidays loaded:', schedule.excludeBankHolidays);
       }
       
       console.log('EditWorkScheduleScreen: Schedule loaded', schedule);
@@ -348,6 +356,7 @@ export default function EditWorkScheduleScreen() {
       const lunchEndMinutes = lunchEndHour * 60 + lunchEndMin;
       const calculatedLunchMinutes = lunchEndMinutes - lunchStartMinutes;
       
+      console.log('EditWorkScheduleScreen: Saving schedule with excludeBankHolidays:', excludeBankHolidays);
       await api.updateSchedule({
         workingDays: finalWorkingDays,
         startTime,
@@ -363,6 +372,7 @@ export default function EditWorkScheduleScreen() {
         saturdayWorking: finalWorkingDays.includes(6),
         saturdayFrequency,
         nextWorkingSaturday: nextWorkingSaturday ? nextWorkingSaturday.toISOString() : undefined,
+        excludeBankHolidays,
       });
       
       let saturdayInfo = '';

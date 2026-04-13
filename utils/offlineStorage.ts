@@ -35,9 +35,14 @@ export interface Schedule {
   lunchStartTime?: string; // HH:MM format
   lunchEndTime?: string; // HH:MM format
   lunchBreakMinutes?: number;
+  saturdayStartTime?: string; // HH:MM format
+  saturdayEndTime?: string; // HH:MM format
+  saturdayLunchBreakMinutes?: number;
+  saturdayDailyHours?: number;
   saturdayFrequency?: 'none' | 'every' | '1-in-2' | '1-in-3' | '1-in-4' | 'custom'; // Saturday frequency
   nextWorkingSaturday?: string; // ISO date string for next working Saturday
   customSaturdayDates?: string[]; // Array of ISO date strings for custom Saturday schedule
+  excludeBankHolidays?: boolean; // Whether to exclude UK bank holidays from working days
 }
 
 export interface TechnicianProfile {
