@@ -71,6 +71,9 @@ Follow these steps to get the project up and running on your local machine:
     *   Run on an Android emulator or device by pressing `a`.
     *   Run on an iOS simulator or device by pressing `i` (macOS only).
 
+When you open a pull request, fill in the sections as described in [PULL_REQUEST_TEMPLATE](PR_TEMPLATE.md).
+
+
 ## 🚀 Usage
 
 Once the app is installed on your device or simulator, you can start tracking your job statistics, managing your schedule, and accessing data offline.
