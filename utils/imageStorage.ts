@@ -6,7 +6,7 @@ import {
   makeDirectoryAsync,
   copyAsync,
   deleteAsync,
-} from 'expo-file-system';
+} from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 // Relative directory name (no absolute path stored — reconstructed at runtime)
