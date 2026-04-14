@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  Modal,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -21,13 +20,15 @@ export default function AbsenceLoggerScreen() {
   console.log('AbsenceLoggerScreen: Rendering absence logger');
   const { theme } = useThemeContext();
   const router = useRouter();
-  
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [absenceType, setAbsenceType] = useState<'holiday' | 'sickness' | 'training'>('holiday');
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [schedule, setSchedule] = useState<any>(null);
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     loadData();
@@ -38,7 +39,7 @@ export default function AbsenceLoggerScreen() {
     try {
       const sched = await api.getSchedule();
       setSchedule(sched);
-      
+
       const monthStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}`;
       const monthAbsences = await api.getAbsences(monthStr);
       setAbsences(monthAbsences);
@@ -49,48 +50,50 @@ export default function AbsenceLoggerScreen() {
 
   const getHoursForDate = (date: Date): number => {
     if (!schedule) return 0;
-    
     const dayOfWeek = date.getDay();
-    
-    // Check if it's Saturday and has custom hours
     if (dayOfWeek === 6 && schedule.saturdayDailyHours !== undefined) {
       return schedule.saturdayDailyHours;
     }
-    
-    // Otherwise use regular daily hours
     return schedule.dailyWorkingHours;
   };
 
+  const isAbsenceFuture = (absenceDate: string): boolean => {
+    return absenceDate > todayStr;
+  };
+
+  const isAbsenceToday = (absenceDate: string): boolean => {
+    return absenceDate === todayStr;
+  };
+
   const handleLogAbsence = async () => {
-    console.log('AbsenceLoggerScreen: Logging absence');
-    
+    console.log('AbsenceLoggerScreen: Log absence button pressed');
+
     if (!schedule) {
       Alert.alert('Error', 'Schedule not loaded');
       return;
     }
-    
+
     const dateStr = selectedDate.toISOString().split('T')[0];
     const monthStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}`;
-    
-    // Check if absence already exists for this date
+
     const existingAbsence = absences.find(a => a.absenceDate === dateStr);
     if (existingAbsence) {
       Alert.alert('Error', 'An absence is already logged for this date');
       return;
     }
-    
-    // Get the hours for this specific day (might be Saturday with different hours)
+
     const dailyHours = getHoursForDate(selectedDate);
     const hours = isHalfDay ? dailyHours / 2 : dailyHours;
-    
+
     const absenceTypeName = absenceType.charAt(0).toUpperCase() + absenceType.slice(1);
     const durationName = isHalfDay ? 'Half Day' : 'Full Day';
-    
+    const isFuture = dateStr > todayStr;
+
+    const deductionNote = isFuture
+      ? `Scheduled for ${selectedDate.toLocaleDateString('en-GB')} — will be deducted when the date arrives`
+      : `Deducted immediately from available hours`;
+
     try {
-      // Create absence that marks the day as absent
-      // This single absence record will:
-      // 1. Remove the day from the working days count (affects available hours)
-      // 2. Deduct hours from the monthly target
       await api.createAbsence({
         month: monthStr,
         absenceDate: dateStr,
@@ -101,19 +104,12 @@ export default function AbsenceLoggerScreen() {
         absenceType,
         note: `${absenceTypeName} - ${durationName}`,
       });
-      
-      console.log('AbsenceLoggerScreen: Absence logged successfully - day will not be counted as a work day');
+
+      console.log('AbsenceLoggerScreen: Absence logged successfully —', isFuture ? 'FUTURE (pending)' : 'PAST/TODAY (active)');
       Alert.alert(
         'Success',
-        `${absenceTypeName} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n✅ Day Marked as Absent\n\nThis day will:\n• NOT be counted as a work day\n• NOT contribute to available hours\n• Have ${hours.toFixed(2)}h deducted from monthly target\n\nThe workday progress bar will show "Absent" for this day.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              loadData();
-            },
-          },
-        ]
+        `${absenceTypeName} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n${isFuture ? '🕐 Scheduled (Future)' : '✅ Active (Deducted)'}\n\n${deductionNote}\n\nHours: ${hours.toFixed(2)}h`,
+        [{ text: 'OK', onPress: () => loadData() }]
       );
     } catch (error) {
       console.error('AbsenceLoggerScreen: Error logging absence:', error);
@@ -122,8 +118,8 @@ export default function AbsenceLoggerScreen() {
   };
 
   const handleDeleteAbsence = async (absence: Absence) => {
-    console.log('AbsenceLoggerScreen: Deleting absence:', absence.id);
-    
+    console.log('AbsenceLoggerScreen: Delete absence button pressed for id:', absence.id);
+
     Alert.alert(
       'Delete Absence',
       `Remove ${absence.absenceType} on ${new Date(absence.absenceDate).toLocaleDateString('en-GB')}?\n\nThis will restore the day as a working day and add hours back to your monthly target.`,
@@ -135,7 +131,7 @@ export default function AbsenceLoggerScreen() {
           onPress: async () => {
             try {
               await api.deleteAbsence(absence.id);
-              console.log('AbsenceLoggerScreen: Absence deleted - day restored as working day');
+              console.log('AbsenceLoggerScreen: Absence deleted — day restored as working day');
               loadData();
             } catch (error) {
               console.error('AbsenceLoggerScreen: Error deleting absence:', error);
@@ -156,7 +152,6 @@ export default function AbsenceLoggerScreen() {
     }
   };
 
-  // Group absences by date to show only one entry per day (in case there are duplicates)
   const groupedAbsences = absences.reduce((acc, absence) => {
     if (!acc[absence.absenceDate]) {
       acc[absence.absenceDate] = absence;
@@ -165,8 +160,20 @@ export default function AbsenceLoggerScreen() {
   }, {} as Record<string, Absence>);
 
   const uniqueAbsences = Object.values(groupedAbsences);
-  
-  console.log('AbsenceLoggerScreen: Displaying', uniqueAbsences.length, 'unique absences for month');
+  const sortedAbsences = uniqueAbsences.sort(
+    (a, b) => new Date(b.absenceDate).getTime() - new Date(a.absenceDate).getTime()
+  );
+
+  const activeAbsences = sortedAbsences.filter(a => a.absenceDate <= todayStr);
+  const futureAbsences = sortedAbsences.filter(a => a.absenceDate > todayStr);
+
+  console.log('AbsenceLoggerScreen: Displaying', activeAbsences.length, 'active,', futureAbsences.length, 'future absences');
+
+  const selectedDateStr = selectedDate.toISOString().split('T')[0];
+  const selectedIsFuture = selectedDateStr > todayStr;
+  const hoursDisplay = schedule
+    ? (isHalfDay ? getHoursForDate(selectedDate) / 2 : getHoursForDate(selectedDate)).toFixed(2)
+    : '0';
 
   return (
     <AppBackground>
@@ -190,18 +197,21 @@ export default function AbsenceLoggerScreen() {
             color="#ffffff"
           />
           <Text style={[styles.infoText, { color: '#ffffff' }]}>
-            ℹ️ Logging an absence marks the day as NOT a work day. It will not count toward available hours and will be excluded from efficiency calculations.
+            Past/today absences are deducted immediately. Future absences are stored as "Scheduled" and only deducted when their date arrives.
           </Text>
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Log New Absence</Text>
-          
+
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Select Date</Text>
             <TouchableOpacity
               style={[styles.dateButton, { backgroundColor: theme.background }]}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                console.log('AbsenceLoggerScreen: Date picker opened');
+                setShowDatePicker(true);
+              }}
             >
               <IconSymbol
                 ios_icon_name="calendar"
@@ -210,13 +220,18 @@ export default function AbsenceLoggerScreen() {
                 color={theme.primary}
               />
               <Text style={[styles.dateText, { color: theme.text }]}>
-                {selectedDate.toLocaleDateString('en-GB', { 
-                  weekday: 'long', 
-                  day: 'numeric', 
-                  month: 'long', 
-                  year: 'numeric' 
+                {selectedDate.toLocaleDateString('en-GB', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
                 })}
               </Text>
+              {selectedIsFuture && (
+                <View style={[styles.futureBadge, { backgroundColor: '#FF9800' }]}>
+                  <Text style={styles.futureBadgeText}>Future</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -263,26 +278,16 @@ export default function AbsenceLoggerScreen() {
                   setIsHalfDay(false);
                 }}
               >
-                <Text
-                  style={[
-                    styles.durationButtonText,
-                    { color: !isHalfDay ? '#ffffff' : theme.primary },
-                  ]}
-                >
+                <Text style={[styles.durationButtonText, { color: !isHalfDay ? '#ffffff' : theme.primary }]}>
                   Full Day
                 </Text>
                 {schedule && (
-                  <Text
-                    style={[
-                      styles.durationHours,
-                      { color: !isHalfDay ? '#ffffff' : theme.textSecondary },
-                    ]}
-                  >
+                  <Text style={[styles.durationHours, { color: !isHalfDay ? '#ffffff' : theme.textSecondary }]}>
                     {getHoursForDate(selectedDate).toFixed(2)}h
                   </Text>
                 )}
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[
                   styles.durationButton,
@@ -294,21 +299,11 @@ export default function AbsenceLoggerScreen() {
                   setIsHalfDay(true);
                 }}
               >
-                <Text
-                  style={[
-                    styles.durationButtonText,
-                    { color: isHalfDay ? '#ffffff' : theme.primary },
-                  ]}
-                >
+                <Text style={[styles.durationButtonText, { color: isHalfDay ? '#ffffff' : theme.primary }]}>
                   Half Day
                 </Text>
                 {schedule && (
-                  <Text
-                    style={[
-                      styles.durationHours,
-                      { color: isHalfDay ? '#ffffff' : theme.textSecondary },
-                    ]}
-                  >
+                  <Text style={[styles.durationHours, { color: isHalfDay ? '#ffffff' : theme.textSecondary }]}>
                     {(getHoursForDate(selectedDate) / 2).toFixed(2)}h
                   </Text>
                 )}
@@ -316,84 +311,116 @@ export default function AbsenceLoggerScreen() {
             </View>
           </View>
 
-          <View style={[styles.deductionInfo, { backgroundColor: theme.background }]}>
-            <Text style={[styles.deductionTitle, { color: theme.text }]}>
-              This absence will:
-            </Text>
-            <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-              ✓ Mark the day as NOT a work day
-            </Text>
-            <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-              ✓ Exclude it from available hours calculation
-            </Text>
-            <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-              ✓ Deduct {schedule ? (isHalfDay ? (getHoursForDate(selectedDate) / 2).toFixed(2) : getHoursForDate(selectedDate).toFixed(2)) : '0'}h from monthly target
-            </Text>
-            <Text style={[styles.deductionNote, { color: theme.textSecondary }]}>
-              The workday progress bar will show "Absent" for this day
-            </Text>
+          <View style={[styles.deductionInfo, { backgroundColor: selectedIsFuture ? 'rgba(255,152,0,0.1)' : theme.background, borderWidth: selectedIsFuture ? 1 : 0, borderColor: '#FF9800' }]}>
+            {selectedIsFuture ? (
+              <>
+                <Text style={[styles.deductionTitle, { color: '#FF9800' }]}>
+                  🕐 Scheduled Absence (Future Date)
+                </Text>
+                <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+                  ✓ Stored as a scheduled absence
+                </Text>
+                <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+                  ✓ Will be deducted when {selectedDate.toLocaleDateString('en-GB')} arrives
+                </Text>
+                <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+                  ✓ {hoursDisplay}h will be deducted from monthly target on that date
+                </Text>
+                <Text style={[styles.deductionNote, { color: '#FF9800' }]}>
+                  No immediate impact on current available hours
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.deductionTitle, { color: theme.text }]}>
+                  This absence will:
+                </Text>
+                <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+                  ✓ Mark the day as NOT a work day
+                </Text>
+                <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+                  ✓ Exclude it from available hours calculation
+                </Text>
+                <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
+                  ✓ Deduct {hoursDisplay}h from monthly target immediately
+                </Text>
+                <Text style={[styles.deductionNote, { color: theme.textSecondary }]}>
+                  The workday progress bar will show "Absent" for this day
+                </Text>
+              </>
+            )}
           </View>
 
           <TouchableOpacity
-            style={[styles.logButton, { backgroundColor: theme.primary }]}
+            style={[styles.logButton, { backgroundColor: selectedIsFuture ? '#FF9800' : theme.primary }]}
             onPress={handleLogAbsence}
           >
             <IconSymbol
-              ios_icon_name="checkmark.circle.fill"
-              android_material_icon_name="check-circle"
+              ios_icon_name={selectedIsFuture ? 'clock.fill' : 'checkmark.circle.fill'}
+              android_material_icon_name={selectedIsFuture ? 'schedule' : 'check-circle'}
               size={24}
               color="#ffffff"
             />
-            <Text style={styles.logButtonText}>Log 1 Day Absence</Text>
+            <Text style={styles.logButtonText}>
+              {selectedIsFuture ? 'Schedule Absence' : 'Log 1 Day Absence'}
+            </Text>
           </TouchableOpacity>
         </View>
 
+        {/* Future (Scheduled) Absences */}
+        {futureAbsences.length > 0 && (
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Scheduled Absences</Text>
+              <View style={[styles.sectionBadge, { backgroundColor: '#FF9800' }]}>
+                <Text style={styles.sectionBadgeText}>{futureAbsences.length}</Text>
+              </View>
+            </View>
+            <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+              Future dates — not yet deducted from available hours
+            </Text>
+            {futureAbsences.map((absence) => (
+              <AbsenceRow
+                key={absence.id}
+                absence={absence}
+                isFuture
+                onDelete={handleDeleteAbsence}
+                getAbsenceColor={getAbsenceColor}
+                theme={theme}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Past / Today Absences */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Logged Absences</Text>
-          
-          {uniqueAbsences.length === 0 ? (
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Logged Absences</Text>
+            {activeAbsences.length > 0 && (
+              <View style={[styles.sectionBadge, { backgroundColor: theme.primary }]}>
+                <Text style={styles.sectionBadgeText}>{activeAbsences.length}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+            Past & today — already deducted from available hours
+          </Text>
+
+          {activeAbsences.length === 0 ? (
             <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
               No absences logged for this month
             </Text>
           ) : (
-            uniqueAbsences
-              .sort((a, b) => new Date(b.absenceDate).getTime() - new Date(a.absenceDate).getTime())
-              .map((absence) => (
-                <View
-                  key={absence.id}
-                  style={[styles.absenceItem, { borderLeftColor: getAbsenceColor(absence.absenceType || 'holiday') }]}
-                >
-                  <View style={styles.absenceInfo}>
-                    <Text style={[styles.absenceDate, { color: theme.text }]}>
-                      {new Date(absence.absenceDate).toLocaleDateString('en-GB', { 
-                        weekday: 'short', 
-                        day: 'numeric', 
-                        month: 'short' 
-                      })}
-                    </Text>
-                    <Text style={[styles.absenceType, { color: getAbsenceColor(absence.absenceType || 'holiday') }]}>
-                      {absence.absenceType?.charAt(0).toUpperCase() + absence.absenceType?.slice(1)}
-                    </Text>
-                    <Text style={[styles.absenceDuration, { color: theme.textSecondary }]}>
-                      {absence.isHalfDay ? 'Half Day' : 'Full Day'} • {absence.customHours?.toFixed(2)}h
-                    </Text>
-                    <Text style={[styles.absenceDeduction, { color: theme.textSecondary }]}>
-                      Day not counted as work day
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteAbsence(absence)}
-                  >
-                    <IconSymbol
-                      ios_icon_name="trash.fill"
-                      android_material_icon_name="delete"
-                      size={20}
-                      color={theme.error}
-                    />
-                  </TouchableOpacity>
-                </View>
-              ))
+            activeAbsences.map((absence) => (
+              <AbsenceRow
+                key={absence.id}
+                absence={absence}
+                isFuture={false}
+                onDelete={handleDeleteAbsence}
+                getAbsenceColor={getAbsenceColor}
+                theme={theme}
+              />
+            ))
           )}
         </View>
 
@@ -408,12 +435,77 @@ export default function AbsenceLoggerScreen() {
           onChange={(event, date) => {
             setShowDatePicker(false);
             if (date) {
+              console.log('AbsenceLoggerScreen: Date selected:', date.toISOString().split('T')[0]);
               setSelectedDate(date);
             }
           }}
         />
       )}
     </AppBackground>
+  );
+}
+
+interface AbsenceRowProps {
+  absence: Absence;
+  isFuture: boolean;
+  onDelete: (absence: Absence) => void;
+  getAbsenceColor: (type: string) => string;
+  theme: any;
+}
+
+function AbsenceRow({ absence, isFuture, onDelete, getAbsenceColor, theme }: AbsenceRowProps) {
+  const absenceTypeDisplay = absence.absenceType
+    ? absence.absenceType.charAt(0).toUpperCase() + absence.absenceType.slice(1)
+    : 'Absence';
+  const durationDisplay = absence.isHalfDay ? 'Half Day' : 'Full Day';
+  const hoursDisplay = absence.customHours !== undefined ? Number(absence.customHours).toFixed(2) : '—';
+  const dateDisplay = new Date(absence.absenceDate).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+  const borderColor = getAbsenceColor(absence.absenceType || 'holiday');
+
+  return (
+    <View
+      style={[
+        styles.absenceItem,
+        { borderLeftColor: borderColor },
+        isFuture && styles.absenceItemFuture,
+      ]}
+    >
+      <View style={styles.absenceInfo}>
+        <View style={styles.absenceDateRow}>
+          <Text style={[styles.absenceDate, { color: theme.text }]}>{dateDisplay}</Text>
+          {isFuture && (
+            <View style={[styles.scheduledBadge, { backgroundColor: '#FF9800' }]}>
+              <Text style={styles.scheduledBadgeText}>Scheduled</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.absenceType, { color: borderColor }]}>{absenceTypeDisplay}</Text>
+        <Text style={[styles.absenceDuration, { color: theme.textSecondary }]}>
+          {durationDisplay}
+        </Text>
+        <Text style={[styles.absenceDuration, { color: theme.textSecondary }]}>
+          {hoursDisplay}h
+        </Text>
+        <Text style={[styles.absenceDeduction, { color: isFuture ? '#FF9800' : theme.textSecondary }]}>
+          {isFuture ? 'Pending — deducted when date arrives' : 'Day not counted as work day'}
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => onDelete(absence)}
+      >
+        <IconSymbol
+          ios_icon_name="trash.fill"
+          android_material_icon_name="delete"
+          size={20}
+          color={theme.error}
+        />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -448,10 +540,32 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  sectionBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  sectionBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   formGroup: {
     marginBottom: 20,
@@ -471,6 +585,16 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 16,
     flex: 1,
+  },
+  futureBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  futureBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   typeButtons: {
     flexDirection: 'row',
@@ -555,13 +679,32 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
+  absenceItemFuture: {
+    opacity: 0.8,
+    borderStyle: 'dashed',
+  },
   absenceInfo: {
     flex: 1,
+  },
+  absenceDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
   absenceDate: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+  },
+  scheduledBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  scheduledBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   absenceType: {
     fontSize: 14,

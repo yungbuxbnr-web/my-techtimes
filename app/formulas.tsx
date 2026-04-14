@@ -15,38 +15,46 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '@/utils/api';
+import { calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 
 const FORMULAS_KEY = '@techtimes_formulas';
 
 interface FormulaSettings {
-  awToMinutes: number; // Default: 5 (1 AW = 5 minutes)
-  efficiencyGreenThreshold: number; // Default: 65
-  efficiencyYellowThreshold: number; // Default: 31
-  defaultMonthlyTarget: number; // Default: 180
-  defaultDailyHours: number; // Default: 8.5
-  defaultLunchBreakMinutes: number; // Default: 30
+  awToMinutes: number;
+  efficiencyGreenThreshold: number;
+  efficiencyYellowThreshold: number;
+  defaultMonthlyTarget: number;
+  defaultLunchBreakMinutes: number;
 }
 
 export default function FormulasScreen() {
   console.log('FormulasScreen: Rendering formulas editor');
   const { theme } = useThemeContext();
   const router = useRouter();
-  
+
   const [awToMinutes, setAwToMinutes] = useState('5');
   const [efficiencyGreen, setEfficiencyGreen] = useState('65');
   const [efficiencyYellow, setEfficiencyYellow] = useState('31');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
-  const [dailyHours, setDailyHours] = useState('8.5');
   const [lunchBreak, setLunchBreak] = useState('30');
   const [loading, setLoading] = useState(true);
 
+  // Derived from work schedule — read-only display
+  const [scheduleDailyHours, setScheduleDailyHours] = useState<number | null>(null);
+  const [scheduleStartTime, setScheduleStartTime] = useState('');
+  const [scheduleEndTime, setScheduleEndTime] = useState('');
+  const [scheduleLunchStart, setScheduleLunchStart] = useState('');
+  const [scheduleLunchEnd, setScheduleLunchEnd] = useState('');
+
   useEffect(() => {
-    loadFormulas();
+    loadAll();
   }, []);
 
-  const loadFormulas = async () => {
-    console.log('FormulasScreen: Loading formula settings');
+  const loadAll = async () => {
+    console.log('FormulasScreen: Loading formula settings and work schedule');
     try {
+      // Load formula settings
       const stored = await AsyncStorage.getItem(FORMULAS_KEY);
       if (stored) {
         const formulas: FormulaSettings = JSON.parse(stored);
@@ -54,9 +62,25 @@ export default function FormulasScreen() {
         setEfficiencyGreen(formulas.efficiencyGreenThreshold.toString());
         setEfficiencyYellow(formulas.efficiencyYellowThreshold.toString());
         setMonthlyTarget(formulas.defaultMonthlyTarget.toString());
-        setDailyHours(formulas.defaultDailyHours.toString());
         setLunchBreak(formulas.defaultLunchBreakMinutes.toString());
       }
+
+      // Load work schedule to derive daily hours (single source of truth)
+      const schedule = await api.getSchedule();
+      const start = schedule.startTime ?? '07:00';
+      const end = schedule.endTime ?? '18:00';
+      const lunchStart = schedule.lunchStartTime ?? '12:00';
+      const lunchEnd = schedule.lunchEndTime ?? '12:30';
+
+      setScheduleStartTime(start);
+      setScheduleEndTime(end);
+      setScheduleLunchStart(lunchStart);
+      setScheduleLunchEnd(lunchEnd);
+
+      const derived = calcDailyHoursFromSchedule(start, end, lunchStart, lunchEnd);
+      setScheduleDailyHours(derived > 0 ? derived : schedule.dailyWorkingHours);
+
+      console.log('FormulasScreen: Derived daily hours from schedule:', derived);
     } catch (error) {
       console.error('FormulasScreen: Error loading formulas:', error);
     } finally {
@@ -65,59 +89,52 @@ export default function FormulasScreen() {
   };
 
   const handleSave = async () => {
-    console.log('FormulasScreen: Saving formula settings');
-    
+    console.log('FormulasScreen: Save formulas button pressed');
+
     const awMin = parseFloat(awToMinutes);
     const effGreen = parseFloat(efficiencyGreen);
     const effYellow = parseFloat(efficiencyYellow);
     const target = parseFloat(monthlyTarget);
-    const hours = parseFloat(dailyHours);
     const lunch = parseFloat(lunchBreak);
-    
+
     if (isNaN(awMin) || awMin <= 0) {
       Alert.alert('Error', 'AW to Minutes must be a positive number');
       return;
     }
-    
+
     if (isNaN(effGreen) || effGreen < 0 || effGreen > 100) {
       Alert.alert('Error', 'Efficiency thresholds must be between 0 and 100');
       return;
     }
-    
+
     if (isNaN(effYellow) || effYellow < 0 || effYellow > 100) {
       Alert.alert('Error', 'Efficiency thresholds must be between 0 and 100');
       return;
     }
-    
+
     if (effYellow >= effGreen) {
       Alert.alert('Error', 'Yellow threshold must be less than green threshold');
       return;
     }
-    
+
     if (isNaN(target) || target <= 0) {
       Alert.alert('Error', 'Monthly target must be a positive number');
       return;
     }
-    
-    if (isNaN(hours) || hours <= 0 || hours > 24) {
-      Alert.alert('Error', 'Daily hours must be between 0 and 24');
-      return;
-    }
-    
+
     if (isNaN(lunch) || lunch < 0 || lunch > 180) {
       Alert.alert('Error', 'Lunch break must be between 0 and 180 minutes');
       return;
     }
-    
+
     const formulas: FormulaSettings = {
       awToMinutes: awMin,
       efficiencyGreenThreshold: effGreen,
       efficiencyYellowThreshold: effYellow,
       defaultMonthlyTarget: target,
-      defaultDailyHours: hours,
       defaultLunchBreakMinutes: lunch,
     };
-    
+
     try {
       await AsyncStorage.setItem(FORMULAS_KEY, JSON.stringify(formulas));
       Alert.alert(
@@ -132,6 +149,7 @@ export default function FormulasScreen() {
   };
 
   const handleReset = () => {
+    console.log('FormulasScreen: Reset to defaults button pressed');
     Alert.alert(
       'Reset to Defaults',
       'Reset all formulas to default values?',
@@ -145,13 +163,14 @@ export default function FormulasScreen() {
             setEfficiencyGreen('65');
             setEfficiencyYellow('31');
             setMonthlyTarget('180');
-            setDailyHours('8.5');
             setLunchBreak('30');
           },
         },
       ]
     );
   };
+
+  const dailyHoursDisplay = scheduleDailyHours !== null ? scheduleDailyHours.toFixed(2) : '—';
 
   if (loading) {
     return (
@@ -203,7 +222,7 @@ export default function FormulasScreen() {
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
             How many minutes equals 1 AW
           </Text>
-          
+
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Minutes per AW</Text>
             <TextInput
@@ -218,7 +237,7 @@ export default function FormulasScreen() {
               Default: 5 (1 AW = 5 minutes = 0.0833 hours)
             </Text>
           </View>
-          
+
           <View style={[styles.formulaBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.formulaText, { color: theme.textSecondary }]}>
               Formula: Total Minutes = AW × {awToMinutes}
@@ -235,7 +254,7 @@ export default function FormulasScreen() {
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
             Percentage thresholds for efficiency ratings
           </Text>
-          
+
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.chartGreen }]}>Excellent (Green) Threshold (%)</Text>
             <TextInput
@@ -250,7 +269,7 @@ export default function FormulasScreen() {
               Efficiency ≥ {efficiencyGreen}% = Excellent (Green)
             </Text>
           </View>
-          
+
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.chartYellow }]}>Good (Yellow) Threshold (%)</Text>
             <TextInput
@@ -265,7 +284,7 @@ export default function FormulasScreen() {
               Efficiency ≥ {efficiencyYellow}% = Good (Yellow)
             </Text>
           </View>
-          
+
           <View style={[styles.formulaBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.formulaText, { color: theme.textSecondary }]}>
               Formula: Efficiency = (Sold Hours ÷ Available Hours) × 100
@@ -288,7 +307,7 @@ export default function FormulasScreen() {
           <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
             Default values for new schedules and targets
           </Text>
-          
+
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Monthly Target (hours)</Text>
             <TextInput
@@ -303,22 +322,41 @@ export default function FormulasScreen() {
               Default monthly target hours for new months
             </Text>
           </View>
-          
+
+          {/* Daily Working Hours — read-only, derived from work schedule */}
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Daily Working Hours</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-              value={dailyHours}
-              onChangeText={setDailyHours}
-              placeholder="8.5"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="decimal-pad"
-            />
+            <View style={[styles.readonlyField, { backgroundColor: theme.background }]}>
+              <Text style={[styles.readonlyValue, { color: theme.primary }]}>
+                {dailyHoursDisplay}h
+              </Text>
+              <View style={[styles.readonlyBadge, { backgroundColor: theme.primary + '22' }]}>
+                <Text style={[styles.readonlyBadgeText, { color: theme.primary }]}>Auto</Text>
+              </View>
+            </View>
             <Text style={[styles.hint, { color: theme.textSecondary }]}>
-              Default daily working hours for new schedules
+              Derived from work schedule: {scheduleStartTime} – {scheduleEndTime}
+              {scheduleLunchStart ? ` (lunch ${scheduleLunchStart}–${scheduleLunchEnd})` : ''}
             </Text>
+            <TouchableOpacity
+              style={[styles.editScheduleLink, { borderColor: theme.primary }]}
+              onPress={() => {
+                console.log('FormulasScreen: Edit Work Schedule link pressed');
+                router.push('/edit-work-schedule');
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="pencil.circle"
+                android_material_icon_name="edit"
+                size={16}
+                color={theme.primary}
+              />
+              <Text style={[styles.editScheduleLinkText, { color: theme.primary }]}>
+                Edit in Work Schedule
+              </Text>
+            </TouchableOpacity>
           </View>
-          
+
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Lunch Break (minutes)</Text>
             <TextInput
@@ -338,7 +376,7 @@ export default function FormulasScreen() {
         {/* All Formulas Reference */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>All Formulas Reference</Text>
-          
+
           <View style={[styles.formulaBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.formulaTitle, { color: theme.text }]}>Time Calculations:</Text>
             <Text style={[styles.formulaText, { color: theme.textSecondary }]}>
@@ -347,16 +385,16 @@ export default function FormulasScreen() {
               • Daily Hours = (End Time - Start Time) - Lunch Break
             </Text>
           </View>
-          
+
           <View style={[styles.formulaBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.formulaTitle, { color: theme.text }]}>Available Hours:</Text>
             <Text style={[styles.formulaText, { color: theme.textSecondary }]}>
               • Available Hours = Working Days × Daily Hours{'\n'}
-              • Working Days = Days in schedule - Absences{'\n'}
+              • Working Days = Days in schedule - Absences (past/today only){'\n'}
               • Adjusted Available = Available - Absence Hours
             </Text>
           </View>
-          
+
           <View style={[styles.formulaBox, { backgroundColor: theme.background }]}>
             <Text style={[styles.formulaTitle, { color: theme.text }]}>Performance Metrics:</Text>
             <Text style={[styles.formulaText, { color: theme.textSecondary }]}>
@@ -382,7 +420,7 @@ export default function FormulasScreen() {
             />
             <Text style={styles.saveButtonText}>Save Formulas</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.resetButton, { backgroundColor: theme.textSecondary }]}
             onPress={handleReset}
@@ -463,6 +501,43 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 16,
     marginBottom: 4,
+  },
+  readonlyField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 4,
+    gap: 8,
+  },
+  readonlyValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  readonlyBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  readonlyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  editScheduleLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  editScheduleLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   hint: {
     fontSize: 12,

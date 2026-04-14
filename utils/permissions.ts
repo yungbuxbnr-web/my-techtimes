@@ -1,21 +1,47 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Request notification permissions
+const PERMISSIONS_GRANTED_KEY = 'permissions_granted_v1';
+const BACKGROUND_PERMISSION_KEY = 'background_permission_granted_v1';
+
+// Request notification permissions — skips if already granted and stored
 export async function requestNotificationPermissions(): Promise<boolean> {
   console.log('Permissions: Requesting notification permissions');
-  
+
   try {
+    // Always check actual system status first
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+
+    if (existingStatus === 'granted') {
+      // System says granted — persist flag and skip dialog
+      await AsyncStorage.setItem(PERMISSIONS_GRANTED_KEY, 'true');
+      console.log('Permissions: Notification already granted by system, skipping dialog');
+
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
+
+      return true;
     }
-    
-    if (finalStatus !== 'granted') {
+
+    // Check if we previously stored a "granted" flag but system revoked it
+    const storedGranted = await AsyncStorage.getItem(PERMISSIONS_GRANTED_KEY);
+    if (storedGranted === 'true' && existingStatus !== 'granted') {
+      // Permission was revoked — clear stored flag so we re-ask
+      console.log('Permissions: Stored flag says granted but system says denied — clearing flag');
+      await AsyncStorage.removeItem(PERMISSIONS_GRANTED_KEY);
+    }
+
+    // Request from user
+    const { status } = await Notifications.requestPermissionsAsync();
+
+    if (status !== 'granted') {
       console.log('Permissions: Notification permission denied');
       Alert.alert(
         'Notifications Disabled',
@@ -23,10 +49,10 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       );
       return false;
     }
-    
-    console.log('Permissions: Notification permission granted');
-    
-    // Configure notification handler
+
+    console.log('Permissions: Notification permission granted — storing flag');
+    await AsyncStorage.setItem(PERMISSIONS_GRANTED_KEY, 'true');
+
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -34,7 +60,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
         shouldSetBadge: true,
       }),
     });
-    
+
     return true;
   } catch (error) {
     console.error('Permissions: Error requesting notification permissions:', error);
@@ -42,17 +68,23 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
-// Request background permissions for live clock and work schedule
+// Request background permissions — only shows dialog once on Android
 export async function requestBackgroundPermissions(): Promise<boolean> {
   console.log('Permissions: Requesting background permissions');
-  
+
   if (Platform.OS !== 'android') {
     console.log('Permissions: Background permissions only needed on Android');
     return true;
   }
-  
+
   try {
-    // Show alert explaining why we need background permissions
+    // Check if we already asked and user accepted
+    const stored = await AsyncStorage.getItem(BACKGROUND_PERMISSION_KEY);
+    if (stored === 'true') {
+      console.log('Permissions: Background permission already granted (stored), skipping dialog');
+      return true;
+    }
+
     return new Promise((resolve) => {
       Alert.alert(
         'Background Permissions Required',
@@ -68,10 +100,9 @@ export async function requestBackgroundPermissions(): Promise<boolean> {
           },
           {
             text: 'Grant Permission',
-            onPress: () => {
-              console.log('Permissions: User granted background permission');
-              // On Android, background execution is allowed by default
-              // The user can disable it in system settings if needed
+            onPress: async () => {
+              console.log('Permissions: User granted background permission — storing flag');
+              await AsyncStorage.setItem(BACKGROUND_PERMISSION_KEY, 'true');
               resolve(true);
             },
           },
@@ -87,7 +118,7 @@ export async function requestBackgroundPermissions(): Promise<boolean> {
 // Open device notification settings
 export async function openNotificationSettings(): Promise<void> {
   console.log('Permissions: Opening device notification settings');
-  
+
   try {
     if (Platform.OS === 'android') {
       await Linking.openSettings();
@@ -106,15 +137,12 @@ export async function requestAllPermissions(): Promise<{
   storage: boolean;
 }> {
   console.log('Permissions: Requesting all app permissions');
-  
+
   const notifications = await requestNotificationPermissions();
-  
-  // Storage permissions are automatically granted on modern Android/iOS
-  // File system access through expo-file-system doesn't require explicit permissions
   const storage = true;
-  
+
   console.log('Permissions: All permissions requested - notifications:', notifications, 'storage:', storage);
-  
+
   return { notifications, storage };
 }
 
@@ -124,15 +152,19 @@ export async function checkPermissions(): Promise<{
   storage: boolean;
 }> {
   console.log('Permissions: Checking app permissions');
-  
+
   const { status: notificationStatus } = await Notifications.getPermissionsAsync();
   const notifications = notificationStatus === 'granted';
-  
-  // Storage is always available
+
+  // Sync stored flag with actual system status
+  if (!notifications) {
+    await AsyncStorage.removeItem(PERMISSIONS_GRANTED_KEY);
+  }
+
   const storage = true;
-  
+
   console.log('Permissions: Current permissions - notifications:', notifications, 'storage:', storage);
-  
+
   return { notifications, storage };
 }
 

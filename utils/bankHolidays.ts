@@ -3,10 +3,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BANK_HOLIDAYS_KEY = 'england_bank_holidays';
 const LAST_FETCH_KEY = 'bank_holidays_last_fetch';
+// Tracked holidays with counted status — stored under a separate key
+const TRACKED_HOLIDAYS_KEY = 'bank_holidays';
 
 export interface BankHoliday {
   title: string;
   date: string; // YYYY-MM-DD
+}
+
+export interface TrackedBankHoliday {
+  date: string;   // ISO date string YYYY-MM-DD
+  name: string;
+  counted: boolean;
 }
 
 export async function fetchAndStoreBankHolidays(): Promise<BankHoliday[]> {
@@ -26,6 +34,10 @@ export async function fetchAndStoreBankHolidays(): Promise<BankHoliday[]> {
     await AsyncStorage.setItem(BANK_HOLIDAYS_KEY, JSON.stringify(holidays));
     await AsyncStorage.setItem(LAST_FETCH_KEY, new Date().toISOString());
     console.log('BankHolidays: Fetched and stored', holidays.length, 'holidays');
+
+    // Sync into tracked holidays
+    await syncTrackedHolidays(holidays);
+
     return holidays;
   } catch (error) {
     console.error('BankHolidays: Fetch failed, returning cached:', error);
@@ -77,5 +89,125 @@ export async function fetchBankHolidays(): Promise<string[]> {
     console.error('BankHolidays: fetchBankHolidays failed, returning cached:', error);
     const cached = await getCachedBankHolidays();
     return cached.map(h => h.date);
+  }
+}
+
+// ─── Tracked holiday helpers ────────────────────────────────────────────────
+
+/**
+ * Sync raw BankHoliday[] into TrackedBankHoliday[] without losing existing counted flags.
+ */
+async function syncTrackedHolidays(raw: BankHoliday[]): Promise<void> {
+  try {
+    const existing = await getTrackedHolidays();
+    const existingMap = new Map(existing.map(h => [h.date, h]));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const merged: TrackedBankHoliday[] = raw.map(h => {
+      const prev = existingMap.get(h.date);
+      const holidayDate = new Date(h.date);
+      holidayDate.setHours(0, 0, 0, 0);
+      // If it already existed, keep its counted flag; otherwise auto-count past holidays
+      const counted = prev ? prev.counted : holidayDate <= today;
+      return { date: h.date, name: h.title, counted };
+    });
+
+    await AsyncStorage.setItem(TRACKED_HOLIDAYS_KEY, JSON.stringify(merged));
+    console.log('BankHolidays: Synced', merged.length, 'tracked holidays');
+  } catch (error) {
+    console.error('BankHolidays: Error syncing tracked holidays:', error);
+  }
+}
+
+export async function getTrackedHolidays(): Promise<TrackedBankHoliday[]> {
+  try {
+    const stored = await AsyncStorage.getItem(TRACKED_HOLIDAYS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Check if any future holidays have now passed and mark them as counted.
+ * Call this on app foreground / background task.
+ */
+export async function markDueHolidaysAsCounted(): Promise<void> {
+  try {
+    const holidays = await getTrackedHolidays();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let changed = false;
+    const updated = holidays.map(h => {
+      if (!h.counted) {
+        const holidayDate = new Date(h.date);
+        holidayDate.setHours(0, 0, 0, 0);
+        if (holidayDate <= today) {
+          console.log('BankHolidays: Marking holiday as counted:', h.date, h.name);
+          changed = true;
+          return { ...h, counted: true };
+        }
+      }
+      return h;
+    });
+
+    if (changed) {
+      await AsyncStorage.setItem(TRACKED_HOLIDAYS_KEY, JSON.stringify(updated));
+      console.log('BankHolidays: Updated counted flags for due holidays');
+    }
+  } catch (error) {
+    console.error('BankHolidays: Error marking due holidays:', error);
+  }
+}
+
+/**
+ * Returns total holiday hours up to and including targetDate.
+ * Each holiday = dailyHours for that day.
+ * Only holidays on or before targetDate are counted.
+ */
+export async function getBankHolidayHoursUpToDate(
+  targetDate: Date,
+  dailyHours: number
+): Promise<number> {
+  try {
+    const holidays = await getTrackedHolidays();
+    const target = new Date(targetDate);
+    target.setHours(23, 59, 59, 999);
+
+    const total = holidays.reduce((sum, h) => {
+      if (!h.counted) return sum;
+      const holidayDate = new Date(h.date);
+      if (holidayDate <= target) {
+        return sum + dailyHours;
+      }
+      return sum;
+    }, 0);
+
+    console.log('BankHolidays: getBankHolidayHoursUpToDate —', total, 'hours up to', targetDate.toISOString().split('T')[0]);
+    return total;
+  } catch (error) {
+    console.error('BankHolidays: Error calculating holiday hours:', error);
+    return 0;
+  }
+}
+
+/**
+ * Ensure tracked holidays are initialised from the raw cache if TRACKED_HOLIDAYS_KEY is empty.
+ */
+export async function ensureTrackedHolidaysInitialised(): Promise<void> {
+  try {
+    const tracked = await AsyncStorage.getItem(TRACKED_HOLIDAYS_KEY);
+    if (!tracked) {
+      const raw = await getCachedBankHolidays();
+      if (raw.length > 0) {
+        await syncTrackedHolidays(raw);
+        console.log('BankHolidays: Initialised tracked holidays from cache');
+      }
+    }
+  } catch (error) {
+    console.error('BankHolidays: Error ensuring tracked holidays:', error);
   }
 }

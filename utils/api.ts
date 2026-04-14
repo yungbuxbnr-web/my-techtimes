@@ -334,10 +334,28 @@ export const api = {
     
     // Calculate available hours based on working days from start of month to today
     const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
-    
+
+    // Only count absences whose date is on or before today (past + today)
+    // Future absences are stored but not yet deducted — they will be counted when their date arrives
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const todayStr = today.toISOString().split('T')[0];
+
+    const activeAbsences = absences.filter(absence => {
+      if (!absence.absenceDate) return false;
+      return absence.absenceDate <= todayStr;
+    });
+
+    const futureAbsences = absences.filter(absence => {
+      if (!absence.absenceDate) return false;
+      return absence.absenceDate > todayStr;
+    });
+
+    console.log(`API: Month ${month} — ${activeAbsences.length} active absences (past/today), ${futureAbsences.length} future absences (not yet deducted)`);
+
     // Count unique absent days (each date should only be counted once, regardless of how many absence records exist)
     const absentDates = new Set<string>();
-    absences.forEach(absence => {
+    activeAbsences.forEach(absence => {
       if (absence.absenceDate) {
         absentDates.add(absence.absenceDate);
       }
@@ -349,10 +367,10 @@ export const api = {
 
     console.log(`API: Month ${month} - ${workingDaysToDate} working days - ${absentDates.size} absent days = ${actualWorkingDays} actual working days × ${schedule.dailyWorkingHours}h = ${availableHours}h available`);
 
-    // Calculate absence deductions for target hours
+    // Calculate absence deductions for target hours — only from active (past/today) absences
     let absenceHoursFromTarget = 0;
 
-    absences.forEach(absence => {
+    activeAbsences.forEach(absence => {
       let hours = 0;
       if (absence.customHours !== undefined) {
         hours = absence.customHours;

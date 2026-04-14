@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { scheduleAllNotifications } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
 import { updateWidgetData, scheduleDailyWidgetRefresh } from '@/utils/widgetManager';
+import { registerBackgroundMainframe, runMainframeSync } from '@/utils/backgroundMainframe';
 import * as SecureStore from 'expo-secure-store';
 
 const LAST_ROUTE_KEY = 'last_route';
@@ -85,6 +86,14 @@ function RootLayoutContent() {
           scheduleDailyWidgetRefresh();
           console.log('RootLayout: Widget initialized and daily refresh scheduled');
         }
+
+        // Register background mainframe for time tracking
+        console.log('RootLayout: Registering background mainframe');
+        await registerBackgroundMainframe();
+
+        // Run an immediate foreground sync on startup
+        console.log('RootLayout: Running initial foreground mainframe sync');
+        await runMainframeSync();
       } catch (error) {
         console.error('RootLayout: Error initializing app:', error);
       }
@@ -111,8 +120,12 @@ function RootLayoutContent() {
       
       // App coming back to foreground from background
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('RootLayout: App resumed from background');
-        
+        console.log('RootLayout: App resumed from background — running foreground mainframe sync');
+        // Run foreground sync immediately to refresh calculations
+        runMainframeSync().catch(err =>
+          console.error('RootLayout: Foreground mainframe sync failed:', err)
+        );
+
         // Get the time when app went to background
         const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
         const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
