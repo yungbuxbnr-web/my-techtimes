@@ -211,8 +211,8 @@ function getWorkingDaysToDate(year: number, month: number, schedule: Schedule): 
 }
 
 function getEfficiencyColor(efficiency: number): 'green' | 'yellow' | 'red' {
-  if (efficiency >= 90) return 'green';
-  if (efficiency >= 75) return 'yellow';
+  if (efficiency >= 65) return 'green';
+  if (efficiency >= 31) return 'yellow';
   return 'red';
 }
 

@@ -103,11 +103,12 @@ export function applyAbsenceAdjustments(
       ? Math.min(100, (adjustedAvailableHours / adjustedTotalHours) * 100)
       : 0;
 
-  // Elapsed contracted hours = total − remaining available
-  const elapsedContractedHours = adjustedTotalHours - adjustedAvailableHours;
+  // Efficiency = soldHours / adjustedAvailableHours × 100
+  // availableHours = working days elapsed so far × daily hours − past absence hours
+  // This correctly measures how much of the time you had available you actually sold
   const efficiencyPercent =
-    elapsedContractedHours > 0
-      ? Math.min(999, (stats.hoursWorked / elapsedContractedHours) * 100)
+    adjustedAvailableHours > 0
+      ? (stats.hoursWorked / adjustedAvailableHours) * 100
       : 0;
 
   console.log(
