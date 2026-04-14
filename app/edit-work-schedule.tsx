@@ -24,6 +24,12 @@ import {
   BankHoliday,
 } from '@/utils/bankHolidays';
 import { toastManager } from '@/utils/toastManager';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const SCHEDULE_STORAGE_KEY = '@techtimes_schedule';
 
 const DAYS_OF_WEEK = [
   { id: 1, name: 'Monday', short: 'Mon' },
@@ -399,6 +405,78 @@ export default function EditWorkScheduleScreen() {
     } catch (error) {
       console.error('EditWorkScheduleScreen: Error saving schedule:', error);
       Alert.alert('Error', 'Failed to save work schedule');
+    }
+  };
+
+  const handleExportSchedule = async () => {
+    console.log('EditWorkScheduleScreen: User tapped Export Schedule (JSON)');
+    try {
+      const raw = await AsyncStorage.getItem(SCHEDULE_STORAGE_KEY);
+      if (!raw) {
+        Alert.alert('No Schedule', 'No work schedule found to export.');
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      const json = JSON.stringify(parsed, null, 2);
+      const fileUri = (FileSystem.cacheDirectory ?? '') + 'techtimes_work_schedule.json';
+      console.log('EditWorkScheduleScreen: Writing schedule to', fileUri);
+      await FileSystem.writeAsStringAsync(fileUri, json, { encoding: FileSystem.EncodingType.UTF8 });
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Sharing Unavailable', 'Sharing is not available on this device.');
+        return;
+      }
+      console.log('EditWorkScheduleScreen: Sharing schedule file');
+      await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Export Work Schedule' });
+      toastManager.success('Schedule exported successfully');
+    } catch (error) {
+      console.error('EditWorkScheduleScreen: Error exporting schedule:', error);
+      Alert.alert('Export Failed', 'Failed to export work schedule.');
+    }
+  };
+
+  const handleImportSchedule = async () => {
+    console.log('EditWorkScheduleScreen: User tapped Import Schedule (JSON)');
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json' });
+      console.log('EditWorkScheduleScreen: Document picker result:', result.canceled ? 'canceled' : 'picked');
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+      const fileUri = result.assets[0].uri;
+      console.log('EditWorkScheduleScreen: Reading imported file from', fileUri);
+      const contents = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
+      let imported: Record<string, unknown>;
+      try {
+        imported = JSON.parse(contents);
+      } catch {
+        Alert.alert('Invalid File', 'Invalid work schedule file');
+        return;
+      }
+      if (!imported || (imported.startTime === undefined && imported.workingDays === undefined)) {
+        Alert.alert('Invalid File', 'Invalid work schedule file');
+        return;
+      }
+      console.log('EditWorkScheduleScreen: Imported schedule is valid, saving to AsyncStorage');
+      await AsyncStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(imported));
+      // Reload form fields from the imported data
+      if (Array.isArray(imported.workingDays)) setWorkingDays(imported.workingDays as number[]);
+      if (typeof imported.startTime === 'string') setStartTime(imported.startTime);
+      if (typeof imported.endTime === 'string') setEndTime(imported.endTime);
+      if (typeof imported.lunchStartTime === 'string') setLunchStartTime(imported.lunchStartTime);
+      if (typeof imported.lunchEndTime === 'string') setLunchEndTime(imported.lunchEndTime);
+      if (imported.lunchBreakMinutes !== undefined) setLunchBreakMinutes(String(imported.lunchBreakMinutes));
+      if (typeof imported.saturdayStartTime === 'string') setSaturdayStartTime(imported.saturdayStartTime);
+      if (typeof imported.saturdayEndTime === 'string') setSaturdayEndTime(imported.saturdayEndTime);
+      if (imported.saturdayLunchBreakMinutes !== undefined) setSaturdayLunchBreakMinutes(String(imported.saturdayLunchBreakMinutes));
+      if (typeof imported.saturdayFrequency === 'string') setSaturdayFrequency(imported.saturdayFrequency);
+      if (imported.nextWorkingSaturday) setNextWorkingSaturday(new Date(imported.nextWorkingSaturday as string));
+      if (typeof imported.excludeBankHolidays === 'boolean') setExcludeBankHolidays(imported.excludeBankHolidays);
+      toastManager.success('Work schedule imported successfully');
+      console.log('EditWorkScheduleScreen: Schedule imported and form reloaded');
+    } catch (error) {
+      console.error('EditWorkScheduleScreen: Error importing schedule:', error);
+      Alert.alert('Import Failed', 'Invalid work schedule file');
     }
   };
 
@@ -926,6 +1004,34 @@ export default function EditWorkScheduleScreen() {
             />
             <Text style={styles.calendarButtonText}>Work Calendar & Absences</Text>
           </TouchableOpacity>
+
+          <View style={[styles.backupDivider, { borderColor: theme.border }]} />
+
+          <TouchableOpacity
+            style={[styles.backupButton, { borderColor: theme.primary }]}
+            onPress={handleExportSchedule}
+          >
+            <IconSymbol
+              ios_icon_name="square.and.arrow.up"
+              android_material_icon_name="share"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.backupButtonText, { color: theme.primary }]}>Export Schedule (JSON)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.backupButton, { borderColor: theme.primary }]}
+            onPress={handleImportSchedule}
+          >
+            <IconSymbol
+              ios_icon_name="square.and.arrow.down"
+              android_material_icon_name="download"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.backupButtonText, { color: theme.primary }]}>Import Schedule (JSON)</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={{ height: 40 }} />
@@ -1209,6 +1315,24 @@ const styles = StyleSheet.create({
   calendarButtonText: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  backupDivider: {
+    borderTopWidth: 1,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  backupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    gap: 8,
+  },
+  backupButtonText: {
+    fontSize: 15,
     fontWeight: '600',
   },
   modalOverlay: {
