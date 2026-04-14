@@ -3,14 +3,25 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "credentialsSource": "remote"
+      }
     }
   }
 }
