@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -27,6 +28,12 @@ export default function AbsenceLoggerScreen() {
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [schedule, setSchedule] = useState<any>(null);
+  const [successModal, setSuccessModal] = useState<{ visible: boolean; date: string; hours: number; type: string }>({
+    visible: false,
+    date: '',
+    hours: 0,
+    type: 'holiday',
+  });
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -106,11 +113,11 @@ export default function AbsenceLoggerScreen() {
       });
 
       console.log('AbsenceLoggerScreen: Absence logged successfully —', isFuture ? 'FUTURE (pending)' : 'PAST/TODAY (active)');
-      Alert.alert(
-        'Success',
-        `${absenceTypeName} logged for ${selectedDate.toLocaleDateString('en-GB')}\n\n${isFuture ? '🕐 Scheduled (Future)' : '✅ Active (Deducted)'}\n\n${deductionNote}\n\nHours: ${hours.toFixed(2)}h`,
-        [{ text: 'OK', onPress: () => loadData() }]
-      );
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const year = selectedDate.getFullYear();
+      const formattedDate = `${day}/${month}/${year}`;
+      setSuccessModal({ visible: true, date: formattedDate, hours, type: absenceType });
     } catch (error) {
       console.error('AbsenceLoggerScreen: Error logging absence:', error);
       Alert.alert('Error', 'Failed to log absence');
@@ -472,6 +479,63 @@ export default function AbsenceLoggerScreen() {
           }}
         />
       )}
+
+      <Modal
+        visible={successModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSuccessModal(prev => ({ ...prev, visible: false }))}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Success</Text>
+            <Text style={styles.modalSubtitle}>
+              {successModal.type.charAt(0).toUpperCase() + successModal.type.slice(1)}
+              {' logged for '}
+              {successModal.date}
+            </Text>
+
+            <View style={styles.modalCheckRow}>
+              <Text style={styles.modalCheckEmoji}>✅</Text>
+              <Text style={styles.modalCheckText}>Day Marked as Absent</Text>
+            </View>
+
+            <Text style={styles.modalBulletHeader}>This day will:</Text>
+            <View style={styles.modalBulletRow}>
+              <Text style={styles.modalBulletDot}>•</Text>
+              <Text style={styles.modalBulletText}>NOT be counted as a work day</Text>
+            </View>
+            <View style={styles.modalBulletRow}>
+              <Text style={styles.modalBulletDot}>•</Text>
+              <Text style={styles.modalBulletText}>NOT contribute to available hours</Text>
+            </View>
+            <View style={styles.modalBulletRow}>
+              <Text style={styles.modalBulletDot}>•</Text>
+              <Text style={styles.modalBulletText}>
+                {'Have '}
+                {Number(successModal.hours).toFixed(2)}
+                {'h deducted from monthly target'}
+              </Text>
+            </View>
+
+            <Text style={styles.modalNote}>
+              {'The workday progress bar will show "Absent" for this day.'}
+            </Text>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                onPress={() => {
+                  console.log('AbsenceLoggerScreen: Success modal OK pressed');
+                  setSuccessModal(prev => ({ ...prev, visible: false }));
+                  loadData();
+                }}
+              >
+                <Text style={styles.modalOkText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </AppBackground>
   );
 }
@@ -780,5 +844,83 @@ const styles = StyleSheet.create({
     width: 1,
     height: 40,
     opacity: 0.3,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCard: {
+    backgroundColor: '#1e2a3a',
+    borderRadius: 12,
+    padding: 24,
+    marginHorizontal: 24,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#ffffff',
+    marginBottom: 16,
+  },
+  modalCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  modalCheckEmoji: {
+    fontSize: 20,
+  },
+  modalCheckText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  modalBulletHeader: {
+    fontSize: 15,
+    color: '#ffffff',
+    marginBottom: 6,
+  },
+  modalBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 4,
+    paddingLeft: 4,
+  },
+  modalBulletDot: {
+    fontSize: 15,
+    color: '#ffffff',
+    lineHeight: 22,
+  },
+  modalBulletText: {
+    fontSize: 15,
+    color: '#ffffff',
+    flex: 1,
+    lineHeight: 22,
+  },
+  modalNote: {
+    fontSize: 14,
+    color: '#a0aec0',
+    fontStyle: 'italic',
+    marginTop: 16,
+    lineHeight: 20,
+  },
+  modalFooter: {
+    alignItems: 'flex-end',
+    marginTop: 20,
+  },
+  modalOkText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4A90D9',
   },
 });
