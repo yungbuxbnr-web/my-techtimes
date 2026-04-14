@@ -167,7 +167,13 @@ export default function AbsenceLoggerScreen() {
   const activeAbsences = sortedAbsences.filter(a => a.absenceDate <= todayStr);
   const futureAbsences = sortedAbsences.filter(a => a.absenceDate > todayStr);
 
+  // Summary totals
+  const totalAbsenceHours = uniqueAbsences.reduce((sum, a) => sum + (Number(a.customHours) || 0), 0);
+  const pastAbsenceHours = activeAbsences.reduce((sum, a) => sum + (Number(a.customHours) || 0), 0);
+  const futureAbsenceHours = futureAbsences.reduce((sum, a) => sum + (Number(a.customHours) || 0), 0);
+
   console.log('AbsenceLoggerScreen: Displaying', activeAbsences.length, 'active,', futureAbsences.length, 'future absences');
+  console.log('AbsenceLoggerScreen: Summary — total:', totalAbsenceHours.toFixed(2), 'h, past:', pastAbsenceHours.toFixed(2), 'h, future:', futureAbsenceHours.toFixed(2), 'h');
 
   const selectedDateStr = selectedDate.toISOString().split('T')[0];
   const selectedIsFuture = selectedDateStr > todayStr;
@@ -366,6 +372,31 @@ export default function AbsenceLoggerScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Monthly Summary */}
+        {uniqueAbsences.length > 0 && (
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>This Month Summary</Text>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: theme.text }]}>{totalAbsenceHours.toFixed(2)}h</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Absent</Text>
+              </View>
+              <View style={[styles.summaryDivider, { backgroundColor: theme.textSecondary }]} />
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{pastAbsenceHours.toFixed(2)}h</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Deducted</Text>
+                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{activeAbsences.length} day{activeAbsences.length !== 1 ? 's' : ''}</Text>
+              </View>
+              <View style={[styles.summaryDivider, { backgroundColor: theme.textSecondary }]} />
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: '#FF9800' }]}>{futureAbsenceHours.toFixed(2)}h</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Scheduled</Text>
+                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{futureAbsences.length} day{futureAbsences.length !== 1 ? 's' : ''}</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Future (Scheduled) Absences */}
         {futureAbsences.length > 0 && (
@@ -721,5 +752,33 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingTop: 8,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  summarySubLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    opacity: 0.3,
   },
 });

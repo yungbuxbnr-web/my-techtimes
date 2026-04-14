@@ -1,6 +1,7 @@
 
 import Constants from 'expo-constants';
 import { offlineStorage, Job as OfflineJob, Schedule, TechnicianProfile, Absence, StreakData } from './offlineStorage';
+import { applyAbsenceAdjustments, AbsenceRecord } from './jobCalculations';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev';
 
@@ -331,81 +332,76 @@ export const api = {
     const settings = await offlineStorage.getSettings();
 
     const [year, monthNum] = month.split('-').map(Number);
-    
-    // Calculate available hours based on working days from start of month to today
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // ── Raw (unadjusted) contracted hours ────────────────────────────────────
+    // Total contracted hours for the full month (no absence deductions yet)
+    const totalWorkingDaysInMonth = getWorkingDaysInMonth(year, monthNum, schedule);
+    const originalTotalHours = (settings.monthlyTarget || targetHours);
+
+    // Raw available hours = working days elapsed so far × daily hours
     const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
+    const originalAvailableHours = workingDaysToDate * schedule.dailyWorkingHours;
 
-    // Only count absences whose date is on or before today (past + today)
-    // Future absences are stored but not yet deducted — they will be counted when their date arrives
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    const todayStr = today.toISOString().split('T')[0];
+    console.log(`API: Month ${month} — raw total=${originalTotalHours}h (from settings), raw available=${originalAvailableHours.toFixed(2)}h (${workingDaysToDate} working days × ${schedule.dailyWorkingHours}h), totalWorkingDays=${totalWorkingDaysInMonth}`);
 
-    const activeAbsences = absences.filter(absence => {
-      if (!absence.absenceDate) return false;
-      return absence.absenceDate <= todayStr;
-    });
+    // ── Convert Absence records to AbsenceRecord shape ────────────────────────
+    // Deduplicate by date — only one absence record per date counts
+    const seenDates = new Set<string>();
+    const absenceRecords: AbsenceRecord[] = [];
 
-    const futureAbsences = absences.filter(absence => {
-      if (!absence.absenceDate) return false;
-      return absence.absenceDate > todayStr;
-    });
+    absences.forEach(absence => {
+      if (!absence.absenceDate) return;
+      if (seenDates.has(absence.absenceDate)) return;
+      seenDates.add(absence.absenceDate);
 
-    console.log(`API: Month ${month} — ${activeAbsences.length} active absences (past/today), ${futureAbsences.length} future absences (not yet deducted)`);
-
-    // Count unique absent days (each date should only be counted once, regardless of how many absence records exist)
-    const absentDates = new Set<string>();
-    activeAbsences.forEach(absence => {
-      if (absence.absenceDate) {
-        absentDates.add(absence.absenceDate);
-      }
-    });
-    
-    // Subtract absent days from working days count
-    const actualWorkingDays = workingDaysToDate - absentDates.size;
-    const availableHours = actualWorkingDays * schedule.dailyWorkingHours;
-
-    console.log(`API: Month ${month} - ${workingDaysToDate} working days - ${absentDates.size} absent days = ${actualWorkingDays} actual working days × ${schedule.dailyWorkingHours}h = ${availableHours}h available`);
-
-    // Calculate absence deductions for target hours — only from active (past/today) absences
-    let absenceHoursFromTarget = 0;
-
-    activeAbsences.forEach(absence => {
+      // Resolve hours for this absence
       let hours = 0;
-      if (absence.customHours !== undefined) {
-        hours = absence.customHours;
+      if (absence.customHours !== undefined && absence.customHours > 0) {
+        hours = Number(absence.customHours);
       } else if (absence.isHalfDay) {
         hours = schedule.dailyWorkingHours / 2;
-      } else if (absence.daysCount) {
+      } else if (absence.daysCount && absence.daysCount > 0) {
         hours = absence.daysCount * schedule.dailyWorkingHours;
       } else {
         hours = schedule.dailyWorkingHours;
       }
 
-      // Only deduct from target if it's a target deduction type
-      if (absence.deductionType === 'target') {
-        absenceHoursFromTarget += hours;
-      }
+      absenceRecords.push({
+        id: absence.id,
+        absenceDate: absence.absenceDate,
+        hours,
+        type: absence.absenceType || 'absence',
+        month: absence.month,
+      });
     });
 
-    // Available hours are already reduced by removing absent days from the working days count
-    const adjustedAvailableHours = availableHours;
-    const adjustedTargetHours = (settings.monthlyTarget || targetHours) - absenceHoursFromTarget;
+    console.log(`API: Month ${month} — ${absenceRecords.length} unique absence dates resolved`);
 
+    // ── Apply absence adjustments via shared helper ───────────────────────────
     const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
-    const soldHours = (totalAw * 5) / 60; // 1 AW = 5 minutes = 0.0833 hours
-    const efficiency = adjustedAvailableHours > 0 ? (soldHours / adjustedAvailableHours) * 100 : 0;
+    const soldHours = (totalAw * 5) / 60;
 
-    console.log(`API: Sold Hours: ${soldHours.toFixed(2)}h, Available Hours: ${adjustedAvailableHours.toFixed(2)}h (${actualWorkingDays} days), Efficiency: ${efficiency.toFixed(1)}%`);
+    const adjusted = applyAbsenceAdjustments(
+      {
+        originalTotalHours,
+        originalAvailableHours,
+        hoursWorked: soldHours,
+      },
+      absenceRecords,
+      todayStr
+    );
+
+    console.log(`API: Month ${month} — adjustedTotal=${adjusted.adjustedTotalHours.toFixed(2)}h, adjustedAvailable=${adjusted.adjustedAvailableHours.toFixed(2)}h, efficiency=${adjusted.efficiencyPercent.toFixed(1)}%`);
 
     return {
       month,
       soldHours,
-      targetHours: adjustedTargetHours,
-      remainingHours: Math.max(0, adjustedTargetHours - soldHours),
-      availableHours: adjustedAvailableHours,
-      efficiency,
-      efficiencyColor: getEfficiencyColor(efficiency),
+      targetHours: adjusted.adjustedTotalHours,
+      remainingHours: Math.max(0, adjusted.adjustedTotalHours - soldHours),
+      availableHours: adjusted.adjustedAvailableHours,
+      efficiency: adjusted.efficiencyPercent,
+      efficiencyColor: getEfficiencyColor(adjusted.efficiencyPercent),
       totalJobs: jobs.length,
       totalAw,
       weeklyBreakdown: [],
@@ -474,7 +470,7 @@ export const api = {
     isHalfDay?: boolean;
     customHours?: number;
     deductionType: 'target' | 'available';
-    absenceType?: 'overtime' | 'compensation' | 'absence';
+    absenceType?: 'holiday' | 'sickness' | 'training' | 'overtime' | 'compensation' | 'absence';
     note?: string;
   }): Promise<Absence> {
     console.log('API: Creating absence in local storage', absence);
