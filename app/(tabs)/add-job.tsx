@@ -1,5 +1,6 @@
 
 import { api, OCRRegResult, OCRJobCardResult, Job } from '@/utils/api';
+import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -215,12 +216,26 @@ export default function AddJobScreen() {
         notes: notes.trim() || undefined,
         vhcStatus,
         createdAt: jobDateTime.toISOString(),
-        imageUri: jobCardImageUri,
       };
       
       console.log('AddJobScreen: Saving job:', jobData);
-      await api.createJob(jobData);
-      
+      const newJob = await api.createJob(jobData);
+      console.log('AddJobScreen: Job created with id:', newJob.id);
+
+      if (jobCardImageUri && newJob.id) {
+        try {
+          console.log('AddJobScreen: Saving job image to storage for job:', newJob.id);
+          const storedImage = await saveJobImage(newJob.id, jobCardImageUri);
+          console.log('AddJobScreen: Image file saved, recording to AsyncStorage');
+          await saveImageRecord(storedImage);
+          console.log('AddJobScreen: Image record saved, updating job imageUri to:', storedImage.uri);
+          await api.updateJob(newJob.id, { imageUri: storedImage.uri });
+          console.log('AddJobScreen: Job imageUri updated successfully');
+        } catch (imgError) {
+          console.error('AddJobScreen: Error storing job image (non-fatal):', imgError);
+        }
+      }
+
       // Reload jobs for suggestions
       await loadJobsForSuggestions();
       
@@ -370,23 +385,8 @@ export default function AddJobScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const pickedUri = result.assets[0].uri;
-        console.log('AddJobScreen: Job card photo selected, copying to document directory:', pickedUri);
-        // Copy to app document directory immediately so the URI is stable on Android
-        try {
-          const { documentDirectory, copyAsync, makeDirectoryAsync, getInfoAsync } = await import('expo-file-system');
-          const dir = (documentDirectory ?? '') + 'job_images/';
-          const dirInfo = await getInfoAsync(dir);
-          if (!dirInfo.exists) {
-            await makeDirectoryAsync(dir, { intermediates: true });
-          }
-          const destUri = dir + `temp_${Date.now()}.jpg`;
-          await copyAsync({ from: pickedUri, to: destUri });
-          console.log('AddJobScreen: Photo copied to stable path:', destUri);
-          setJobCardImageUri(destUri);
-        } catch (copyErr) {
-          console.warn('AddJobScreen: Could not copy photo, using original URI:', copyErr);
-          setJobCardImageUri(pickedUri);
-        }
+        console.log('AddJobScreen: Job card photo selected, storing picker URI for preview:', pickedUri);
+        setJobCardImageUri(pickedUri);
         Alert.alert('Success', 'Job card photo attached!');
       }
     } catch (error) {
