@@ -31,6 +31,7 @@ export default function StatsScreen() {
   const [recentJobs, setRecentJobs] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [schedule, setSchedule] = useState<any>(null);
+  const [settings, setSettings] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => {
     const today = new Date();
@@ -125,13 +126,14 @@ export default function StatsScreen() {
     try {
       console.log('StatsScreen: Fetching all statistics');
       const currentMonth = getCurrentMonth();
-      const [monthly, today, week, allTime, jobs, sched] = await Promise.all([
+      const [monthly, today, week, allTime, jobs, sched, sett] = await Promise.all([
         api.getMonthlyStats(currentMonth),
         api.getTodayStats(),
         api.getWeekStats(),
         api.getAllTimeStats(),
         api.getRecentJobs(10),
         api.getSchedule(),
+        api.getSettings(),
       ]);
 
       setMonthlyStats(monthly);
@@ -140,6 +142,7 @@ export default function StatsScreen() {
       setAllTimeStats(allTime);
       setRecentJobs(jobs);
       setSchedule(sched);
+      setSettings(sett);
       setDailyWorkingHours(sched.dailyWorkingHours || 8.5);
       console.log('StatsScreen: Stats loaded successfully');
     } catch (error) {
@@ -527,6 +530,117 @@ export default function StatsScreen() {
               </View>
             </View>
           </View>
+
+          {/* Performance Metrics */}
+          <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Performance Metrics</Text>
+
+          {(() => {
+            const getWorkingDaysElapsed = (): number => {
+              const now = new Date();
+              const start = new Date(now.getFullYear(), now.getMonth(), 1);
+              let count = 0;
+              const d = new Date(start);
+              while (d <= now) {
+                const day = d.getDay();
+                if (day !== 0 && day !== 6) count++;
+                d.setDate(d.getDate() + 1);
+              }
+              return Math.max(count, 1);
+            };
+
+            const workingDaysElapsed = getWorkingDaysElapsed();
+            const now = new Date();
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            const dayOfMonth = now.getDate();
+
+            const utilizationRate = monthlyStats.availableHours > 0
+              ? (monthlyStats.soldHours / monthlyStats.availableHours) * 100
+              : 0;
+            const utilizationColor = utilizationRate >= 80
+              ? theme.chartGreen
+              : utilizationRate >= 50
+              ? theme.chartYellow
+              : theme.chartRed;
+            const utilizationDisplay = utilizationRate.toFixed(1) + '%';
+
+            const avgAwPerDay = monthlyStats.totalAw / workingDaysElapsed;
+            const avgAwDisplay = avgAwPerDay.toFixed(1);
+
+            const avgHoursPerDay = monthlyStats.soldHours / workingDaysElapsed;
+            const avgHoursDisplay = avgHoursPerDay.toFixed(2) + 'h';
+
+            const hoursPerJob = monthlyStats.totalJobs > 0
+              ? monthlyStats.soldHours / monthlyStats.totalJobs
+              : 0;
+            const hoursPerJobDisplay = hoursPerJob.toFixed(2) + 'h';
+
+            const monthlyTarget = settings ? (settings.monthlyTarget || 180) : 180;
+            const expectedProgress = (dayOfMonth / daysInMonth) * 100;
+            const actualProgress = monthlyTarget > 0
+              ? (monthlyStats.soldHours / monthlyTarget) * 100
+              : 0;
+            const paceGap = actualProgress - expectedProgress;
+            const paceColor = paceGap >= 0 ? theme.chartGreen : theme.chartRed;
+            const paceDisplay = paceGap >= 0
+              ? '+' + paceGap.toFixed(1) + '% ahead'
+              : Math.abs(paceGap).toFixed(1) + '% behind';
+
+            const metrics = [
+              {
+                label: 'Utilization Rate',
+                description: 'Sold hours vs available hours this month',
+                value: utilizationDisplay,
+                color: utilizationColor,
+              },
+              {
+                label: 'Avg AWs / Day',
+                description: 'Average AWs logged per working day this month',
+                value: avgAwDisplay,
+                color: theme.text,
+              },
+              {
+                label: 'Avg Hours / Day',
+                description: 'Average sold hours per working day this month',
+                value: avgHoursDisplay,
+                color: theme.text,
+              },
+              {
+                label: 'Hours per Job',
+                description: 'Average time per job this month',
+                value: hoursPerJobDisplay,
+                color: theme.text,
+              },
+              {
+                label: 'Pace vs Target',
+                description: 'Progress relative to expected monthly pace',
+                value: paceDisplay,
+                color: paceColor,
+              },
+            ];
+
+            return (
+              <View style={[styles.metricsCard, { backgroundColor: theme.card }]}>
+                {metrics.map((metric, index) => (
+                  <View
+                    key={metric.label}
+                    style={[
+                      styles.metricRow,
+                      index < metrics.length - 1 && {
+                        borderBottomWidth: 1,
+                        borderBottomColor: theme.border || 'rgba(255,255,255,0.1)',
+                      },
+                    ]}
+                  >
+                    <View style={styles.metricLeft}>
+                      <Text style={[styles.metricLabel, { color: theme.text }]}>{metric.label}</Text>
+                      <Text style={[styles.metricDescription, { color: theme.textSecondary }]}>{metric.description}</Text>
+                    </View>
+                    <Text style={[styles.metricValue, { color: metric.color }]}>{metric.value}</Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
 
           {/* Yearly Target vs Sold Hours */}
           <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Yearly Performance</Text>
@@ -1218,6 +1332,40 @@ const styles = StyleSheet.create({
     width: 1,
     height: 36,
     opacity: 0.3,
+  },
+  // Performance Metrics card
+  metricsCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  metricLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  metricLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  metricDescription: {
+    fontSize: 11,
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'right',
   },
   // Year date picker modal
   yearPickerOverlay: {

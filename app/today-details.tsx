@@ -139,7 +139,10 @@ export default function TodayDetailsScreen() {
         }}
       />
       
-      <View style={styles.container}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+      >
         <View style={[styles.header, { backgroundColor: theme.card }, Platform.OS === 'android' && { paddingTop: 16 }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Today&apos;s Performance</Text>
           <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>{todayDate}</Text>
@@ -199,7 +202,10 @@ export default function TodayDetailsScreen() {
                   </Text>
                   <TouchableOpacity
                     style={[styles.addButton, { backgroundColor: theme.primary }]}
-                    onPress={() => router.push('/(tabs)/add-job')}
+                    onPress={() => {
+                      console.log('TodayDetailsScreen: User tapped Add First Job');
+                      router.push('/(tabs)/add-job');
+                    }}
                   >
                     <IconSymbol
                       ios_icon_name="plus"
@@ -226,7 +232,10 @@ export default function TodayDetailsScreen() {
               <View style={styles.actionsContainer}>
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: theme.primary }]}
-                  onPress={() => router.push('/(tabs)/add-job')}
+                  onPress={() => {
+                    console.log('TodayDetailsScreen: User tapped Add Job');
+                    router.push('/(tabs)/add-job');
+                  }}
                 >
                   <IconSymbol
                     ios_icon_name="plus"
@@ -239,7 +248,10 @@ export default function TodayDetailsScreen() {
                 
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: theme.accent }]}
-                  onPress={() => router.push('/(tabs)/jobs')}
+                  onPress={() => {
+                    console.log('TodayDetailsScreen: User tapped All Jobs');
+                    router.push('/(tabs)/jobs');
+                  }}
                 >
                   <IconSymbol
                     ios_icon_name="list.bullet"
@@ -253,7 +265,7 @@ export default function TodayDetailsScreen() {
             )}
           </>
         )}
-      </View>
+      </ScrollView>
     </AppBackground>
   );
 }
@@ -261,7 +273,10 @@ export default function TodayDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 16,
+    paddingBottom: 100,
   },
   header: {
     padding: 20,
