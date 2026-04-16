@@ -572,6 +572,52 @@ export async function scheduleAllNotifications(): Promise<void> {
 }
 
 /**
+ * Safety-net: ensure work-schedule notifications are registered with the OS.
+ * Called on app mount, foreground resume, and every background sync.
+ * If any of the 4 work-schedule notification types are missing AND their
+ * corresponding setting is enabled, re-schedules everything.
+ */
+export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> {
+  console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — checking OS-scheduled notifications');
+
+  try {
+    const [settings, schedule, scheduled] = await Promise.all([
+      offlineStorage.getNotificationSettings(),
+      offlineStorage.getSchedule(),
+      Notifications.getAllScheduledNotificationsAsync(),
+    ]);
+
+    const ids = scheduled.map(n => n.identifier);
+    console.log('NotificationScheduler: Currently scheduled notification IDs:', ids);
+
+    const hasWorkStart  = ids.some(id => id.startsWith('work-start-'));
+    const hasWorkEnd    = ids.some(id => id.startsWith('work-end-'));
+    const hasLunchStart = ids.some(id => id.startsWith('lunch-start-'));
+    const hasLunchEnd   = ids.some(id => id.startsWith('lunch-end-'));
+
+    console.log('NotificationScheduler: work-start present:', hasWorkStart, '| work-end present:', hasWorkEnd, '| lunch-start present:', hasLunchStart, '| lunch-end present:', hasLunchEnd);
+
+    const needsWorkStart  = settings.workStartNotification  && !hasWorkStart;
+    const needsWorkEnd    = settings.workEndNotification    && !hasWorkEnd;
+    const needsLunchStart = settings.lunchStartNotification && !hasLunchStart;
+    const needsLunchEnd   = settings.lunchEndNotification   && !hasLunchEnd;
+
+    if (needsWorkStart || needsWorkEnd || needsLunchStart || needsLunchEnd) {
+      console.log(
+        'NotificationScheduler: Missing work-schedule notifications — re-scheduling all.',
+        { needsWorkStart, needsWorkEnd, needsLunchStart, needsLunchEnd }
+      );
+      await scheduleAllNotifications();
+      console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — re-schedule complete');
+    } else {
+      console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — all required notifications already present, no action needed');
+    }
+  } catch (error) {
+    console.error('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — error:', error);
+  }
+}
+
+/**
  * Get all scheduled notifications (for debugging)
  */
 export async function getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {

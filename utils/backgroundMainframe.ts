@@ -8,6 +8,7 @@ import { markDueHolidaysAsCounted, ensureTrackedHolidaysInitialised } from './ba
 import {
   maybeSendTargetReminderNotification,
   maybeSendEfficiencyAlertNotification,
+  ensureWorkScheduleNotificationsScheduled,
 } from './notificationScheduler';
 
 const TASK_NAME = 'TECH_TIMES_MAINFRAME';
@@ -18,6 +19,9 @@ const DAILY_PROGRESS_KEY = 'daily_progress';
 
 export async function runMainframeSync(): Promise<void> {
   console.log('Mainframe: Running sync at', new Date().toISOString());
+
+  // Safety-net: re-register OS-level work-schedule notifications if they were cleared
+  await ensureWorkScheduleNotificationsScheduled();
 
   try {
     const schedule = await offlineStorage.getSchedule();

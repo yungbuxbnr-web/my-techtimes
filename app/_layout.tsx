@@ -6,7 +6,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { scheduleAllNotifications } from '@/utils/notificationScheduler';
+import { scheduleAllNotifications, ensureWorkScheduleNotificationsScheduled } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
 import { updateWidgetData, scheduleDailyWidgetRefresh } from '@/utils/widgetManager';
 import { registerBackgroundMainframe, runMainframeSync } from '@/utils/backgroundMainframe';
@@ -65,6 +65,10 @@ function RootLayoutContent() {
           console.log('RootLayout: Scheduling all notifications');
           await scheduleAllNotifications();
           console.log('RootLayout: Notifications scheduled successfully');
+
+          // Safety-net: verify work-schedule notifications are present after scheduling
+          console.log('RootLayout: Verifying work-schedule notifications on mount');
+          await ensureWorkScheduleNotificationsScheduled();
         } else {
           console.log('RootLayout: Notification permissions not granted');
         }
@@ -124,6 +128,12 @@ function RootLayoutContent() {
         // Run foreground sync immediately to refresh calculations
         runMainframeSync().catch(err =>
           console.error('RootLayout: Foreground mainframe sync failed:', err)
+        );
+
+        // Safety-net: re-register work-schedule notifications if cleared (e.g. after OS reboot)
+        console.log('RootLayout: App foregrounded — ensuring work-schedule notifications are scheduled');
+        ensureWorkScheduleNotificationsScheduled().catch(err =>
+          console.error('RootLayout: ensureWorkScheduleNotificationsScheduled failed on foreground:', err)
         );
 
         // Get the time when app went to background
