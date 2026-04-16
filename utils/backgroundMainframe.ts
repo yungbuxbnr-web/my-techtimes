@@ -5,6 +5,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { offlineStorage } from './offlineStorage';
 import { calcDailyHoursFromSchedule } from './jobCalculations';
 import { markDueHolidaysAsCounted, ensureTrackedHolidaysInitialised } from './bankHolidays';
+import {
+  maybeSendTargetReminderNotification,
+  maybeSendEfficiencyAlertNotification,
+} from './notificationScheduler';
 
 const TASK_NAME = 'TECH_TIMES_MAINFRAME';
 const MAINFRAME_LAST_SYNC_KEY = 'mainframe_last_sync';
@@ -80,6 +84,45 @@ export async function runMainframeSync(): Promise<void> {
 
     // Mark any future absences that are now past/today
     await markDueAbsences();
+
+    // ─── Notification checks ──────────────────────────────────────────────────
+    const notifSettings = await offlineStorage.getNotificationSettings();
+
+    if (isTodayWorkingDay && schedule.startTime && schedule.endTime) {
+      const [startH, startM] = schedule.startTime.split(':').map(Number);
+      const [endH, endM] = schedule.endTime.split(':').map(Number);
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+
+      if (nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
+        console.log('Mainframe: Within work hours — running notification checks');
+
+        // Target reminder: fire when approaching end of day
+        await maybeSendTargetReminderNotification(progressPercent, notifSettings);
+
+        // Efficiency alert: read cached job_stats written by the main app
+        const statsRaw = await AsyncStorage.getItem('job_stats');
+        if (statsRaw) {
+          try {
+            const stats = JSON.parse(statsRaw);
+            if (stats.efficiencyPercent !== undefined) {
+              console.log('Mainframe: Cached efficiency:', stats.efficiencyPercent);
+              await maybeSendEfficiencyAlertNotification(stats.efficiencyPercent, notifSettings);
+            } else {
+              console.log('Mainframe: job_stats found but efficiencyPercent missing, skipping efficiency alert');
+            }
+          } catch (parseError) {
+            console.error('Mainframe: Failed to parse job_stats:', parseError);
+          }
+        } else {
+          console.log('Mainframe: No job_stats cached yet, skipping efficiency alert');
+        }
+      } else {
+        console.log('Mainframe: Outside work hours — skipping notification checks');
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Update last sync timestamp
     await AsyncStorage.setItem(MAINFRAME_LAST_SYNC_KEY, now.toISOString());

@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { offlineStorage, Schedule, NotificationSettings } from './offlineStorage';
 
 // Notification identifiers
@@ -15,6 +16,10 @@ const NOTIFICATION_IDS = {
   WEEKLY_REPORT: 'weekly-report',
   MONTHLY_REPORT: 'monthly-report',
 };
+
+// AsyncStorage keys for one-shot daily notification guards
+const NOTIF_TARGET_FIRED_KEY = '@techtimes_notif_target_fired_date';
+const NOTIF_EFFICIENCY_FIRED_KEY = '@techtimes_notif_efficiency_fired_date';
 
 // Android notification channel IDs
 export const NOTIFICATION_CHANNELS = {
@@ -134,6 +139,13 @@ export async function configureNotificationHandler(settings: NotificationSetting
 function parseTime(timeStr: string): { hour: number; minute: number } {
   const [hour, minute] = timeStr.split(':').map(Number);
   return { hour: isNaN(hour) ? 8 : hour, minute: isNaN(minute) ? 0 : minute };
+}
+
+/**
+ * Get today's date string in YYYY-MM-DD format
+ */
+function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0];
 }
 
 /**
@@ -337,6 +349,173 @@ async function scheduleDailyReminder(settings: NotificationSettings): Promise<vo
 }
 
 /**
+ * Fire a one-shot target reminder notification if progress >= 90% and not already fired today.
+ */
+export async function maybeSendTargetReminderNotification(
+  progressPercent: number,
+  settings: NotificationSettings
+): Promise<void> {
+  if (!settings.targetReminder) {
+    console.log('NotificationScheduler: Target reminder disabled, skipping');
+    return;
+  }
+
+  if (progressPercent < 90) {
+    console.log(`NotificationScheduler: Target reminder — progress ${progressPercent.toFixed(1)}% < 90%, skipping`);
+    return;
+  }
+
+  const today = getTodayDateString();
+  const firedDate = await AsyncStorage.getItem(NOTIF_TARGET_FIRED_KEY);
+  if (firedDate === today) {
+    console.log('NotificationScheduler: Target reminder already fired today, skipping');
+    return;
+  }
+
+  const roundedProgress = Math.round(progressPercent);
+  console.log(`NotificationScheduler: Firing target reminder — progress ${roundedProgress}%`);
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Almost there! 🎯',
+      body: `You've completed ${roundedProgress}% of today's hours. Keep it up!`,
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.WORK }),
+    },
+    trigger: null,
+  });
+
+  await AsyncStorage.setItem(NOTIF_TARGET_FIRED_KEY, today);
+  console.log('NotificationScheduler: Target reminder fired and guard date saved');
+}
+
+/**
+ * Fire a one-shot efficiency alert notification if efficiency is below threshold and not already fired today.
+ */
+export async function maybeSendEfficiencyAlertNotification(
+  efficiencyPercent: number,
+  settings: NotificationSettings
+): Promise<void> {
+  if (!settings.efficiencyAlert) {
+    console.log('NotificationScheduler: Efficiency alert disabled, skipping');
+    return;
+  }
+
+  const threshold = Number(settings.lowEfficiencyThreshold);
+  if (efficiencyPercent >= threshold) {
+    console.log(`NotificationScheduler: Efficiency alert — ${efficiencyPercent.toFixed(1)}% >= threshold ${threshold}%, skipping`);
+    return;
+  }
+
+  const today = getTodayDateString();
+  const firedDate = await AsyncStorage.getItem(NOTIF_EFFICIENCY_FIRED_KEY);
+  if (firedDate === today) {
+    console.log('NotificationScheduler: Efficiency alert already fired today, skipping');
+    return;
+  }
+
+  const roundedEfficiency = Math.round(efficiencyPercent);
+  console.log(`NotificationScheduler: Firing efficiency alert — efficiency ${roundedEfficiency}% < threshold ${threshold}%`);
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Efficiency check 📊',
+      body: `Your efficiency is at ${roundedEfficiency}%. Consider logging more jobs to stay on track.`,
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+    },
+    trigger: null,
+  });
+
+  await AsyncStorage.setItem(NOTIF_EFFICIENCY_FIRED_KEY, today);
+  console.log('NotificationScheduler: Efficiency alert fired and guard date saved');
+}
+
+/**
+ * Schedule (or cancel) the weekly report notification.
+ */
+export async function scheduleWeeklyReportNotification(settings: NotificationSettings): Promise<void> {
+  // Cancel any existing weekly-report notifications
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const existing = scheduled.filter(n => n.identifier.startsWith(NOTIFICATION_IDS.WEEKLY_REPORT));
+  for (const notif of existing) {
+    await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    console.log(`NotificationScheduler: Cancelled existing weekly report notification: ${notif.identifier}`);
+  }
+
+  if (!settings.weeklyReport) {
+    console.log('NotificationScheduler: Weekly report disabled, skipping schedule');
+    return;
+  }
+
+  // expo-notifications weekday: 1=Sunday, 2=Monday, ..., 7=Saturday
+  const expoWeekday = settings.weeklyReportDay === 0 ? 1 : settings.weeklyReportDay + 1;
+
+  console.log(`NotificationScheduler: Scheduling weekly report for expo weekday ${expoWeekday} at 18:00`);
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: NOTIFICATION_IDS.WEEKLY_REPORT,
+    content: {
+      title: 'Weekly Summary 📋',
+      body: 'Check your weekly work report and see how you performed this week.',
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+    },
+    trigger: {
+      type: SchedulableTriggerInputTypes.WEEKLY,
+      weekday: expoWeekday,
+      hour: 18,
+      minute: 0,
+    },
+  });
+
+  console.log('NotificationScheduler: Weekly report notification scheduled');
+}
+
+/**
+ * Schedule (or cancel) the monthly report notification.
+ */
+export async function scheduleMonthlyReportNotification(settings: NotificationSettings): Promise<void> {
+  // Cancel any existing monthly-report notification
+  try {
+    await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.MONTHLY_REPORT);
+    console.log('NotificationScheduler: Cancelled existing monthly report notification');
+  } catch {
+    // No existing notification to cancel — that's fine
+  }
+
+  if (!settings.monthlyReport) {
+    console.log('NotificationScheduler: Monthly report disabled, skipping schedule');
+    return;
+  }
+
+  console.log('NotificationScheduler: Scheduling monthly report notification on day 28 at 17:00');
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: NOTIFICATION_IDS.MONTHLY_REPORT,
+    content: {
+      title: 'Monthly Report 📅',
+      body: 'Your monthly work summary is ready. Tap to review your performance.',
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+    },
+    trigger: {
+      type: SchedulableTriggerInputTypes.CALENDAR,
+      day: 28,
+      hour: 17,
+      minute: 0,
+      repeats: true,
+    },
+  });
+
+  console.log('NotificationScheduler: Monthly report notification scheduled');
+}
+
+/**
  * Cancel all scheduled notifications
  */
 export async function cancelAllNotifications(): Promise<void> {
@@ -373,6 +552,10 @@ export async function scheduleAllNotifications(): Promise<void> {
 
     // Schedule reminder notifications
     await scheduleDailyReminder(settings);
+
+    // Schedule report notifications
+    await scheduleWeeklyReportNotification(settings);
+    await scheduleMonthlyReportNotification(settings);
 
     console.log('NotificationScheduler: All notifications scheduled successfully');
 
