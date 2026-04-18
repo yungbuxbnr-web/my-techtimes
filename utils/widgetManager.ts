@@ -313,7 +313,7 @@ export async function updateWidgetData(): Promise<void> {
     const timeElapsed = `${elapsedHours}h ${elapsedMinutes}m elapsed`;
 
     // Get prefs from AsyncStorage for show/hide toggles
-    const prefsRaw = await AsyncStorage.getItem('@widget_prefs');
+    const prefsRaw = await AsyncStorage.getItem('widget_prefs');
     const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
 
     console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage });
