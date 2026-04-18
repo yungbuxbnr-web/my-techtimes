@@ -26,6 +26,7 @@ import {
   TextInput,
   Platform,
   Modal,
+  NativeModules,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -100,18 +101,37 @@ export default function SettingsScreen() {
 
   const handleAddWidget = () => {
     console.log('SettingsScreen: User tapped Add Widget to Home Screen');
-    Alert.alert(
-      'Add Widget to Home Screen',
-      '1. Long press your home screen\n2. Tap the \'+\' button in the top corner\n3. Search for \'Tech Times\'\n4. Choose the Day Progress widget\n5. Tap \'Add Widget\'',
-      [{ text: 'Got it', style: 'default' }]
-    );
+    if (Platform.OS === 'android') {
+      Alert.alert(
+        'Add Widget to Home Screen',
+        "Long-press your home screen → tap Widgets → search for 'Tech Times' → drag it to your home screen",
+        [{ text: 'Got it', style: 'default' }]
+      );
+    } else {
+      Alert.alert(
+        'Add Widget to Home Screen',
+        '1. Long press your home screen\n2. Tap the \'+\' button in the top corner\n3. Search for \'Tech Times\'\n4. Choose the Day Progress widget\n5. Tap \'Add Widget\'',
+        [{ text: 'Got it', style: 'default' }]
+      );
+    }
   };
 
   const handleRefreshWidget = async () => {
     console.log('SettingsScreen: User tapped Refresh Widget Now');
     try {
-      await updateDayProgressWidget();
-      toastManager.show('Widget data refreshed', 'success');
+      if (Platform.OS === 'android') {
+        const { WidgetBridge } = NativeModules;
+        if (WidgetBridge) {
+          console.log('SettingsScreen: Calling WidgetBridge.refreshWidget');
+          WidgetBridge.refreshWidget();
+          toastManager.show('Widget refreshed', 'success');
+        } else {
+          console.warn('SettingsScreen: WidgetBridge not available');
+        }
+      } else {
+        await updateDayProgressWidget();
+        toastManager.show('Widget data refreshed', 'success');
+      }
     } catch (error) {
       console.error('SettingsScreen: Error refreshing widget:', error);
       Alert.alert('Error', 'Failed to refresh widget');
@@ -1062,19 +1082,33 @@ export default function SettingsScreen() {
             );
           })()}
 
-          {/* Android widget preview card */}
-          {Platform.OS === 'android' && (
-            <View style={styles.androidWidgetPreview}>
-              <View style={styles.androidWidgetInner}>
-                <Text style={styles.androidWidgetTitle}>Tech Times</Text>
-                <Text style={styles.androidWidgetTime}>4h 32m elapsed</Text>
-                <Text style={styles.androidWidgetPct}>57% of day</Text>
-                <View style={styles.androidWidgetBtn}>
-                  <Text style={styles.androidWidgetBtnText}>+ Add Job</Text>
+          {/* Android widget preview card — live values */}
+          {Platform.OS === 'android' && (() => {
+            const now = widgetCurrentTime;
+            const startOfDay = new Date(now);
+            startOfDay.setHours(6, 0, 0, 0);
+            const endOfDay = new Date(now);
+            endOfDay.setHours(22, 0, 0, 0);
+            const totalDayMs = endOfDay.getTime() - startOfDay.getTime();
+            const elapsedMs = Math.max(0, now.getTime() - startOfDay.getTime());
+            const pct = Math.min(100, Math.round((elapsedMs / totalDayMs) * 100));
+            const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
+            const elapsedMins = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+            const elapsedText = `${elapsedHours}h ${elapsedMins}m elapsed`;
+            const pctText = `${pct}%`;
+            return (
+              <View style={styles.androidWidgetPreview}>
+                <View style={styles.androidWidgetInner}>
+                  <Text style={styles.androidWidgetTitle}>Tech Times</Text>
+                  <Text style={styles.androidWidgetTime}>{elapsedText}</Text>
+                  <Text style={styles.androidWidgetPct}>{pctText}</Text>
+                  <View style={styles.androidWidgetBtn}>
+                    <Text style={styles.androidWidgetBtnText}>+ Add Job</Text>
+                  </View>
                 </View>
               </View>
-            </View>
-          )}
+            );
+          })()}
 
           {/* Add Widget button */}
           <TouchableOpacity
@@ -1090,21 +1124,19 @@ export default function SettingsScreen() {
             <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Add Widget to Home Screen</Text>
           </TouchableOpacity>
 
-          {/* Refresh Widget button (iOS only — Android updates via system alarm) */}
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.background }]}
-              onPress={handleRefreshWidget}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.clockwise"
-                android_material_icon_name="refresh"
-                size={20}
-                color={theme.primary}
-              />
-              <Text style={[styles.actionButtonText, { color: theme.primary }]}>Refresh Widget Now</Text>
-            </TouchableOpacity>
-          )}
+          {/* Refresh Widget button */}
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={handleRefreshWidget}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Refresh Widget Now</Text>
+          </TouchableOpacity>
 
           {/* Show time elapsed toggle */}
           <View style={[styles.settingRow, { marginTop: 16 }]}>

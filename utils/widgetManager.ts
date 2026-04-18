@@ -1,6 +1,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import { offlineStorage } from './offlineStorage';
 
 // Lazy-load ExtensionStorage to avoid crashing on Android/web
@@ -77,9 +77,23 @@ export async function saveWidgetPrefs(prefs: WidgetPrefs): Promise<void> {
 }
 
 /**
- * Write widget preferences to the iOS App Group shared container
+ * Write widget preferences to the iOS App Group shared container (or Android SharedPreferences)
  */
 async function syncWidgetPrefsToSharedContainer(prefs: WidgetPrefs): Promise<void> {
+  if (Platform.OS === 'android') {
+    try {
+      const { WidgetBridge } = NativeModules;
+      if (!WidgetBridge) return;
+      console.log('WidgetManager: Syncing widget prefs to Android SharedPreferences');
+      WidgetBridge.updateWidget({
+        showTimeElapsed: prefs.showSeconds !== false,
+        showPercentage: prefs.workHoursMode !== true,
+      });
+    } catch (e) {
+      console.warn('Android widget prefs sync failed:', e);
+    }
+    return;
+  }
   if (Platform.OS !== 'ios') return;
   try {
     const ExtStorage = await getExtensionStorage();
@@ -274,13 +288,45 @@ export async function updateWidgetData(): Promise<void> {
     return;
   }
 
+  // Android: push data to native SharedPreferences via bridge
   try {
-    console.log('WidgetManager: Updating widget data');
-    const widgetData = await calculateDailyAggregates();
-    await AsyncStorage.setItem(WIDGET_DATA_KEY, JSON.stringify(widgetData));
-    console.log('WidgetManager: Widget data updated successfully');
+    console.log('WidgetManager: Updating Android widget via native bridge');
+    const { WidgetBridge } = NativeModules;
+    if (!WidgetBridge) {
+      console.log('WidgetManager: WidgetBridge not available, skipping');
+      return;
+    }
+
+    // Calculate time elapsed today (6am–10pm window)
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(6, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(22, 0, 0, 0);
+
+    const totalDayMs = endOfDay.getTime() - startOfDay.getTime();
+    const elapsedMs = Math.max(0, now.getTime() - startOfDay.getTime());
+    const percentage = Math.min(100, Math.round((elapsedMs / totalDayMs) * 100));
+
+    const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
+    const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+    const timeElapsed = `${elapsedHours}h ${elapsedMinutes}m elapsed`;
+
+    // Get prefs from AsyncStorage for show/hide toggles
+    const prefsRaw = await AsyncStorage.getItem('@widget_prefs');
+    const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
+
+    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage });
+    WidgetBridge.updateWidget({
+      timeElapsed,
+      percentage,
+      showTimeElapsed: prefs.showTimeElapsed !== false,
+      showPercentage: prefs.showDayPercentage !== false,
+    });
+
+    console.log('WidgetManager: Android widget updated successfully');
   } catch (error) {
-    console.error('WidgetManager: Error updating widget data:', error);
+    console.warn('Android widget update failed:', error);
   }
 }
 
