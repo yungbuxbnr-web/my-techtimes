@@ -176,6 +176,7 @@ async function scheduleWorkStartNotification(schedule: Schedule, settings: Notif
         sound: settings.notificationSound !== 'none' ? 'default' : undefined,
         priority: Notifications.AndroidNotificationPriority.HIGH,
         vibrate,
+        badge: 1,
         ...(Platform.OS === 'android' && { channelId }),
       },
       trigger: {
@@ -217,6 +218,7 @@ async function scheduleWorkEndNotification(schedule: Schedule, settings: Notific
         sound: settings.notificationSound !== 'none' ? 'default' : undefined,
         priority: Notifications.AndroidNotificationPriority.HIGH,
         vibrate,
+        badge: 1,
         ...(Platform.OS === 'android' && { channelId }),
       },
       trigger: {
@@ -258,6 +260,7 @@ async function scheduleLunchStartNotification(schedule: Schedule, settings: Noti
         sound: settings.notificationSound !== 'none' ? 'default' : undefined,
         priority: Notifications.AndroidNotificationPriority.DEFAULT,
         vibrate,
+        badge: 1,
         ...(Platform.OS === 'android' && { channelId }),
       },
       trigger: {
@@ -299,6 +302,7 @@ async function scheduleLunchEndNotification(schedule: Schedule, settings: Notifi
         sound: settings.notificationSound !== 'none' ? 'default' : undefined,
         priority: Notifications.AndroidNotificationPriority.DEFAULT,
         vibrate,
+        badge: 1,
         ...(Platform.OS === 'android' && { channelId }),
       },
       trigger: {
@@ -336,6 +340,7 @@ async function scheduleDailyReminder(settings: NotificationSettings): Promise<vo
       sound: settings.notificationSound !== 'none' ? 'default' : undefined,
       priority: Notifications.AndroidNotificationPriority.DEFAULT,
       vibrate,
+      badge: 1,
       ...(Platform.OS === 'android' && { channelId }),
     },
     trigger: {
@@ -381,6 +386,7 @@ export async function maybeSendTargetReminderNotification(
       body: `You've completed ${roundedProgress}% of today's hours. Keep it up!`,
       sound: 'default',
       priority: Notifications.AndroidNotificationPriority.HIGH,
+      badge: 1,
       ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.WORK }),
     },
     trigger: null,
@@ -424,6 +430,7 @@ export async function maybeSendEfficiencyAlertNotification(
       body: `Your efficiency is at ${roundedEfficiency}%. Consider logging more jobs to stay on track.`,
       sound: 'default',
       priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      badge: 1,
       ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
     },
     trigger: null,
@@ -462,6 +469,7 @@ export async function scheduleWeeklyReportNotification(settings: NotificationSet
       body: 'Check your weekly work report and see how you performed this week.',
       sound: 'default',
       priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      badge: 1,
       ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
     },
     trigger: {
@@ -501,6 +509,7 @@ export async function scheduleMonthlyReportNotification(settings: NotificationSe
       body: 'Your monthly work summary is ready. Tap to review your performance.',
       sound: 'default',
       priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      badge: 1,
       ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
     },
     trigger: {
@@ -643,6 +652,7 @@ export async function sendTestNotification(settings: NotificationSettings): Prom
       sound: settings.notificationSound !== 'none' ? 'default' : undefined,
       priority: Notifications.AndroidNotificationPriority.HIGH,
       vibrate,
+      badge: 1,
       ...(Platform.OS === 'android' && { channelId }),
     },
     trigger: null, // Send immediately

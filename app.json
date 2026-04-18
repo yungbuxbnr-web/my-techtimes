@@ -60,6 +60,19 @@
       "expo-router",
       "expo-web-browser",
       [
+        "@bacons/apple-targets",
+        {
+          "targets": {
+            "widget": {
+              "type": "widget",
+              "name": "DayProgressWidget",
+              "deploymentTarget": "16.0",
+              "bundleIdentifier": "com.buxrug.techtime.widget"
+            }
+          }
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "TechTimes uses Face ID to securely unlock the app and protect your job data."

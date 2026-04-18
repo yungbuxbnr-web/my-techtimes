@@ -3,6 +3,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { offlineStorage } from './offlineStorage';
 
+// Lazy-load ExtensionStorage to avoid crashing on Android/web
+let _ExtensionStorage: typeof import('@bacons/apple-targets').ExtensionStorage | null = null;
+async function getExtensionStorage() {
+  if (Platform.OS !== 'ios') return null;
+  if (!_ExtensionStorage) {
+    try {
+      const mod = await import('@bacons/apple-targets');
+      _ExtensionStorage = mod.ExtensionStorage;
+    } catch {
+      return null;
+    }
+  }
+  return _ExtensionStorage;
+}
+
 // Widget data storage key
 const WIDGET_DATA_KEY = '@techtimes_widget_data';
 
@@ -161,6 +176,30 @@ export async function updateLastBackupTimestamp(): Promise<void> {
     await updateWidgetData();
   } catch (error) {
     console.error('WidgetManager: Error updating backup timestamp:', error);
+  }
+}
+
+/**
+ * Reload the iOS Day Progress Widget timeline.
+ * The widget computes time from the system clock so no data needs to be written —
+ * we just ask WidgetKit to invalidate its timeline so it picks up a fresh entry.
+ */
+export async function updateDayProgressWidget(): Promise<void> {
+  console.log('WidgetManager: updateDayProgressWidget called');
+  if (Platform.OS !== 'ios') {
+    console.log('WidgetManager: Skipping Day Progress widget reload (not iOS)');
+    return;
+  }
+  try {
+    const ExtStorage = await getExtensionStorage();
+    if (ExtStorage) {
+      ExtStorage.reloadWidget('DayProgressWidget');
+      console.log('WidgetManager: Day Progress widget timeline reloaded');
+    } else {
+      console.log('WidgetManager: ExtensionStorage unavailable, skipping reload');
+    }
+  } catch (error) {
+    console.error('WidgetManager: Error reloading Day Progress widget:', error);
   }
 }
 

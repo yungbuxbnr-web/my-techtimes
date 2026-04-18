@@ -8,8 +8,9 @@ import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { scheduleAllNotifications, ensureWorkScheduleNotificationsScheduled } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
-import { updateWidgetData, scheduleDailyWidgetRefresh } from '@/utils/widgetManager';
+import { updateWidgetData, scheduleDailyWidgetRefresh, updateDayProgressWidget } from '@/utils/widgetManager';
 import { registerBackgroundMainframe, runMainframeSync } from '@/utils/backgroundMainframe';
+import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 
 const LAST_ROUTE_KEY = 'last_route';
@@ -51,6 +52,25 @@ function RootLayoutContent() {
   const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const lastRouteRef = useRef<string | null>(null);
+
+  // Reset badge count on initial mount
+  useEffect(() => {
+    console.log('RootLayout: Resetting badge count on mount');
+    Notifications.setBadgeCountAsync(0).catch(err =>
+      console.error('RootLayout: Failed to reset badge count on mount:', err)
+    );
+  }, []);
+
+  // Reset badge count when a notification is tapped
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('RootLayout: Notification tapped — resetting badge count', response.notification.request.identifier);
+      Notifications.setBadgeCountAsync(0).catch(err =>
+        console.error('RootLayout: Failed to reset badge count on notification tap:', err)
+      );
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     console.log('RootLayout: App initializing');
@@ -122,8 +142,21 @@ function RootLayoutContent() {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       console.log('RootLayout: App state changed from', appStateRef.current, 'to', nextAppState);
       
+      // App going to background — reload iOS Day Progress widget timeline
+      if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
+        console.log('RootLayout: App going to background — reloading Day Progress widget');
+        updateDayProgressWidget().catch(err =>
+          console.error('RootLayout: updateDayProgressWidget failed:', err)
+        );
+      }
+
       // App coming back to foreground from background
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('RootLayout: App resumed from background — resetting badge count');
+        Notifications.setBadgeCountAsync(0).catch(err =>
+          console.error('RootLayout: Failed to reset badge count on foreground:', err)
+        );
+
         console.log('RootLayout: App resumed from background — running foreground mainframe sync');
         // Run foreground sync immediately to refresh calculations
         runMainframeSync().catch(err =>

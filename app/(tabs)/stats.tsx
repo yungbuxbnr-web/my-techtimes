@@ -18,6 +18,8 @@ import { api } from '@/utils/api';
 import { formatTime } from '@/utils/jobCalculations';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { updateDayProgressWidget } from '@/utils/widgetManager';
+import CircularProgress from '@/components/CircularProgress';
 
 const YEAR_START_DATE_KEY = '@techtimes_year_start_date';
 
@@ -499,6 +501,62 @@ export default function StatsScreen() {
               </View>
             </View>
           </View>
+
+          {/* Day Progress Widget Preview */}
+          <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Day Progress Widget</Text>
+
+          {(() => {
+            const now = currentTime;
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+            const elapsedSec = (now.getTime() - startOfDay.getTime()) / 1000;
+            const dayPct = (elapsedSec / (24 * 3600)) * 100;
+            const elapsedHours = Math.floor(elapsedSec / 3600);
+            const elapsedMins = Math.floor((elapsedSec % 3600) / 60);
+            const pctText = dayPct.toFixed(1) + '%';
+            const elapsedText = elapsedHours + 'h ' + elapsedMins + 'm elapsed';
+            const timeText = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+            return (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  console.log('StatsScreen: User tapped Day Progress widget preview — reloading widget');
+                  updateDayProgressWidget();
+                }}
+              >
+                <View style={styles.widgetPreviewCard}>
+                  <View style={styles.widgetShell}>
+                    <Text style={styles.widgetTime}>{timeText}</Text>
+
+                    <CircularProgress
+                      size={110}
+                      strokeWidth={9}
+                      progress={dayPct}
+                      color="#007AFF"
+                      backgroundColor="rgba(255,255,255,0.15)"
+                      title="of day"
+                      value={pctText}
+                    />
+
+                    <Text style={styles.widgetElapsedText}>{elapsedText}</Text>
+                  </View>
+
+                  <View style={styles.widgetPreviewFooter}>
+                    <IconSymbol
+                      ios_icon_name="square.grid.2x2.fill"
+                      android_material_icon_name="widgets"
+                      size={14}
+                      color={theme.textSecondary}
+                    />
+                    <Text style={[styles.widgetPreviewLabel, { color: theme.textSecondary }]}>
+                      Day Progress Widget preview — tap to reload
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
 
           {/* Monthly Efficiency Card */}
           <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Monthly Performance</Text>
@@ -1366,6 +1424,81 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'right',
+  },
+  // Day Progress Widget preview card
+  widgetPreviewCard: {
+    marginBottom: 20,
+  },
+  widgetShell: {
+    backgroundColor: '#000000',
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  widgetTime: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    fontVariant: ['tabular-nums'],
+  },
+  widgetArcContainer: {
+    width: 100,
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  widgetArcBg: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 8,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  widgetArcFill: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 8,
+    borderTopColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+    transform: [{ rotate: '-90deg' }],
+  },
+  widgetArcCenter: {
+    alignItems: 'center',
+  },
+  widgetPctText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  widgetOfDayText: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '500',
+  },
+  widgetElapsedText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+  },
+  widgetPreviewFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  widgetPreviewLabel: {
+    fontSize: 12,
   },
   // Year date picker modal
   yearPickerOverlay: {
