@@ -52,7 +52,7 @@
         "SCHEDULE_EXACT_ALARM",
         "VIBRATE"
       ],
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
