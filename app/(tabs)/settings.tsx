@@ -1014,56 +1014,84 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {Platform.OS === 'ios' && (
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Widget</Text>
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Home Screen Widget</Text>
 
-            {/* Widget preview */}
-            {(() => {
-              const now = widgetCurrentTime;
-              const startOfDay = new Date(now);
-              startOfDay.setHours(0, 0, 0, 0);
-              const elapsedSec = (now.getTime() - startOfDay.getTime()) / 1000;
-              const dayPct = (elapsedSec / (24 * 3600)) * 100;
-              const elapsedHours = Math.floor(elapsedSec / 3600);
-              const elapsedMins = Math.floor((elapsedSec % 3600) / 60);
-              const pctText = dayPct.toFixed(1) + '%';
-              const elapsedText = elapsedHours + 'h ' + elapsedMins + 'm elapsed';
-              const timeText = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-              const bgColor = widgetPrefs.theme === 'light' ? '#ffffff' : '#000000';
-              const fgColor = widgetPrefs.theme === 'light' ? '#000000' : '#ffffff';
-              return (
-                <View style={[styles.widgetPreviewShell, { backgroundColor: bgColor }]}>
-                  <Text style={[styles.widgetPreviewTime, { color: fgColor }]}>{timeText}</Text>
-                  <CircularProgress
-                    size={90}
-                    strokeWidth={8}
-                    progress={dayPct}
-                    color="#007AFF"
-                    backgroundColor={widgetPrefs.theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}
-                    title={widgetPrefs.workHoursMode ? 'of shift' : 'of day'}
-                    value={pctText}
-                  />
-                  <Text style={[styles.widgetPreviewElapsed, { color: fgColor + 'cc' }]}>{elapsedText}</Text>
-                </View>
-              );
-            })()}
-
-            {/* Add Widget button */}
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 12 }]}
-              onPress={handleAddWidget}
-            >
+          {Platform.OS === 'android' && (
+            <View style={[styles.widgetInstructionCard, { backgroundColor: theme.background }]}>
               <IconSymbol
-                ios_icon_name="plus.square.on.square"
-                android_material_icon_name="add-to-home-screen"
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
                 size={20}
-                color="#ffffff"
+                color={theme.primary}
               />
-              <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Add Widget to Home Screen</Text>
-            </TouchableOpacity>
+              <Text style={[styles.widgetInstructionText, { color: theme.textSecondary }]}>
+                Long-press your home screen, tap "Widgets", search for "Tech Times", then drag the widget to your home screen.
+              </Text>
+            </View>
+          )}
 
-            {/* Refresh Widget button */}
+          {/* Widget preview (iOS only — Android uses native RemoteViews) */}
+          {Platform.OS === 'ios' && (() => {
+            const now = widgetCurrentTime;
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+            const elapsedSec = (now.getTime() - startOfDay.getTime()) / 1000;
+            const dayPct = (elapsedSec / (24 * 3600)) * 100;
+            const elapsedHours = Math.floor(elapsedSec / 3600);
+            const elapsedMins = Math.floor((elapsedSec % 3600) / 60);
+            const pctText = dayPct.toFixed(1) + '%';
+            const elapsedText = elapsedHours + 'h ' + elapsedMins + 'm elapsed';
+            const timeText = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const bgColor = widgetPrefs.theme === 'light' ? '#ffffff' : '#000000';
+            const fgColor = widgetPrefs.theme === 'light' ? '#000000' : '#ffffff';
+            return (
+              <View style={[styles.widgetPreviewShell, { backgroundColor: bgColor }]}>
+                <Text style={[styles.widgetPreviewTime, { color: fgColor }]}>{timeText}</Text>
+                <CircularProgress
+                  size={90}
+                  strokeWidth={8}
+                  progress={dayPct}
+                  color="#007AFF"
+                  backgroundColor={widgetPrefs.theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}
+                  title={widgetPrefs.workHoursMode ? 'of shift' : 'of day'}
+                  value={pctText}
+                />
+                <Text style={[styles.widgetPreviewElapsed, { color: fgColor + 'cc' }]}>{elapsedText}</Text>
+              </View>
+            );
+          })()}
+
+          {/* Android widget preview card */}
+          {Platform.OS === 'android' && (
+            <View style={styles.androidWidgetPreview}>
+              <View style={styles.androidWidgetInner}>
+                <Text style={styles.androidWidgetTitle}>Tech Times</Text>
+                <Text style={styles.androidWidgetTime}>4h 32m elapsed</Text>
+                <Text style={styles.androidWidgetPct}>57% of day</Text>
+                <View style={styles.androidWidgetBtn}>
+                  <Text style={styles.androidWidgetBtnText}>+ Add Job</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Add Widget button */}
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 12 }]}
+            onPress={handleAddWidget}
+          >
+            <IconSymbol
+              ios_icon_name="plus.square.on.square"
+              android_material_icon_name="add-to-home-screen"
+              size={20}
+              color="#ffffff"
+            />
+            <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Add Widget to Home Screen</Text>
+          </TouchableOpacity>
+
+          {/* Refresh Widget button (iOS only — Android updates via system alarm) */}
+          {Platform.OS === 'ios' && (
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: theme.background }]}
               onPress={handleRefreshWidget}
@@ -1076,71 +1104,110 @@ export default function SettingsScreen() {
               />
               <Text style={[styles.actionButtonText, { color: theme.primary }]}>Refresh Widget Now</Text>
             </TouchableOpacity>
+          )}
 
-            {/* Theme segmented control */}
-            <Text style={[styles.label, { color: theme.textSecondary, marginTop: 16 }]}>Widget Theme</Text>
-            <View style={styles.segmentedControl}>
-              {(['dark', 'light', 'auto'] as const).map(t => {
-                const isActive = widgetPrefs.theme === t;
-                const label = t.charAt(0).toUpperCase() + t.slice(1);
-                return (
-                  <TouchableOpacity
-                    key={t}
-                    style={[
-                      styles.segmentButton,
-                      { borderColor: theme.border },
-                      isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
-                    ]}
-                    onPress={() => {
-                      console.log('SettingsScreen: Widget theme tapped:', t);
-                      handleWidgetPrefChange({ theme: t });
-                    }}
-                  >
-                    <Text style={[styles.segmentText, { color: isActive ? '#ffffff' : theme.text }]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+          {/* Show time elapsed toggle */}
+          <View style={[styles.settingRow, { marginTop: 16 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Show Time Elapsed</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                Display hours and minutes elapsed today
+              </Text>
             </View>
-
-            {/* Show seconds toggle */}
-            <View style={[styles.settingRow, { marginTop: 16 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Show Seconds</Text>
-                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
-                  Display seconds in elapsed time
-                </Text>
-              </View>
-              <Switch
-                value={widgetPrefs.showSeconds}
-                onValueChange={v => {
-                  console.log('SettingsScreen: Widget showSeconds toggled:', v);
-                  handleWidgetPrefChange({ showSeconds: v });
-                }}
-                trackColor={{ false: theme.border, true: theme.primary }}
-              />
-            </View>
-
-            {/* Work hours mode toggle */}
-            <View style={styles.settingRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>Work Hours Mode</Text>
-                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
-                  Show work day progress instead of 24h
-                </Text>
-              </View>
-              <Switch
-                value={widgetPrefs.workHoursMode}
-                onValueChange={v => {
-                  console.log('SettingsScreen: Widget workHoursMode toggled:', v);
-                  handleWidgetPrefChange({ workHoursMode: v });
-                }}
-                trackColor={{ false: theme.border, true: theme.primary }}
-              />
-            </View>
+            <Switch
+              value={widgetPrefs.showSeconds !== undefined ? true : true}
+              onValueChange={v => {
+                console.log('SettingsScreen: Widget showTimeElapsed toggled:', v);
+                handleWidgetPrefChange({ showSeconds: v });
+              }}
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
           </View>
-        )}
+
+          {/* Day percentage toggle */}
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Show Day Percentage</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                Display percentage of the day completed
+              </Text>
+            </View>
+            <Switch
+              value={widgetPrefs.workHoursMode !== undefined ? true : true}
+              onValueChange={v => {
+                console.log('SettingsScreen: Widget showDayPercentage toggled:', v);
+                handleWidgetPrefChange({ workHoursMode: !v });
+              }}
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+
+          {/* Theme segmented control */}
+          <Text style={[styles.label, { color: theme.textSecondary, marginTop: 8 }]}>Widget Theme</Text>
+          <View style={styles.segmentedControl}>
+            {(['dark', 'light', 'auto'] as const).map(t => {
+              const isActive = widgetPrefs.theme === t;
+              const label = t.charAt(0).toUpperCase() + t.slice(1);
+              return (
+                <TouchableOpacity
+                  key={t}
+                  style={[
+                    styles.segmentButton,
+                    { borderColor: theme.border },
+                    isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}
+                  onPress={() => {
+                    console.log('SettingsScreen: Widget theme tapped:', t);
+                    handleWidgetPrefChange({ theme: t });
+                  }}
+                >
+                  <Text style={[styles.segmentText, { color: isActive ? '#ffffff' : theme.text }]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* iOS-only: show seconds & work hours mode */}
+          {Platform.OS === 'ios' && (
+            <>
+              <View style={[styles.settingRow, { marginTop: 16 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>Show Seconds</Text>
+                  <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                    Display seconds in elapsed time
+                  </Text>
+                </View>
+                <Switch
+                  value={widgetPrefs.showSeconds}
+                  onValueChange={v => {
+                    console.log('SettingsScreen: Widget showSeconds toggled:', v);
+                    handleWidgetPrefChange({ showSeconds: v });
+                  }}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                />
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>Work Hours Mode</Text>
+                  <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                    Show work day progress instead of 24h
+                  </Text>
+                </View>
+                <Switch
+                  value={widgetPrefs.workHoursMode}
+                  onValueChange={v => {
+                    console.log('SettingsScreen: Widget workHoursMode toggled:', v);
+                    handleWidgetPrefChange({ workHoursMode: v });
+                  }}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                />
+              </View>
+            </>
+          )}
+        </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
@@ -1841,6 +1908,64 @@ const styles = StyleSheet.create({
   },
   segmentText: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  widgetInstructionCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 10,
+  },
+  widgetInstructionText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  androidWidgetPreview: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  androidWidgetInner: {
+    backgroundColor: '#1A1A2E',
+    padding: 16,
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 16,
+  },
+  androidWidgetTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  androidWidgetTime: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: 4,
+  },
+  androidWidgetPct: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  androidWidgetBtn: {
+    backgroundColor: '#4D6AF0',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  androidWidgetBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
     fontWeight: '600',
   },
 });
