@@ -10,6 +10,7 @@ import {
   maybeSendEfficiencyAlertNotification,
   ensureWorkScheduleNotificationsScheduled,
 } from './notificationScheduler';
+import { syncWidgetData } from './widgetManager';
 
 const TASK_NAME = 'TECH_TIMES_MAINFRAME';
 const MAINFRAME_LAST_SYNC_KEY = 'mainframe_last_sync';
@@ -130,6 +131,22 @@ export async function runMainframeSync(): Promise<void> {
 
     // Update last sync timestamp
     await AsyncStorage.setItem(MAINFRAME_LAST_SYNC_KEY, now.toISOString());
+
+    // Sync live data to widget shared container
+    try {
+      const todayJobs = await offlineStorage.getTodayJobs();
+      const todayAW = todayJobs.reduce((sum, job) => sum + job.aw, 0);
+      const timeLoggedToday = todayAW * 5; // minutes
+      await syncWidgetData({
+        jobsToday: todayJobs.length,
+        timeLoggedToday,
+        workStartTime: schedule.startTime,
+        workEndTime: schedule.endTime,
+      });
+      console.log('Mainframe: Widget data synced — jobs:', todayJobs.length, 'time:', timeLoggedToday, 'min');
+    } catch (widgetError) {
+      console.error('Mainframe: Error syncing widget data:', widgetError);
+    }
 
     console.log('Mainframe: Sync complete — elapsed:', elapsedHours.toFixed(2), 'h /', dailyHours.toFixed(2), 'h (', progressPercent.toFixed(1), '%)');
   } catch (error) {

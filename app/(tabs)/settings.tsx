@@ -2,11 +2,19 @@
 import { toastManager } from '@/utils/toastManager';
 import * as Sharing from 'expo-sharing';
 import { api } from '@/utils/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { offlineStorage } from '@/utils/offlineStorage';
 import * as DocumentPicker from 'expo-document-picker';
 import { ProcessNotification } from '@/components/ProcessNotification';
-import { updateWidgetData, updateLastBackupTimestamp } from '@/utils/widgetManager';
+import {
+  updateWidgetData,
+  updateLastBackupTimestamp,
+  updateDayProgressWidget,
+  getWidgetPrefs,
+  saveWidgetPrefs,
+  WidgetPrefs,
+  DEFAULT_WIDGET_PREFS,
+} from '@/utils/widgetManager';
 import {
   View,
   Text,
@@ -29,6 +37,7 @@ import * as Haptics from 'expo-haptics';
 import AppBackground from '@/components/AppBackground';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useThemeContext } from '@/contexts/ThemeContext';
+import CircularProgress from '@/components/CircularProgress';
 
 export default function SettingsScreen() {
   console.log('SettingsScreen: Rendering settings screen');
@@ -49,6 +58,8 @@ export default function SettingsScreen() {
   const [monthlyTarget, setMonthlyTarget] = useState('180');
   const [streaksEnabled, setStreaksEnabled] = useState(true);
   const [weeklyStreakTarget, setWeeklyStreakTarget] = useState('5');
+  const [widgetPrefs, setWidgetPrefs] = useState<WidgetPrefs>(DEFAULT_WIDGET_PREFS);
+  const [widgetCurrentTime, setWidgetCurrentTime] = useState(new Date());
   const [showChangePinModal, setShowChangePinModal] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -63,8 +74,49 @@ export default function SettingsScreen() {
   useEffect(() => {
     loadSettings();
     checkAppPermissions();
+    loadWidgetPrefs();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Live clock for widget preview
+  useEffect(() => {
+    const timer = setInterval(() => setWidgetCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const loadWidgetPrefs = async () => {
+    console.log('SettingsScreen: Loading widget prefs');
+    const prefs = await getWidgetPrefs();
+    setWidgetPrefs(prefs);
+  };
+
+  const handleWidgetPrefChange = async (updates: Partial<WidgetPrefs>) => {
+    console.log('SettingsScreen: Widget pref changed', updates);
+    const updated = { ...widgetPrefs, ...updates };
+    setWidgetPrefs(updated);
+    await saveWidgetPrefs(updated);
+    await updateDayProgressWidget();
+  };
+
+  const handleAddWidget = () => {
+    console.log('SettingsScreen: User tapped Add Widget to Home Screen');
+    Alert.alert(
+      'Add Widget to Home Screen',
+      '1. Long press your home screen\n2. Tap the \'+\' button in the top corner\n3. Search for \'Tech Times\'\n4. Choose the Day Progress widget\n5. Tap \'Add Widget\'',
+      [{ text: 'Got it', style: 'default' }]
+    );
+  };
+
+  const handleRefreshWidget = async () => {
+    console.log('SettingsScreen: User tapped Refresh Widget Now');
+    try {
+      await updateDayProgressWidget();
+      toastManager.show('Widget data refreshed', 'success');
+    } catch (error) {
+      console.error('SettingsScreen: Error refreshing widget:', error);
+      Alert.alert('Error', 'Failed to refresh widget');
+    }
+  };
 
   const loadSettings = async () => {
     console.log('SettingsScreen: Loading settings');
@@ -962,6 +1014,134 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {Platform.OS === 'ios' && (
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Widget</Text>
+
+            {/* Widget preview */}
+            {(() => {
+              const now = widgetCurrentTime;
+              const startOfDay = new Date(now);
+              startOfDay.setHours(0, 0, 0, 0);
+              const elapsedSec = (now.getTime() - startOfDay.getTime()) / 1000;
+              const dayPct = (elapsedSec / (24 * 3600)) * 100;
+              const elapsedHours = Math.floor(elapsedSec / 3600);
+              const elapsedMins = Math.floor((elapsedSec % 3600) / 60);
+              const pctText = dayPct.toFixed(1) + '%';
+              const elapsedText = elapsedHours + 'h ' + elapsedMins + 'm elapsed';
+              const timeText = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+              const bgColor = widgetPrefs.theme === 'light' ? '#ffffff' : '#000000';
+              const fgColor = widgetPrefs.theme === 'light' ? '#000000' : '#ffffff';
+              return (
+                <View style={[styles.widgetPreviewShell, { backgroundColor: bgColor }]}>
+                  <Text style={[styles.widgetPreviewTime, { color: fgColor }]}>{timeText}</Text>
+                  <CircularProgress
+                    size={90}
+                    strokeWidth={8}
+                    progress={dayPct}
+                    color="#007AFF"
+                    backgroundColor={widgetPrefs.theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}
+                    title={widgetPrefs.workHoursMode ? 'of shift' : 'of day'}
+                    value={pctText}
+                  />
+                  <Text style={[styles.widgetPreviewElapsed, { color: fgColor + 'cc' }]}>{elapsedText}</Text>
+                </View>
+              );
+            })()}
+
+            {/* Add Widget button */}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 12 }]}
+              onPress={handleAddWidget}
+            >
+              <IconSymbol
+                ios_icon_name="plus.square.on.square"
+                android_material_icon_name="add-to-home-screen"
+                size={20}
+                color="#ffffff"
+              />
+              <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Add Widget to Home Screen</Text>
+            </TouchableOpacity>
+
+            {/* Refresh Widget button */}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.background }]}
+              onPress={handleRefreshWidget}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="refresh"
+                size={20}
+                color={theme.primary}
+              />
+              <Text style={[styles.actionButtonText, { color: theme.primary }]}>Refresh Widget Now</Text>
+            </TouchableOpacity>
+
+            {/* Theme segmented control */}
+            <Text style={[styles.label, { color: theme.textSecondary, marginTop: 16 }]}>Widget Theme</Text>
+            <View style={styles.segmentedControl}>
+              {(['dark', 'light', 'auto'] as const).map(t => {
+                const isActive = widgetPrefs.theme === t;
+                const label = t.charAt(0).toUpperCase() + t.slice(1);
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.segmentButton,
+                      { borderColor: theme.border },
+                      isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      console.log('SettingsScreen: Widget theme tapped:', t);
+                      handleWidgetPrefChange({ theme: t });
+                    }}
+                  >
+                    <Text style={[styles.segmentText, { color: isActive ? '#ffffff' : theme.text }]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Show seconds toggle */}
+            <View style={[styles.settingRow, { marginTop: 16 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Show Seconds</Text>
+                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                  Display seconds in elapsed time
+                </Text>
+              </View>
+              <Switch
+                value={widgetPrefs.showSeconds}
+                onValueChange={v => {
+                  console.log('SettingsScreen: Widget showSeconds toggled:', v);
+                  handleWidgetPrefChange({ showSeconds: v });
+                }}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+
+            {/* Work hours mode toggle */}
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Work Hours Mode</Text>
+                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                  Show work day progress instead of 24h
+                </Text>
+              </View>
+              <Switch
+                value={widgetPrefs.workHoursMode}
+                onValueChange={v => {
+                  console.log('SettingsScreen: Widget workHoursMode toggled:', v);
+                  handleWidgetPrefChange({ workHoursMode: v });
+                }}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+          </View>
+        )}
+
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
           
@@ -1626,5 +1806,41 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     textAlign: 'center',
+  },
+  widgetPreviewShell: {
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  widgetPreviewTime: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
+  },
+  widgetPreviewElapsed: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -18,8 +18,10 @@ async function getExtensionStorage() {
   return _ExtensionStorage;
 }
 
-// Widget data storage key
+// Storage keys
 const WIDGET_DATA_KEY = '@techtimes_widget_data';
+const WIDGET_PREFS_KEY = 'widget_prefs';
+const APP_GROUP_ID = 'group.com.buxrug.techtime';
 
 export interface WidgetData {
   todayAW: number;
@@ -33,12 +35,151 @@ export interface WidgetData {
   lastUpdated: string;
 }
 
+export interface WidgetPrefs {
+  theme: 'dark' | 'light' | 'auto';
+  showSeconds: boolean;
+  workHoursMode: boolean;
+}
+
+export const DEFAULT_WIDGET_PREFS: WidgetPrefs = {
+  theme: 'dark',
+  showSeconds: false,
+  workHoursMode: false,
+};
+
+/**
+ * Load widget preferences from AsyncStorage
+ */
+export async function getWidgetPrefs(): Promise<WidgetPrefs> {
+  try {
+    const raw = await AsyncStorage.getItem(WIDGET_PREFS_KEY);
+    if (raw) {
+      return { ...DEFAULT_WIDGET_PREFS, ...JSON.parse(raw) };
+    }
+  } catch (error) {
+    console.error('WidgetManager: Error loading widget prefs:', error);
+  }
+  return DEFAULT_WIDGET_PREFS;
+}
+
+/**
+ * Save widget preferences to AsyncStorage and sync to shared container
+ */
+export async function saveWidgetPrefs(prefs: WidgetPrefs): Promise<void> {
+  try {
+    await AsyncStorage.setItem(WIDGET_PREFS_KEY, JSON.stringify(prefs));
+    console.log('WidgetManager: Widget prefs saved:', prefs);
+    // Sync prefs to shared container so Swift widget can read them
+    await syncWidgetPrefsToSharedContainer(prefs);
+  } catch (error) {
+    console.error('WidgetManager: Error saving widget prefs:', error);
+  }
+}
+
+/**
+ * Write widget preferences to the iOS App Group shared container
+ */
+async function syncWidgetPrefsToSharedContainer(prefs: WidgetPrefs): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  try {
+    const ExtStorage = await getExtensionStorage();
+    if (ExtStorage) {
+      await ExtStorage.setItem('widget_theme', prefs.theme, APP_GROUP_ID);
+      await ExtStorage.setItem('widget_show_seconds', prefs.showSeconds ? 'true' : 'false', APP_GROUP_ID);
+      await ExtStorage.setItem('widget_work_hours_mode', prefs.workHoursMode ? 'true' : 'false', APP_GROUP_ID);
+      console.log('WidgetManager: Widget prefs synced to shared container');
+    }
+  } catch (error) {
+    console.error('WidgetManager: Error syncing prefs to shared container:', error);
+  }
+}
+
+/**
+ * Sync live app data to the shared container so the Swift widget can read it.
+ */
+export async function syncWidgetData(data: {
+  jobsToday?: number;
+  timeLoggedToday?: number; // minutes
+  workStatus?: 'working' | 'break' | 'off';
+  workStartTime?: string;
+  workEndTime?: string;
+}): Promise<void> {
+  console.log('WidgetManager: syncWidgetData called', data);
+  if (Platform.OS !== 'ios') return;
+
+  try {
+    const ExtStorage = await getExtensionStorage();
+    if (!ExtStorage) {
+      console.log('WidgetManager: ExtensionStorage unavailable, skipping syncWidgetData');
+      return;
+    }
+
+    if (data.jobsToday !== undefined) {
+      await ExtStorage.setItem('widget_jobs_today', String(data.jobsToday), APP_GROUP_ID);
+    }
+    if (data.timeLoggedToday !== undefined) {
+      await ExtStorage.setItem('widget_time_logged', String(data.timeLoggedToday), APP_GROUP_ID);
+    }
+    if (data.workStatus !== undefined) {
+      await ExtStorage.setItem('widget_work_status', data.workStatus, APP_GROUP_ID);
+    }
+    if (data.workStartTime !== undefined) {
+      await ExtStorage.setItem('widget_work_start', data.workStartTime, APP_GROUP_ID);
+    }
+    if (data.workEndTime !== undefined) {
+      await ExtStorage.setItem('widget_work_end', data.workEndTime, APP_GROUP_ID);
+    }
+
+    console.log('WidgetManager: Live data synced to shared container');
+
+    // Reload widget timeline after data sync
+    ExtStorage.reloadWidget('DayProgressWidget');
+    console.log('WidgetManager: Widget timeline reloaded after data sync');
+  } catch (error) {
+    console.error('WidgetManager: Error in syncWidgetData:', error);
+  }
+}
+
+/**
+ * Full sync: pull today's data from offlineStorage and push to widget shared container
+ */
+export async function syncWidgetDataFromStorage(): Promise<void> {
+  console.log('WidgetManager: syncWidgetDataFromStorage called');
+  if (Platform.OS !== 'ios') return;
+
+  try {
+    const [todayJobs, schedule, prefs] = await Promise.all([
+      offlineStorage.getTodayJobs(),
+      offlineStorage.getSchedule(),
+      getWidgetPrefs(),
+    ]);
+
+    const jobsToday = todayJobs.length;
+    const todayAW = todayJobs.reduce((sum, job) => sum + job.aw, 0);
+    const timeLoggedToday = todayAW * 5; // minutes
+
+    await syncWidgetData({
+      jobsToday,
+      timeLoggedToday,
+      workStartTime: schedule.startTime ?? '07:00',
+      workEndTime: schedule.endTime ?? '18:00',
+    });
+
+    // Also sync prefs
+    await syncWidgetPrefsToSharedContainer(prefs);
+
+    console.log('WidgetManager: Full widget sync complete — jobs:', jobsToday, 'time:', timeLoggedToday, 'min');
+  } catch (error) {
+    console.error('WidgetManager: Error in syncWidgetDataFromStorage:', error);
+  }
+}
+
 /**
  * Calculate daily aggregates for widget display
  */
 async function calculateDailyAggregates(): Promise<WidgetData> {
   console.log('WidgetManager: Calculating daily aggregates');
-  
+
   // Get today's jobs
   const todayJobs = await offlineStorage.getTodayJobs();
   const todayAW = todayJobs.reduce((sum, job) => sum + job.aw, 0);
@@ -51,12 +192,11 @@ async function calculateDailyAggregates(): Promise<WidgetData> {
   const recentJobs = await offlineStorage.getRecentJobs(1);
   const latestJob = recentJobs.length > 0 ? recentJobs[0] : null;
 
-  // Get last backup date (from settings or a dedicated backup timestamp)
-  // For now, we'll use a placeholder - this should be updated when backup is performed
+  // Get last backup date
   const lastBackupTimestamp = await AsyncStorage.getItem('@techtimes_last_backup');
   let lastBackupDate: string | null = null;
   let lastBackupDaysAgo: number | null = null;
-  
+
   if (lastBackupTimestamp) {
     lastBackupDate = lastBackupTimestamp;
     const backupDate = new Date(lastBackupTimestamp);
@@ -65,16 +205,15 @@ async function calculateDailyAggregates(): Promise<WidgetData> {
     lastBackupDaysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   }
 
-  // Get current streak (if streaks are enabled)
+  // Get current streak
   const settings = await offlineStorage.getSettings();
   let currentStreak: number | null = null;
-  
+
   if (settings.streaksEnabled) {
     try {
-      // Calculate streaks
       const allJobs = await offlineStorage.getAllJobs();
       const jobsByDay = new Map<string, number>();
-      
+
       allJobs.forEach(job => {
         const day = job.createdAt.split('T')[0];
         jobsByDay.set(day, (jobsByDay.get(day) || 0) + 1);
@@ -87,7 +226,11 @@ async function calculateDailyAggregates(): Promise<WidgetData> {
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-      let streakDate = jobsByDay.has(todayStr) ? new Date(today) : jobsByDay.has(yesterdayStr) ? new Date(yesterday) : null;
+      let streakDate = jobsByDay.has(todayStr)
+        ? new Date(today)
+        : jobsByDay.has(yesterdayStr)
+        ? new Date(yesterday)
+        : null;
 
       if (streakDate) {
         currentStreak = 0;
@@ -123,8 +266,7 @@ async function calculateDailyAggregates(): Promise<WidgetData> {
 }
 
 /**
- * Update widget data in shared storage
- * This data will be read by the Android widget
+ * Update widget data in shared storage (Android)
  */
 export async function updateWidgetData(): Promise<void> {
   if (Platform.OS !== 'android') {
@@ -137,10 +279,6 @@ export async function updateWidgetData(): Promise<void> {
     const widgetData = await calculateDailyAggregates();
     await AsyncStorage.setItem(WIDGET_DATA_KEY, JSON.stringify(widgetData));
     console.log('WidgetManager: Widget data updated successfully');
-
-    // Trigger widget refresh via native module (if available)
-    // This would require a native module to be implemented
-    // For now, we'll just update the data and the widget will read it on its next update cycle
   } catch (error) {
     console.error('WidgetManager: Error updating widget data:', error);
   }
@@ -164,15 +302,12 @@ export async function getWidgetData(): Promise<WidgetData | null> {
 
 /**
  * Update last backup timestamp
- * Call this after performing a backup
  */
 export async function updateLastBackupTimestamp(): Promise<void> {
   try {
     const timestamp = new Date().toISOString();
     await AsyncStorage.setItem('@techtimes_last_backup', timestamp);
     console.log('WidgetManager: Last backup timestamp updated:', timestamp);
-    
-    // Refresh widget data
     await updateWidgetData();
   } catch (error) {
     console.error('WidgetManager: Error updating backup timestamp:', error);
@@ -181,8 +316,6 @@ export async function updateLastBackupTimestamp(): Promise<void> {
 
 /**
  * Reload the iOS Day Progress Widget timeline.
- * The widget computes time from the system clock so no data needs to be written —
- * we just ask WidgetKit to invalidate its timeline so it picks up a fresh entry.
  */
 export async function updateDayProgressWidget(): Promise<void> {
   console.log('WidgetManager: updateDayProgressWidget called');
@@ -191,6 +324,8 @@ export async function updateDayProgressWidget(): Promise<void> {
     return;
   }
   try {
+    // Also do a full data sync before reloading
+    await syncWidgetDataFromStorage();
     const ExtStorage = await getExtensionStorage();
     if (ExtStorage) {
       ExtStorage.reloadWidget('DayProgressWidget');
@@ -204,8 +339,7 @@ export async function updateDayProgressWidget(): Promise<void> {
 }
 
 /**
- * Schedule daily widget refresh at midnight
- * This should be called when the app starts
+ * Schedule daily widget refresh at midnight (Android only)
  */
 export function scheduleDailyWidgetRefresh(): void {
   if (Platform.OS !== 'android') {
@@ -213,20 +347,17 @@ export function scheduleDailyWidgetRefresh(): void {
   }
 
   console.log('WidgetManager: Scheduling daily widget refresh');
-  
-  // Calculate time until midnight
+
   const now = new Date();
   const midnight = new Date(now);
   midnight.setHours(24, 0, 0, 0);
   const timeUntilMidnight = midnight.getTime() - now.getTime();
 
-  // Schedule refresh at midnight
   setTimeout(() => {
     updateWidgetData();
-    // Reschedule for next day
     setInterval(() => {
       updateWidgetData();
-    }, 24 * 60 * 60 * 1000); // 24 hours
+    }, 24 * 60 * 60 * 1000);
   }, timeUntilMidnight);
 
   console.log('WidgetManager: Daily refresh scheduled for midnight');

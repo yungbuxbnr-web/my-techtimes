@@ -1,14 +1,14 @@
 
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
-import { BackHandler, Alert, Platform, AppState, AppStateStatus } from 'react-native';
+import { BackHandler, Alert, Platform, AppState, AppStateStatus, Linking } from 'react-native';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/components/ToastProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { scheduleAllNotifications, ensureWorkScheduleNotificationsScheduled } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
-import { updateWidgetData, scheduleDailyWidgetRefresh, updateDayProgressWidget } from '@/utils/widgetManager';
+import { updateWidgetData, scheduleDailyWidgetRefresh, updateDayProgressWidget, syncWidgetDataFromStorage } from '@/utils/widgetManager';
 import { registerBackgroundMainframe, runMainframeSync } from '@/utils/backgroundMainframe';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -137,6 +137,30 @@ function RootLayoutContent() {
     }
   }, [segments]);
 
+  // Handle deep links (e.g. from widget)
+  useEffect(() => {
+    const handleUrl = (url: string) => {
+      console.log('RootLayout: Deep link received:', url);
+      if (url === 'techtimes://add-job') {
+        console.log('RootLayout: Deep link — navigating to add-job-modal');
+        router.push('/add-job-modal');
+      }
+      // techtimes:// bare — just foreground, no navigation needed
+    };
+
+    // Handle URL that launched the app
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        console.log('RootLayout: Initial URL:', url);
+        handleUrl(url);
+      }
+    }).catch(err => console.error('RootLayout: getInitialURL error:', err));
+
+    // Handle URLs while app is running
+    const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => subscription.remove();
+  }, [router]);
+
   // Handle app state changes with time-based navigation
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
@@ -161,6 +185,12 @@ function RootLayoutContent() {
         // Run foreground sync immediately to refresh calculations
         runMainframeSync().catch(err =>
           console.error('RootLayout: Foreground mainframe sync failed:', err)
+        );
+
+        // Sync latest data to widget shared container
+        console.log('RootLayout: App foregrounded — syncing widget data');
+        syncWidgetDataFromStorage().catch(err =>
+          console.error('RootLayout: syncWidgetDataFromStorage failed:', err)
         );
 
         // Safety-net: re-register work-schedule notifications if cleared (e.g. after OS reboot)

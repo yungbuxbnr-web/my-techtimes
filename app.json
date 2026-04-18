@@ -16,6 +16,9 @@
       "icon": "./assets/images/e941e17d-7723-49a6-b54a-ae47846098d7.jpeg",
       "supportsTablet": true,
       "bundleIdentifier": "com.buxrug.techtime",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.buxrug.techtime"]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "TechTimes uses Face ID to securely unlock the app and protect your job data.",
