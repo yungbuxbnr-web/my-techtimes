@@ -1012,6 +1012,78 @@ export default function StatsScreen() {
             </View>
           </View>
 
+          {/* Performance Metrics */}
+          <Text style={[styles.sectionTitle, { color: '#ffffff' }]}>Performance Metrics</Text>
+          <View style={[styles.metricsCard, { backgroundColor: theme.card }]}>
+            {(() => {
+              // Calculate working days elapsed this month
+              const now = new Date();
+              const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+              const workingDays = schedule?.workingDays ?? [1, 2, 3, 4, 5];
+              let workingDaysElapsed = 0;
+              const cursor = new Date(monthStart);
+              while (cursor <= now) {
+                if (workingDays.includes(cursor.getDay())) workingDaysElapsed++;
+                cursor.setDate(cursor.getDate() + 1);
+              }
+              workingDaysElapsed = Math.max(1, workingDaysElapsed);
+
+              const soldHours = monthlyStats?.soldHours ?? 0;
+              const availableHours = monthlyStats?.availableHours ?? 1;
+              const totalAw = monthlyStats?.totalAw ?? 0;
+              const monthlyTarget = settings?.monthlyTarget ?? 180;
+
+              const utilization = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
+              const avgAwPerDay = totalAw / workingDaysElapsed;
+              const avgHoursPerDay = soldHours / workingDaysElapsed;
+
+              // Pace: expected sold hours by now = (monthlyTarget / total working days in month) * elapsed
+              const totalWorkingDaysInMonth = (() => {
+                const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                let count = 0;
+                const c = new Date(monthStart);
+                while (c <= monthEnd) {
+                  if (workingDays.includes(c.getDay())) count++;
+                  c.setDate(c.getDate() + 1);
+                }
+                return Math.max(1, count);
+              })();
+              const expectedHours = (monthlyTarget / totalWorkingDaysInMonth) * workingDaysElapsed;
+              const paceDiff = soldHours - expectedHours;
+              const onPace = Math.abs(paceDiff) < 0.5;
+
+              const utilizationColor = utilization >= 65 ? theme.chartGreen : utilization >= 31 ? theme.chartYellow : theme.chartRed;
+              const paceColor = paceDiff >= -0.5 ? theme.chartGreen : theme.chartRed;
+
+              return (
+                <>
+                  <View style={styles.metricRow}>
+                    <View style={styles.metricItem}>
+                      <Text style={[styles.metricValue, { color: utilizationColor }]}>{utilization.toFixed(1)}%</Text>
+                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Utilization</Text>
+                    </View>
+                    <View style={[styles.metricDivider, { backgroundColor: theme.border }]} />
+                    <View style={styles.metricItem}>
+                      <Text style={[styles.metricValue, { color: theme.primary }]}>{avgAwPerDay.toFixed(1)}</Text>
+                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Avg AW/Day</Text>
+                    </View>
+                    <View style={[styles.metricDivider, { backgroundColor: theme.border }]} />
+                    <View style={styles.metricItem}>
+                      <Text style={[styles.metricValue, { color: theme.primary }]}>{avgHoursPerDay.toFixed(2)}h</Text>
+                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Avg Hrs/Day</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.paceRow, { borderTopColor: theme.border }]}>
+                    <Text style={[styles.paceLabel, { color: theme.textSecondary }]}>Pace vs Target:</Text>
+                    <Text style={[styles.paceValue, { color: paceColor }]}>
+                      {onPace ? 'On Track ✓' : paceDiff > 0 ? `Ahead by ${paceDiff.toFixed(1)}h` : `Behind by ${Math.abs(paceDiff).toFixed(1)}h`}
+                    </Text>
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+
           {/* Recent Jobs */}
           <View style={[styles.recentJobsCard, { backgroundColor: theme.card }]}>
             <View style={styles.recentJobsHeader}>
@@ -1421,9 +1493,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   metricValue: {
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
-    textAlign: 'right',
+    marginBottom: 4,
   },
   // Day Progress Widget preview card
   widgetPreviewCard: {
@@ -1540,5 +1612,53 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  metricsCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  metricItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  metricValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  metricLabel: {
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  metricDivider: {
+    width: 1,
+    height: 36,
+    opacity: 0.3,
+  },
+  paceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  paceLabel: {
+    fontSize: 14,
+  },
+  paceValue: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

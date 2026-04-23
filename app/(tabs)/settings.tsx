@@ -1099,15 +1099,17 @@ export default function SettingsScreen() {
           {/* Android widget preview card — live values */}
           {Platform.OS === 'android' && (() => {
             const now = widgetCurrentTime;
-            const startHour = schedule?.startTime ? parseInt(schedule.startTime.split(':')[0], 10) : 7;
-            const endHour = schedule?.endTime ? parseInt(schedule.endTime.split(':')[0], 10) : 18;
+            const startHour = schedule ? parseInt((schedule.startTime || '07:00').split(':')[0], 10) : 7;
+            const startMin = schedule ? parseInt((schedule.startTime || '07:00').split(':')[1], 10) : 0;
+            const endHour = schedule ? parseInt((schedule.endTime || '18:00').split(':')[0], 10) : 18;
+            const endMin = schedule ? parseInt((schedule.endTime || '18:00').split(':')[1], 10) : 0;
             const startOfDay = new Date(now);
-            startOfDay.setHours(startHour, 0, 0, 0);
+            startOfDay.setHours(startHour, startMin, 0, 0);
             const endOfDay = new Date(now);
-            endOfDay.setHours(endHour, 0, 0, 0);
+            endOfDay.setHours(endHour, endMin, 0, 0);
             const totalDayMs = endOfDay.getTime() - startOfDay.getTime();
-            const elapsedMs = Math.max(0, now.getTime() - startOfDay.getTime());
-            const pct = Math.min(100, Math.round((elapsedMs / totalDayMs) * 100));
+            const elapsedMs = Math.max(0, Math.min(now.getTime() - startOfDay.getTime(), totalDayMs));
+            const pct = totalDayMs > 0 ? Math.min(100, Math.round((elapsedMs / totalDayMs) * 100)) : 0;
             const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
             const elapsedMins = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
             const elapsedText = `${elapsedHours}h ${elapsedMins}m elapsed`;
