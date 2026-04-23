@@ -72,6 +72,15 @@ function RootLayoutContent() {
     return () => subscription.remove();
   }, []);
 
+  // Clear badge when notification arrives in foreground
+  useEffect(() => {
+    const receivedSub = Notifications.addNotificationReceivedListener(() => {
+      console.log('RootLayout: Notification received in foreground — clearing badge');
+      Notifications.setBadgeCountAsync(0).catch(() => {});
+    });
+    return () => receivedSub.remove();
+  }, []);
+
   useEffect(() => {
     console.log('RootLayout: App initializing');
     

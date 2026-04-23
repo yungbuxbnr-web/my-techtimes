@@ -327,7 +327,7 @@ export async function updateWidgetData(): Promise<void> {
     const todayAW = todayJobs.reduce((sum, job) => sum + job.aw, 0);
     const todayJobCount = todayJobs.length;
 
-    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage, todayJobCount });
+    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage, todayJobCount, startHour, startMin, endHour, endMin });
     WidgetBridge.updateWidget({
       timeElapsed,
       percentage,
@@ -335,6 +335,10 @@ export async function updateWidgetData(): Promise<void> {
       showPercentage: prefs.workHoursMode !== true,
       todayJobs: todayJobCount,
       todayAW,
+      startHour,
+      startMin,
+      endHour,
+      endMin,
     });
 
     console.log('WidgetManager: Android widget updated successfully');
