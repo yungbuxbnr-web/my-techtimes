@@ -141,7 +141,7 @@ function RootLayoutContent() {
   useEffect(() => {
     const handleUrl = (url: string) => {
       console.log('RootLayout: Deep link received:', url);
-      if (url === 'techtimes://add-job') {
+      if (url === 'techtimes://add-job' || url === 'techtimes://add-job/') {
         console.log('RootLayout: Deep link — navigating to add-job-modal');
         router.push('/add-job-modal');
       }

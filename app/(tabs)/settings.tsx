@@ -1,6 +1,7 @@
 
 import { toastManager } from '@/utils/toastManager';
 import * as Sharing from 'expo-sharing';
+import * as Notifications from 'expo-notifications';
 import { api } from '@/utils/api';
 import React, { useState, useEffect, useCallback } from 'react';
 import { offlineStorage } from '@/utils/offlineStorage';
@@ -72,12 +73,25 @@ export default function SettingsScreen() {
   const [importPhase, setImportPhase] = useState<'parsing' | 'creating'>('parsing');
   const [hasPermissions, setHasPermissions] = useState(false);
 
+  const [schedule, setSchedule] = useState<any>(null);
+
   useEffect(() => {
     loadSettings();
     checkAppPermissions();
     loadWidgetPrefs();
+    loadSchedule();
+    Notifications.setBadgeCountAsync(0).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadSchedule = async () => {
+    try {
+      const sched = await api.getSchedule();
+      setSchedule(sched);
+    } catch (error) {
+      console.error('SettingsScreen: Error loading schedule:', error);
+    }
+  };
 
   // Live clock for widget preview
   useEffect(() => {
@@ -1085,10 +1099,12 @@ export default function SettingsScreen() {
           {/* Android widget preview card — live values */}
           {Platform.OS === 'android' && (() => {
             const now = widgetCurrentTime;
+            const startHour = schedule?.startTime ? parseInt(schedule.startTime.split(':')[0], 10) : 7;
+            const endHour = schedule?.endTime ? parseInt(schedule.endTime.split(':')[0], 10) : 18;
             const startOfDay = new Date(now);
-            startOfDay.setHours(6, 0, 0, 0);
+            startOfDay.setHours(startHour, 0, 0, 0);
             const endOfDay = new Date(now);
-            endOfDay.setHours(22, 0, 0, 0);
+            endOfDay.setHours(endHour, 0, 0, 0);
             const totalDayMs = endOfDay.getTime() - startOfDay.getTime();
             const elapsedMs = Math.max(0, now.getTime() - startOfDay.getTime());
             const pct = Math.min(100, Math.round((elapsedMs / totalDayMs) * 100));

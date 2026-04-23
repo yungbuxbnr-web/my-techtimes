@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { api, Job } from '@/utils/api';
-import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
@@ -128,7 +127,7 @@ export default function TodayDetailsScreen() {
   });
 
   return (
-    <AppBackground>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -140,8 +139,8 @@ export default function TodayDetailsScreen() {
       />
       
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
       >
         <View style={[styles.header, { backgroundColor: theme.card }, Platform.OS === 'android' && { paddingTop: 16 }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Today&apos;s Performance</Text>
@@ -266,7 +265,7 @@ export default function TodayDetailsScreen() {
           </>
         )}
       </ScrollView>
-    </AppBackground>
+    </View>
   );
 }
 
@@ -352,7 +351,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   jobsSection: {
-    flex: 1,
     marginBottom: 16,
   },
   sectionTitle: {
