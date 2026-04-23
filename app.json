@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Tech Times",
-    "slug": "tech-times",
+    "slug": "tech-times-job-tracker-advvxi",
     "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/e941e17d-7723-49a6-b54a-ae47846098d7.jpeg",
@@ -99,7 +99,7 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://2h3sxpwj9zcmabbejmjer7nhf22mhmfu.app.specular.dev"
+      "backendUrl": "https://699vp5wcac9b6yrsmg8uzy33vyysuknh.app.specular.dev"
     }
   },
   "scheme": "Tech Times"
