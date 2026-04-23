@@ -159,6 +159,10 @@ export async function syncWidgetData(data: {
  */
 export async function syncWidgetDataFromStorage(): Promise<void> {
   console.log('WidgetManager: syncWidgetDataFromStorage called');
+  if (Platform.OS === 'android') {
+    await updateWidgetData();
+    return;
+  }
   if (Platform.OS !== 'ios') return;
 
   try {
@@ -284,11 +288,11 @@ async function calculateDailyAggregates(): Promise<WidgetData> {
  */
 export async function updateWidgetData(): Promise<void> {
   if (Platform.OS !== 'android') {
-    console.log('WidgetManager: Skipping widget update (not Android)');
+    // On iOS, use the full sync instead
+    await syncWidgetDataFromStorage();
     return;
   }
 
-  // Android: push data to native SharedPreferences via bridge
   try {
     console.log('WidgetManager: Updating Android widget via native bridge');
     const { WidgetBridge } = NativeModules;
@@ -297,31 +301,40 @@ export async function updateWidgetData(): Promise<void> {
       return;
     }
 
-    // Calculate time elapsed today (6am–10pm window)
+    const [schedule, todayJobs, prefs] = await Promise.all([
+      offlineStorage.getSchedule(),
+      offlineStorage.getTodayJobs(),
+      getWidgetPrefs(),
+    ]);
+
     const now = new Date();
+    const [startHour, startMin] = (schedule.startTime || '07:00').split(':').map(Number);
+    const [endHour, endMin] = (schedule.endTime || '18:00').split(':').map(Number);
+
     const startOfDay = new Date(now);
-    startOfDay.setHours(6, 0, 0, 0);
+    startOfDay.setHours(startHour, startMin, 0, 0);
     const endOfDay = new Date(now);
-    endOfDay.setHours(22, 0, 0, 0);
+    endOfDay.setHours(endHour, endMin, 0, 0);
 
     const totalDayMs = endOfDay.getTime() - startOfDay.getTime();
-    const elapsedMs = Math.max(0, now.getTime() - startOfDay.getTime());
-    const percentage = Math.min(100, Math.round((elapsedMs / totalDayMs) * 100));
+    const elapsedMs = Math.max(0, Math.min(now.getTime() - startOfDay.getTime(), totalDayMs));
+    const percentage = totalDayMs > 0 ? Math.min(100, Math.round((elapsedMs / totalDayMs) * 100)) : 0;
 
     const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
     const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
     const timeElapsed = `${elapsedHours}h ${elapsedMinutes}m elapsed`;
 
-    // Get prefs from AsyncStorage for show/hide toggles
-    const prefsRaw = await AsyncStorage.getItem('widget_prefs');
-    const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
+    const todayAW = todayJobs.reduce((sum, job) => sum + job.aw, 0);
+    const todayJobCount = todayJobs.length;
 
-    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage });
+    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage, todayJobCount });
     WidgetBridge.updateWidget({
       timeElapsed,
       percentage,
-      showTimeElapsed: prefs.showTimeElapsed !== false,
-      showPercentage: prefs.showDayPercentage !== false,
+      showTimeElapsed: prefs.showSeconds !== false,
+      showPercentage: prefs.workHoursMode !== true,
+      todayJobs: todayJobCount,
+      todayAW,
     });
 
     console.log('WidgetManager: Android widget updated successfully');
