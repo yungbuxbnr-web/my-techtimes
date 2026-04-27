@@ -17,6 +17,7 @@ import {
   DEFAULT_WIDGET_PREFS,
 } from '@/utils/widgetManager';
 import { updateLiveWidget, dismissLiveWidget } from '@/utils/liveWidget';
+import { fetchAndStoreBankHolidays, importBankHolidaysAsAbsences } from '@/utils/bankHolidays';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -668,6 +669,23 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleImportBankHolidays = async () => {
+    console.log('SettingsScreen: User tapped Import Bank Holidays');
+    try {
+      const holidays = await fetchAndStoreBankHolidays();
+      const currentSchedule = await offlineStorage.getSchedule();
+      const { added, skipped } = await importBankHolidaysAsAbsences(holidays, currentSchedule);
+      const message = skipped > 0
+        ? `Added ${added} bank holidays as absences (${skipped} already existed)`
+        : `Added ${added} bank holidays as absences`;
+      toastManager.show(message, 'success');
+      console.log('SettingsScreen: Bank holidays imported — added:', added, 'skipped:', skipped);
+    } catch (error) {
+      console.error('SettingsScreen: Error importing bank holidays:', error);
+      Alert.alert('Error', 'Failed to import bank holidays');
+    }
+  };
+
   const handleClearAllData = () => {
     console.log('SettingsScreen: User tapped Clear All Data');
     Alert.alert(
@@ -1071,6 +1089,19 @@ export default function SettingsScreen() {
             <Text style={[styles.actionButtonText, { color: theme.primary }]}>Import Jobs (JSON)</Text>
           </TouchableOpacity>
           
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={handleImportBankHolidays}
+          >
+            <IconSymbol
+              ios_icon_name="calendar.badge.plus"
+              android_material_icon_name="event-available"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Import Bank Holidays</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: theme.chartRed }]}
             onPress={handleClearAllData}

@@ -211,3 +211,62 @@ export async function ensureTrackedHolidaysInitialised(): Promise<void> {
     console.error('BankHolidays: Error ensuring tracked holidays:', error);
   }
 }
+
+/**
+ * Import all bank holidays as absence records.
+ * - Past holidays: created with absenceDate in the past → treated as already deducted
+ * - Future holidays: created with absenceDate in the future → treated as pending/scheduled
+ * - Skips any date that already has an absence record
+ * - Returns { added: number, skipped: number }
+ */
+export async function importBankHolidaysAsAbsences(
+  holidays: BankHoliday[],
+  schedule: { dailyWorkingHours: number; startTime?: string; endTime?: string; saturdayDailyHours?: number }
+): Promise<{ added: number; skipped: number }> {
+  console.log('BankHolidays: importBankHolidaysAsAbsences — importing', holidays.length, 'holidays');
+  const { offlineStorage } = await import('./offlineStorage');
+
+  // Load ALL existing absences to check for duplicates
+  const allAbsences = await offlineStorage.getAllAbsences();
+  const existingDates = new Set(allAbsences.map((a: any) => a.absenceDate));
+
+  let added = 0;
+  let skipped = 0;
+
+  for (const holiday of holidays) {
+    if (existingDates.has(holiday.date)) {
+      console.log('BankHolidays: Skipping already-existing absence for', holiday.date);
+      skipped++;
+      continue;
+    }
+
+    const holidayDate = new Date(holiday.date);
+    holidayDate.setHours(0, 0, 0, 0);
+    const monthStr = holiday.date.substring(0, 7); // YYYY-MM
+
+    // Determine hours for this day
+    const dayOfWeek = holidayDate.getDay();
+    let dailyHours = schedule.dailyWorkingHours;
+    if (dayOfWeek === 6 && schedule.saturdayDailyHours !== undefined) {
+      dailyHours = schedule.saturdayDailyHours;
+    }
+
+    await offlineStorage.createAbsence({
+      month: monthStr,
+      absenceDate: holiday.date,
+      daysCount: 1,
+      isHalfDay: false,
+      customHours: dailyHours,
+      deductionType: 'target',
+      absenceType: 'holiday',
+      note: `Bank Holiday: ${holiday.title}`,
+    });
+
+    existingDates.add(holiday.date);
+    added++;
+    console.log('BankHolidays: Created absence for', holiday.date, holiday.title);
+  }
+
+  console.log('BankHolidays: importBankHolidaysAsAbsences complete — added:', added, 'skipped:', skipped);
+  return { added, skipped };
+}

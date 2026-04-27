@@ -310,6 +310,11 @@ export const offlineStorage = {
     return { success: true };
   },
 
+  async getAllAbsences(): Promise<Absence[]> {
+    console.log('OfflineStorage: Getting all absences');
+    return await getItem<Absence[]>(KEYS.ABSENCES, []);
+  },
+
   // Settings
   async getSettings(): Promise<Settings> {
     console.log('OfflineStorage: Getting settings');

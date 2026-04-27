@@ -1,10 +1,12 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { offlineStorage } from './offlineStorage';
 
 const LIVE_WIDGET_CHANNEL = 'live-widget';
 const LIVE_WIDGET_ID = 'techtimes-live-widget';
+const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
 export async function setupLiveWidgetChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
@@ -31,6 +33,15 @@ export async function updateLiveWidget(): Promise<void> {
   if (Platform.OS !== 'android') return;
 
   try {
+    // Respect the live_widget_enabled preference
+    const prefVal = await AsyncStorage.getItem(LIVE_WIDGET_PREF_KEY);
+    const isEnabled = prefVal === null ? true : prefVal === 'true';
+    if (!isEnabled) {
+      console.log('LiveWidget: Live widget is disabled — dismissing instead of updating');
+      await dismissLiveWidget();
+      return;
+    }
+
     console.log('LiveWidget: Fetching schedule and jobs for widget update');
     const [schedule, jobs] = await Promise.all([
       offlineStorage.getSchedule(),
@@ -56,6 +67,10 @@ export async function updateLiveWidget(): Promise<void> {
     const elapsedH = Math.floor(elapsedMins / 60);
     const elapsedM = elapsedMins % 60;
 
+    // Total shift hours/minutes for display
+    const totalH = Math.floor(totalMins / 60);
+    const totalM = totalMins % 60;
+
     // Work status
     let status = 'Off';
     if (nowMins >= startMins && nowMins < endMins) {
@@ -73,15 +88,13 @@ export async function updateLiveWidget(): Promise<void> {
       return d.startsWith(today);
     }).length;
 
-    // Progress bar using unicode blocks
-    const barLength = 20;
-    const filled = Math.round((percent / 100) * barLength);
-    const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+    // Clean format: percentage prominent in title, details in body
+    const title = `Tech Times · ${percent}% · ${status}`;
+    const bodyLine1 = `${elapsedH}h ${elapsedM}m of ${totalH}h ${totalM}m elapsed`;
+    const bodyLine2 = `${todayJobs} jobs today · Tap to open`;
+    const body = `${bodyLine1}\n${bodyLine2}`;
 
-    const title = `${percent}% · ${status}`;
-    const body = `${bar}\n${elapsedH}h ${elapsedM}m elapsed · ${todayJobs} jobs today`;
-
-    console.log('LiveWidget: Posting notification —', title, '|', `${elapsedH}h ${elapsedM}m`, `| ${todayJobs} jobs`);
+    console.log('LiveWidget: Posting notification —', title, '|', bodyLine1, '|', bodyLine2);
 
     await Notifications.scheduleNotificationAsync({
       identifier: LIVE_WIDGET_ID,
@@ -95,6 +108,13 @@ export async function updateLiveWidget(): Promise<void> {
         data: { type: 'live-widget' },
         channelId: LIVE_WIDGET_CHANNEL,
         autoDismiss: false,
+        actions: [
+          {
+            identifier: 'ADD_JOB',
+            buttonTitle: '+ Add Job',
+            options: { opensAppToForeground: true },
+          },
+        ],
       } as any,
       trigger: null,
     });
@@ -110,8 +130,14 @@ export async function dismissLiveWidget(): Promise<void> {
   console.log('LiveWidget: Dismissing live widget notification');
   try {
     await Notifications.dismissNotificationAsync(LIVE_WIDGET_ID);
-    console.log('LiveWidget: Notification dismissed');
+    console.log('LiveWidget: Notification dismissed by identifier');
   } catch (err) {
-    console.error('LiveWidget: dismissLiveWidget error:', err);
+    console.error('LiveWidget: dismissNotificationAsync failed, falling back to dismissAll:', err);
+    try {
+      await Notifications.dismissAllNotificationsAsync();
+      console.log('LiveWidget: All notifications dismissed as fallback');
+    } catch (fallbackErr) {
+      console.error('LiveWidget: dismissAllNotificationsAsync also failed:', fallbackErr);
+    }
   }
 }

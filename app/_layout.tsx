@@ -62,16 +62,23 @@ function RootLayoutContent() {
     );
   }, []);
 
-  // Reset badge count when a notification is tapped
+  // Reset badge count when a notification is tapped; handle ADD_JOB action
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('RootLayout: Notification tapped — resetting badge count', response.notification.request.identifier);
       Notifications.setBadgeCountAsync(0).catch(err =>
         console.error('RootLayout: Failed to reset badge count on notification tap:', err)
       );
+
+      // Handle ADD_JOB notification action button
+      const actionId = response.actionIdentifier;
+      if (actionId === 'ADD_JOB') {
+        console.log('RootLayout: ADD_JOB notification action tapped — navigating to add-job-modal');
+        router.push('/add-job-modal');
+      }
     });
     return () => subscription.remove();
-  }, []);
+  }, [router]);
 
   // Clear badge when notification arrives in foreground
   useEffect(() => {
