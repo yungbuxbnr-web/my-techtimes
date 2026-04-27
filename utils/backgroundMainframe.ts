@@ -11,6 +11,8 @@ import {
   ensureWorkScheduleNotificationsScheduled,
 } from './notificationScheduler';
 import { syncWidgetData } from './widgetManager';
+import { updateLiveWidget } from './liveWidget';
+import { Platform } from 'react-native';
 
 const TASK_NAME = 'TECH_TIMES_MAINFRAME';
 const MAINFRAME_LAST_SYNC_KEY = 'mainframe_last_sync';
@@ -146,6 +148,17 @@ export async function runMainframeSync(): Promise<void> {
       console.log('Mainframe: Widget data synced — jobs:', todayJobs.length, 'time:', timeLoggedToday, 'min');
     } catch (widgetError) {
       console.error('Mainframe: Error syncing widget data:', widgetError);
+    }
+
+    // Update live widget notification
+    if (Platform.OS === 'android') {
+      try {
+        console.log('Mainframe: Updating live widget notification');
+        await updateLiveWidget();
+        console.log('Mainframe: Live widget updated');
+      } catch (liveWidgetError) {
+        console.error('Mainframe: Error updating live widget:', liveWidgetError);
+      }
     }
 
     console.log('Mainframe: Sync complete — elapsed:', elapsedHours.toFixed(2), 'h /', dailyHours.toFixed(2), 'h (', progressPercent.toFixed(1), '%)');

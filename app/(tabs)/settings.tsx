@@ -16,6 +16,8 @@ import {
   WidgetPrefs,
   DEFAULT_WIDGET_PREFS,
 } from '@/utils/widgetManager';
+import { updateLiveWidget, dismissLiveWidget } from '@/utils/liveWidget';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -74,15 +76,50 @@ export default function SettingsScreen() {
   const [hasPermissions, setHasPermissions] = useState(false);
 
   const [schedule, setSchedule] = useState<any>(null);
+  const [liveWidgetEnabled, setLiveWidgetEnabled] = useState(true);
+
+  const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
   useEffect(() => {
     loadSettings();
     checkAppPermissions();
     loadWidgetPrefs();
     loadSchedule();
+    loadLiveWidgetPref();
     Notifications.setBadgeCountAsync(0).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadLiveWidgetPref = async () => {
+    try {
+      const val = await AsyncStorage.getItem(LIVE_WIDGET_PREF_KEY);
+      // Default true if not set
+      const enabled = val === null ? true : val === 'true';
+      console.log('SettingsScreen: Loaded live widget pref:', enabled);
+      setLiveWidgetEnabled(enabled);
+    } catch (err) {
+      console.error('SettingsScreen: Error loading live widget pref:', err);
+    }
+  };
+
+  const handleToggleLiveWidget = async (value: boolean) => {
+    console.log('SettingsScreen: Live widget toggle pressed — new value:', value);
+    setLiveWidgetEnabled(value);
+    try {
+      await AsyncStorage.setItem(LIVE_WIDGET_PREF_KEY, value ? 'true' : 'false');
+      if (value) {
+        console.log('SettingsScreen: Enabling live widget — calling updateLiveWidget');
+        await updateLiveWidget();
+        toastManager.show('Live widget enabled', 'success');
+      } else {
+        console.log('SettingsScreen: Disabling live widget — calling dismissLiveWidget');
+        await dismissLiveWidget();
+        toastManager.show('Live widget disabled', 'success');
+      }
+    } catch (err) {
+      console.error('SettingsScreen: Error toggling live widget:', err);
+    }
+  };
 
   const loadSchedule = async () => {
     try {
@@ -1095,6 +1132,23 @@ export default function SettingsScreen() {
               </View>
             );
           })()}
+
+          {/* Live Widget toggle — Android only */}
+          {Platform.OS === 'android' && (
+            <View style={[styles.settingRow, { marginBottom: 16 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Live Widget Notification</Text>
+                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                  Shows day progress in your notification shade
+                </Text>
+              </View>
+              <Switch
+                value={liveWidgetEnabled}
+                onValueChange={handleToggleLiveWidget}
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+          )}
 
           {/* Android widget preview card — live values */}
           {Platform.OS === 'android' && (() => {

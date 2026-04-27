@@ -10,6 +10,7 @@ import { scheduleAllNotifications, ensureWorkScheduleNotificationsScheduled } fr
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
 import { updateWidgetData, scheduleDailyWidgetRefresh, updateDayProgressWidget, syncWidgetDataFromStorage } from '@/utils/widgetManager';
 import { registerBackgroundMainframe, runMainframeSync } from '@/utils/backgroundMainframe';
+import { setupLiveWidgetChannel, updateLiveWidget } from '@/utils/liveWidget';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 
@@ -118,6 +119,11 @@ function RootLayoutContent() {
           await updateWidgetData();
           scheduleDailyWidgetRefresh();
           console.log('RootLayout: Widget initialized and daily refresh scheduled');
+
+          console.log('RootLayout: Setting up live widget notification channel');
+          await setupLiveWidgetChannel();
+          await updateLiveWidget();
+          console.log('RootLayout: Live widget initialized');
         }
 
         // Register background mainframe for time tracking
@@ -201,6 +207,13 @@ function RootLayoutContent() {
         syncWidgetDataFromStorage().catch(err =>
           console.error('RootLayout: syncWidgetDataFromStorage failed:', err)
         );
+
+        if (Platform.OS === 'android') {
+          console.log('RootLayout: App foregrounded — updating live widget');
+          updateLiveWidget().catch(err =>
+            console.error('RootLayout: updateLiveWidget failed:', err)
+          );
+        }
 
         // Safety-net: re-register work-schedule notifications if cleared (e.g. after OS reboot)
         console.log('RootLayout: App foregrounded — ensuring work-schedule notifications are scheduled');
