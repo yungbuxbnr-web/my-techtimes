@@ -188,6 +188,11 @@ export const offlineStorage = {
       .slice(0, limit);
   },
 
+  async saveJobs(jobs: Job[]): Promise<void> {
+    console.log('OfflineStorage: Saving', jobs.length, 'jobs');
+    await setItem(KEYS.JOBS, jobs);
+  },
+
   async createJob(job: Omit<Job, 'id' | 'updatedAt'>): Promise<Job> {
     console.log('OfflineStorage: Creating job');
     const allJobs = await this.getAllJobs();
@@ -262,6 +267,12 @@ export const offlineStorage = {
     await setItem(KEYS.SCHEDULE, updated);
     console.log('OfflineStorage: Schedule updated');
     return updated;
+  },
+
+  async saveSchedule(schedule: Schedule & { _updatedAt?: string }): Promise<void> {
+    console.log('OfflineStorage: Saving full schedule');
+    await setItem(KEYS.SCHEDULE, schedule);
+    console.log('OfflineStorage: Schedule saved');
   },
 
   // Profile

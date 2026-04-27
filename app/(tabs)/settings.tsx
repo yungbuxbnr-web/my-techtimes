@@ -1,4 +1,5 @@
 
+import { AntDesign } from '@expo/vector-icons';
 import { toastManager } from '@/utils/toastManager';
 import * as Sharing from 'expo-sharing';
 import * as Notifications from 'expo-notifications';
@@ -1067,7 +1068,32 @@ export default function SettingsScreen() {
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
-          
+
+          {/* Google Drive Sync */}
+          <TouchableOpacity
+            style={[styles.settingRow, { paddingVertical: 14 }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Google Drive Sync');
+              router.push('/google-sync');
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <AntDesign name="google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+              <View>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Google Drive Sync</Text>
+                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                  Sync jobs &amp; schedule across devices
+                </Text>
+              </View>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={16}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: theme.background }]}
             onPress={handleOpenExportModal}
