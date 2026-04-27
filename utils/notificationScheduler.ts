@@ -534,6 +534,19 @@ export async function cancelAllNotifications(): Promise<void> {
 }
 
 /**
+ * Force cancel all notifications and reschedule from scratch.
+ * Returns the count of newly scheduled notifications.
+ */
+export async function forceRescheduleAllNotifications(): Promise<number> {
+  console.log('NotificationScheduler: forceRescheduleAllNotifications — cancelling all and rescheduling');
+  await Notifications.cancelAllScheduledNotificationsAsync();
+  await scheduleAllNotifications();
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  console.log('NotificationScheduler: forceRescheduleAllNotifications — done, count:', scheduled.length);
+  return scheduled.length;
+}
+
+/**
  * Schedule all notifications based on current settings and schedule
  */
 export async function scheduleAllNotifications(): Promise<void> {
@@ -542,6 +555,12 @@ export async function scheduleAllNotifications(): Promise<void> {
   try {
     // Set up Android channels first
     await setupAndroidNotificationChannels();
+
+    // On Android, ensure notification permissions are granted before scheduling
+    if (Platform.OS === 'android') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      console.log('NotificationScheduler: Android notification permission status:', status);
+    }
 
     // Cancel existing notifications first
     await cancelAllNotifications();
@@ -599,22 +618,29 @@ export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> 
     const ids = scheduled.map(n => n.identifier);
     console.log('NotificationScheduler: Currently scheduled notification IDs:', ids);
 
-    const hasWorkStart  = ids.some(id => id.startsWith('work-start-'));
-    const hasWorkEnd    = ids.some(id => id.startsWith('work-end-'));
-    const hasLunchStart = ids.some(id => id.startsWith('lunch-start-'));
-    const hasLunchEnd   = ids.some(id => id.startsWith('lunch-end-'));
+    const hasWorkStart    = ids.some(id => id.startsWith('work-start-'));
+    const hasWorkEnd      = ids.some(id => id.startsWith('work-end-'));
+    const hasLunchStart   = ids.some(id => id.startsWith('lunch-start-'));
+    const hasLunchEnd     = ids.some(id => id.startsWith('lunch-end-'));
+    const hasDailyReminder  = ids.includes(NOTIFICATION_IDS.DAILY_REMINDER);
+    const hasWeeklyReport   = ids.includes(NOTIFICATION_IDS.WEEKLY_REPORT);
+    const hasMonthlyReport  = ids.includes(NOTIFICATION_IDS.MONTHLY_REPORT);
 
-    console.log('NotificationScheduler: work-start present:', hasWorkStart, '| work-end present:', hasWorkEnd, '| lunch-start present:', hasLunchStart, '| lunch-end present:', hasLunchEnd);
+    console.log('NotificationScheduler: work-start present:', hasWorkStart, '| work-end present:', hasWorkEnd, '| lunch-start present:', hasLunchStart, '| lunch-end present:', hasLunchEnd, '| daily-reminder present:', hasDailyReminder, '| weekly-report present:', hasWeeklyReport, '| monthly-report present:', hasMonthlyReport);
 
-    const needsWorkStart  = settings.workStartNotification  && !hasWorkStart;
-    const needsWorkEnd    = settings.workEndNotification    && !hasWorkEnd;
-    const needsLunchStart = settings.lunchStartNotification && !hasLunchStart;
-    const needsLunchEnd   = settings.lunchEndNotification   && !hasLunchEnd;
+    const needsWorkStart    = settings.workStartNotification  && !hasWorkStart;
+    const needsWorkEnd      = settings.workEndNotification    && !hasWorkEnd;
+    const needsLunchStart   = settings.lunchStartNotification && !hasLunchStart;
+    const needsLunchEnd     = settings.lunchEndNotification   && !hasLunchEnd;
+    const needsDailyReminder  = settings.dailyReminder  && !hasDailyReminder;
+    const needsWeeklyReport   = settings.weeklyReport   && !hasWeeklyReport;
+    const needsMonthlyReport  = settings.monthlyReport  && !hasMonthlyReport;
 
-    if (needsWorkStart || needsWorkEnd || needsLunchStart || needsLunchEnd) {
+    if (needsWorkStart || needsWorkEnd || needsLunchStart || needsLunchEnd ||
+        needsDailyReminder || needsWeeklyReport || needsMonthlyReport) {
       console.log(
-        'NotificationScheduler: Missing work-schedule notifications — re-scheduling all.',
-        { needsWorkStart, needsWorkEnd, needsLunchStart, needsLunchEnd }
+        'NotificationScheduler: Missing notifications — re-scheduling all.',
+        { needsWorkStart, needsWorkEnd, needsLunchStart, needsLunchEnd, needsDailyReminder, needsWeeklyReport, needsMonthlyReport }
       );
       await scheduleAllNotifications();
       console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — re-schedule complete');

@@ -81,14 +81,12 @@ export async function saveWidgetPrefs(prefs: WidgetPrefs): Promise<void> {
  */
 async function syncWidgetPrefsToSharedContainer(prefs: WidgetPrefs): Promise<void> {
   if (Platform.OS === 'android') {
+    // Prefs sync on Android is handled via updateWidgetData — just trigger a refresh
     try {
       const { WidgetBridge } = NativeModules;
       if (!WidgetBridge) return;
-      console.log('WidgetManager: Syncing widget prefs to Android SharedPreferences');
-      WidgetBridge.updateWidget({
-        showTimeElapsed: prefs.showSeconds !== false,
-        showPercentage: prefs.workHoursMode !== true,
-      });
+      console.log('WidgetManager: Refreshing Android widget after prefs change');
+      WidgetBridge.refreshWidget();
     } catch (e) {
       console.warn('Android widget prefs sync failed:', e);
     }
@@ -327,19 +325,8 @@ export async function updateWidgetData(): Promise<void> {
     const todayAW = todayJobs.reduce((sum, job) => sum + job.aw, 0);
     const todayJobCount = todayJobs.length;
 
-    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { timeElapsed, percentage, todayJobCount, startHour, startMin, endHour, endMin });
-    WidgetBridge.updateWidget({
-      timeElapsed,
-      percentage,
-      showTimeElapsed: prefs.showSeconds !== false,
-      showPercentage: prefs.workHoursMode !== true,
-      todayJobs: todayJobCount,
-      todayAW,
-      startHour,
-      startMin,
-      endHour,
-      endMin,
-    });
+    console.log('WidgetManager: Calling WidgetBridge.updateWidget', { todayJobCount, startHour, startMin, endHour, endMin });
+    WidgetBridge.updateWidget(todayJobCount, startHour, startMin, endHour, endMin);
 
     console.log('WidgetManager: Android widget updated successfully');
   } catch (error) {

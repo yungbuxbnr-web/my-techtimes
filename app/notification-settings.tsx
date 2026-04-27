@@ -21,7 +21,9 @@ import {
   scheduleAllNotifications,
   sendTestNotification,
   setupAndroidNotificationChannels,
+  forceRescheduleAllNotifications,
 } from '@/utils/notificationScheduler';
+import { toastManager } from '@/utils/toastManager';
 import { requestNotificationPermissions, openNotificationSettings } from '@/utils/permissions';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -107,6 +109,18 @@ export default function NotificationSettingsScreen() {
       console.error('NotificationSettingsScreen: Error loading settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForceReschedule = async () => {
+    console.log('NotificationSettingsScreen: User tapped Force Reschedule All');
+    try {
+      const count = await forceRescheduleAllNotifications();
+      console.log('NotificationSettingsScreen: Force reschedule complete, count:', count);
+      toastManager.success(`Rescheduled ${count} notification${count !== 1 ? 's' : ''}`);
+    } catch (error) {
+      console.error('NotificationSettingsScreen: Force reschedule failed:', error);
+      toastManager.error('Failed to reschedule notifications');
     }
   };
 
@@ -268,6 +282,25 @@ export default function NotificationSettingsScreen() {
               Customize which notifications you receive and when. All notifications are automatically synced with your work schedule.
             </Text>
           </View>
+
+          {/* Force Reschedule All */}
+          <TouchableOpacity
+            style={styles.forceRescheduleButton}
+            onPress={handleForceReschedule}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise.circle.fill"
+              android_material_icon_name="refresh"
+              size={22}
+              color="#ffffff"
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.forceRescheduleTitle}>Force Reschedule All</Text>
+              <Text style={styles.forceRescheduleSubtitle}>
+                Fixes missing notifications on Samsung &amp; other devices
+              </Text>
+            </View>
+          </TouchableOpacity>
 
           {/* Device Notification Settings */}
           <TouchableOpacity
@@ -788,6 +821,30 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+  },
+  forceRescheduleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 12,
+    backgroundColor: '#FF6B35',
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  forceRescheduleTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  forceRescheduleSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.85)',
   },
   deviceSettingsButton: {
     flexDirection: 'row',
