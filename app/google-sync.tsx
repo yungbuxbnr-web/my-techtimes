@@ -251,10 +251,7 @@ export default function GoogleSyncScreen() {
       )}
 
       <Text style={[styles.note, { color: theme.textSecondary }]}>
-        Note: A Google OAuth Client ID is required. Open{' '}
-        <Text style={{ fontWeight: '600' }}>utils/googleDriveSync.ts</Text> and replace{' '}
-        <Text style={{ fontStyle: 'italic' }}>YOUR_GOOGLE_WEB_CLIENT_ID</Text> with your Web
-        client ID from Google Cloud Console (APIs &amp; Services → Credentials).
+        Your jobs and schedule are stored in a TechTimesAppData folder on your Google Drive. Only this app can access that folder.
       </Text>
     </ScrollView>
   );

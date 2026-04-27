@@ -10,7 +10,7 @@ WebBrowser.maybeCompleteAuthSession();
 // ─── CONFIGURATION ────────────────────────────────────────────────────────────
 // Replace with your real Web OAuth Client ID from Google Cloud Console
 // APIs & Services → Credentials → OAuth 2.0 Client IDs → Web client
-const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '467177156810-72ir0v5j7hrgtbu1tgth8kfpc98lggmq.apps.googleusercontent.com';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
