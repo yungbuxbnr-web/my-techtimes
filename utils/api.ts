@@ -1,7 +1,7 @@
 
 import Constants from 'expo-constants';
 import { offlineStorage, Job as OfflineJob, Schedule, TechnicianProfile, Absence, StreakData } from './offlineStorage';
-import { applyAbsenceAdjustments, AbsenceRecord } from './jobCalculations';
+import { applyAbsenceAdjustments, AbsenceRecord, calcDailyHoursFromSchedule } from './jobCalculations';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev';
 
@@ -324,12 +324,11 @@ export const api = {
     return calculateJobStats(jobs);
   },
 
-  async getMonthlyStats(month: string, targetHours: number = 180): Promise<MonthlyStats> {
+  async getMonthlyStats(month: string): Promise<MonthlyStats> {
     console.log('API: Calculating monthly stats from local storage for', month);
     const jobs = await this.getJobsForMonth(month);
     const schedule = await offlineStorage.getSchedule();
     const absences = await offlineStorage.getAbsences(month);
-    const settings = await offlineStorage.getSettings();
 
     const [year, monthNum] = month.split('-').map(Number);
     const todayStr = new Date().toISOString().split('T')[0];
@@ -337,13 +336,24 @@ export const api = {
     // ── Raw (unadjusted) contracted hours ────────────────────────────────────
     // Total contracted hours for the full month (no absence deductions yet)
     const totalWorkingDaysInMonth = getWorkingDaysInMonth(year, monthNum, schedule);
-    const originalTotalHours = (settings.monthlyTarget || targetHours);
+
+    // Calculate daily hours from schedule times (not from settings.monthlyTarget)
+    const dailyHours = schedule.startTime && schedule.endTime
+      ? calcDailyHoursFromSchedule(
+          schedule.startTime,
+          schedule.endTime,
+          schedule.lunchStartTime ?? '12:00',
+          schedule.lunchEndTime ?? '12:30'
+        )
+      : schedule.dailyWorkingHours;
+
+    const originalTotalHours = totalWorkingDaysInMonth * dailyHours;
 
     // Raw available hours = working days elapsed so far × daily hours
     const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
-    const originalAvailableHours = workingDaysToDate * schedule.dailyWorkingHours;
+    const originalAvailableHours = workingDaysToDate * dailyHours;
 
-    console.log(`API: Month ${month} — raw total=${originalTotalHours}h (from settings), raw available=${originalAvailableHours.toFixed(2)}h (${workingDaysToDate} working days × ${schedule.dailyWorkingHours}h), totalWorkingDays=${totalWorkingDaysInMonth}`);
+    console.log(`API: Month ${month} — raw total=${originalTotalHours.toFixed(2)}h (${totalWorkingDaysInMonth} days × ${dailyHours.toFixed(2)}h), raw available=${originalAvailableHours.toFixed(2)}h (${workingDaysToDate} working days × ${dailyHours.toFixed(2)}h)`);
 
     // ── Convert Absence records to AbsenceRecord shape ────────────────────────
     // Deduplicate by date — only one absence record per date counts
@@ -540,9 +550,9 @@ export const api = {
   },
 
   // Dashboard endpoint
-  async getDashboard(month: string, targetHours: number = 180): Promise<DashboardData> {
+  async getDashboard(month: string): Promise<DashboardData> {
     console.log('API: Calculating dashboard data from local storage for', month);
-    const monthlyStats = await this.getMonthlyStats(month, targetHours);
+    const monthlyStats = await this.getMonthlyStats(month);
     const todayJobs = await this.getTodayJobs();
     const weekJobs = await this.getWeekJobs();
 

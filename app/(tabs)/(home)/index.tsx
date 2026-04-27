@@ -196,16 +196,22 @@ export default function HomeScreen() {
                 {workDayStatus}
               </Text>
             </View>
-            <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
-              <View 
-                style={[
-                  styles.progressBarFill, 
-                  { 
-                    width: `${workDayProgress}%`,
-                    backgroundColor: isWorkTime ? theme.primary : theme.textSecondary
-                  }
-                ]} 
-              />
+            <View style={styles.progressBarWrapper}>
+              <View style={[styles.progressBarContainer, { backgroundColor: theme.background }]}>
+                <View 
+                  style={[
+                    styles.progressBarFill, 
+                    { 
+                      width: `${workDayProgress}%`,
+                      backgroundColor: isWorkTime ? theme.primary : theme.textSecondary
+                    }
+                  ]} 
+                />
+              </View>
+              {/* Car doodle that rides along the bar */}
+              <View style={[styles.carIndicator, { left: `${Math.min(workDayProgress, 96)}%` as any }]}>
+                <Text style={styles.carEmoji}>🚗</Text>
+              </View>
             </View>
             <View style={styles.progressTimes}>
               <Text style={[styles.progressTime, { color: theme.textSecondary }]}>
@@ -484,6 +490,18 @@ const styles = StyleSheet.create({
   progressStatus: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  progressBarWrapper: {
+    position: 'relative',
+    marginBottom: 4,
+  },
+  carIndicator: {
+    position: 'absolute',
+    top: -14,
+    marginLeft: -10,
+  },
+  carEmoji: {
+    fontSize: 18,
   },
   progressBarContainer: {
     height: 8,

@@ -197,9 +197,21 @@ export default function SettingsScreen() {
       const settings = await api.getSettings();
       
       setTechnicianName(profile.name);
-      setMonthlyTarget(settings.monthlyTarget.toString());
       setStreaksEnabled(settings.streaksEnabled !== false);
       setWeeklyStreakTarget((settings.weeklyStreakTarget || 5).toString());
+
+      // Calculate monthly target from schedule (not from settings.monthlyTarget)
+      const sched = await api.getSchedule();
+      const { calcDailyHoursFromSchedule, countWorkingDaysInMonth } = await import('@/utils/jobCalculations');
+      const now = new Date();
+      const dailyHrs = calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      );
+      const wDays = countWorkingDaysInMonth(now.getFullYear(), now.getMonth() + 1, sched.workingDays || [1, 2, 3, 4, 5]);
+      setMonthlyTarget((wDays * dailyHrs).toFixed(1));
       
       console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);
     } catch (error) {
@@ -792,24 +804,30 @@ export default function SettingsScreen() {
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Monthly Target</Text>
-          
-          <Text style={[styles.label, { color: theme.textSecondary }]}>Target Hours</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-              value={monthlyTarget}
-              onChangeText={setMonthlyTarget}
-              placeholder="180"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="decimal-pad"
-            />
-            <TouchableOpacity
-              style={[styles.updateButton, { backgroundColor: theme.primary }]}
-              onPress={handleUpdateTarget}
-            >
-              <Text style={styles.updateButtonText}>Update</Text>
-            </TouchableOpacity>
+          <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+            Auto-calculated from your work schedule. Update your schedule to change this.
+          </Text>
+          <View style={[styles.settingRow, { marginTop: 8 }]}>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>This Month's Target</Text>
+            <Text style={[styles.settingLabel, { color: theme.primary, fontWeight: 'bold' }]}>
+              {monthlyTarget}h
+            </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background, marginTop: 8 }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Edit Work Schedule from Monthly Target section');
+              router.push('/edit-work-schedule');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="calendar"
+              android_material_icon_name="calendar-today"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Edit Work Schedule</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>

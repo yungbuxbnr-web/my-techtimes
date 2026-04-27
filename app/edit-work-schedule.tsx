@@ -363,7 +363,7 @@ export default function EditWorkScheduleScreen() {
       const calculatedLunchMinutes = lunchEndMinutes - lunchStartMinutes;
       
       console.log('EditWorkScheduleScreen: Saving schedule with excludeBankHolidays:', excludeBankHolidays);
-      await api.updateSchedule({
+      const updatedSchedule = {
         workingDays: finalWorkingDays,
         startTime,
         endTime,
@@ -379,8 +379,25 @@ export default function EditWorkScheduleScreen() {
         saturdayFrequency,
         nextWorkingSaturday: nextWorkingSaturday ? nextWorkingSaturday.toISOString() : undefined,
         excludeBankHolidays,
-      });
-      
+      };
+      await api.updateSchedule(updatedSchedule);
+
+      // Auto-recalculate monthly target from new schedule
+      const { calcDailyHoursFromSchedule, countWorkingDaysInMonth } = await import('@/utils/jobCalculations');
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const dailyHrs = calcDailyHoursFromSchedule(
+        updatedSchedule.startTime || '07:00',
+        updatedSchedule.endTime || '18:00',
+        updatedSchedule.lunchStartTime || '12:00',
+        updatedSchedule.lunchEndTime || '12:30'
+      );
+      const workingDays = countWorkingDaysInMonth(year, month, updatedSchedule.workingDays || [1, 2, 3, 4, 5]);
+      const newMonthlyTarget = workingDays * dailyHrs;
+      await api.updateMonthlyTarget(newMonthlyTarget);
+      console.log('EditWorkSchedule: Auto-updated monthly target to', newMonthlyTarget.toFixed(2), 'h');
+
       let saturdayInfo = '';
       if (saturdayFrequency === 'none') {
         saturdayInfo = '\nSaturdays: Not working';
