@@ -24,6 +24,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "TechTimes uses Face ID to securely unlock the app and protect your job data.",
+        "NSCameraUsageDescription": "Tech Times uses the camera to attach photos to your job records.",
+        "NSPhotoLibraryUsageDescription": "Tech Times accesses your photo library to attach images to job records.",
+        "NSPhotoLibraryAddOnlyUsageDescription": "Tech Times saves job photos to your photo library.",
         "UIBackgroundModes": [
           "fetch",
           "remote-notification",
@@ -52,9 +55,12 @@
         "WAKE_LOCK",
         "FOREGROUND_SERVICE",
         "SCHEDULE_EXACT_ALARM",
-        "VIBRATE"
+        "VIBRATE",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "CAMERA"
       ],
-      "versionCode": 14
+      "versionCode": 15
     },
     "web": {
       "favicon": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
@@ -81,6 +87,13 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "TechTimes uses Face ID to securely unlock the app and protect your job data."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Tech Times accesses your photo library to attach images to job records.",
+          "cameraPermission": "Tech Times uses the camera to attach photos to your job records."
         }
       ],
       [
