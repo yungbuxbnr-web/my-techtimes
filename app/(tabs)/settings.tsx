@@ -79,6 +79,8 @@ export default function SettingsScreen() {
 
   const [schedule, setSchedule] = useState<any>(null);
   const [liveWidgetEnabled, setLiveWidgetEnabled] = useState(true);
+  const [isManualTarget, setIsManualTarget] = useState(false);
+  const [manualTargetInput, setManualTargetInput] = useState('');
 
   const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
@@ -814,6 +816,63 @@ export default function SettingsScreen() {
               {monthlyTarget}h
             </Text>
           </View>
+          {isManualTarget && (
+            <Text style={[styles.settingHint, { color: '#f59e0b', marginTop: 4 }]}>
+              Manual override active
+            </Text>
+          )}
+          <TouchableOpacity
+            onPress={() => {
+              const nextManual = !isManualTarget;
+              console.log('SettingsScreen: Manual target override toggled to', nextManual);
+              setIsManualTarget(nextManual);
+              if (nextManual) {
+                setManualTargetInput(monthlyTarget);
+              } else {
+                // Revert to auto-calculated value
+                api.updateMonthlyTarget(parseFloat(monthlyTarget)).catch(() => {});
+                toastManager.show('Reverted to auto-calculated target', 'success');
+              }
+            }}
+            style={{ marginTop: 6 }}
+          >
+            <Text style={[styles.settingHint, { color: theme.primary }]}>
+              {isManualTarget ? 'Use auto-calculated value' : 'Override manually'}
+            </Text>
+          </TouchableOpacity>
+          {isManualTarget && (
+            <View style={[styles.inputRow, { marginTop: 10 }]}>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.background, color: theme.text, flex: 1 }]}
+                value={manualTargetInput}
+                onChangeText={setManualTargetInput}
+                placeholder="Enter target hours"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="decimal-pad"
+              />
+              <TouchableOpacity
+                style={[styles.updateButton, { backgroundColor: theme.primary }]}
+                onPress={async () => {
+                  console.log('SettingsScreen: Saving manual monthly target:', manualTargetInput);
+                  const val = parseFloat(manualTargetInput);
+                  if (isNaN(val) || val <= 0) {
+                    Alert.alert('Error', 'Please enter a valid target (greater than 0)');
+                    return;
+                  }
+                  try {
+                    await api.updateMonthlyTarget(val);
+                    setMonthlyTarget(val.toFixed(1));
+                    toastManager.show('Monthly target saved', 'success');
+                  } catch (error) {
+                    console.error('SettingsScreen: Error saving manual target:', error);
+                    Alert.alert('Error', 'Failed to save monthly target');
+                  }
+                }}
+              >
+                <Text style={styles.updateButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: theme.background, marginTop: 8 }]}
             onPress={() => {

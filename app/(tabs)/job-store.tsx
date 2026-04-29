@@ -16,6 +16,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime, formatDecimalHours } from '@/utils/jobCalculations';
 import { api, Job } from '@/utils/api';
+import { router } from 'expo-router';
 
 type FilterType = 'all' | 'today' | 'week' | 'month' | 'custom';
 type SortType = 'date-desc' | 'date-asc' | 'aw-desc' | 'aw-asc' | 'wip-asc' | 'wip-desc';
@@ -31,6 +32,7 @@ export default function JobStoreScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
   const [vhcFilter, setVhcFilter] = useState<'all' | 'NONE' | 'GREEN' | 'ORANGE' | 'RED'>('all');
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -177,7 +179,14 @@ export default function JobStoreScreen() {
     const hoursDisplay = formatDecimalHours(minutes);
 
     return (
-      <View style={[styles.jobCard, { backgroundColor: theme.card }]}>
+      <TouchableOpacity
+        style={[styles.jobCard, { backgroundColor: theme.card }]}
+        onPress={() => {
+          console.log('JobStoreScreen: Job tapped — opening detail modal for WIP', item.wipNumber);
+          setSelectedJob(item);
+        }}
+        activeOpacity={0.8}
+      >
         {item.vhcStatus && item.vhcStatus !== 'NONE' && (
           <View style={[styles.vhcStrip, { backgroundColor: vhcColor }]} />
         )}
@@ -248,7 +257,7 @@ export default function JobStoreScreen() {
             </View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -479,6 +488,153 @@ export default function JobStoreScreen() {
               </View>
             </View>
           </View>
+        </Modal>
+
+        {/* Job Detail Modal */}
+        <Modal
+          visible={selectedJob !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedJob(null)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setSelectedJob(null)}
+          >
+            <TouchableOpacity activeOpacity={1} style={[styles.jobDetailModal, { backgroundColor: theme.card }]}>
+              {selectedJob && (() => {
+                const detailMinutes = awToMinutes(selectedJob.aw);
+                const detailTime = formatTime(detailMinutes);
+                const detailHours = formatDecimalHours(detailMinutes);
+                const detailDate = new Date(selectedJob.createdAt);
+                const detailVhcColor = getVhcColor(selectedJob.vhcStatus || 'NONE');
+                const detailDateStr = detailDate.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+                const detailTimeStr = detailDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+                return (
+                  <>
+                    <View style={styles.detailModalHeader}>
+                      <Text style={[styles.detailWip, { color: theme.primary }]}>{selectedJob.wipNumber}</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('JobStoreScreen: Closing job detail modal');
+                          setSelectedJob(null);
+                        }}
+                      >
+                        <IconSymbol
+                          ios_icon_name="xmark.circle.fill"
+                          android_material_icon_name="close"
+                          size={28}
+                          color={theme.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {selectedJob.vhcStatus && selectedJob.vhcStatus !== 'NONE' && (
+                      <View style={[styles.detailSection, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+                        <View style={[styles.vhcBadge, { backgroundColor: detailVhcColor }]}>
+                          <Text style={styles.vhcText}>{selectedJob.vhcStatus}</Text>
+                        </View>
+                        <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>VHC Status</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.detailSection}>
+                      <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>Vehicle Reg</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                        <IconSymbol
+                          ios_icon_name="car"
+                          android_material_icon_name="directions-car"
+                          size={18}
+                          color={theme.primary}
+                        />
+                        <Text style={[styles.detailSectionValue, { color: theme.text }]}>{selectedJob.vehicleReg}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailSection}>
+                      <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>AW Value</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                        <Text style={[styles.detailSectionValue, { color: theme.primary, fontSize: 28, fontWeight: 'bold' }]}>{selectedJob.aw}</Text>
+                        <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>AW</Text>
+                        <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>•</Text>
+                        <Text style={[styles.detailSectionValue, { color: theme.text }]}>{detailTime}</Text>
+                        <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>({detailHours}h)</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailSection}>
+                      <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>Date Logged</Text>
+                      <Text style={[styles.detailSectionValue, { color: theme.text, marginTop: 4 }]}>{detailDateStr}</Text>
+                      <Text style={[styles.detailSectionLabel, { color: theme.textSecondary, marginTop: 2 }]}>{detailTimeStr}</Text>
+                    </View>
+
+                    {selectedJob.notes ? (
+                      <View style={styles.detailSection}>
+                        <Text style={[styles.detailSectionLabel, { color: theme.textSecondary }]}>Notes</Text>
+                        <Text style={[styles.detailSectionValue, { color: theme.text, marginTop: 4 }]}>{selectedJob.notes}</Text>
+                      </View>
+                    ) : null}
+
+                    <TouchableOpacity
+                      style={[styles.editJobButton, { backgroundColor: theme.primary }]}
+                      onPress={() => {
+                        console.log('JobStoreScreen: Edit Job pressed for WIP', selectedJob.wipNumber);
+                        setSelectedJob(null);
+                        router.push(`/edit-job?id=${selectedJob.id}`);
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="pencil"
+                        android_material_icon_name="edit"
+                        size={18}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.editJobButtonText}>Edit Job</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.deleteJobButton]}
+                      onPress={() => {
+                        console.log('JobStoreScreen: Delete Job pressed for WIP', selectedJob.wipNumber);
+                        Alert.alert(
+                          'Delete Job',
+                          `Are you sure you want to delete WIP ${selectedJob.wipNumber}?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  await api.deleteJob(selectedJob.id);
+                                  console.log('JobStoreScreen: Job deleted successfully', selectedJob.id);
+                                  setSelectedJob(null);
+                                  loadJobs();
+                                } catch (error) {
+                                  console.error('JobStoreScreen: Error deleting job:', error);
+                                  Alert.alert('Error', 'Failed to delete job');
+                                }
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={18}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.deleteJobButtonText}>Delete Job</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              })()}
+            </TouchableOpacity>
+          </TouchableOpacity>
         </Modal>
 
         {/* Sort Modal */}
@@ -814,5 +970,64 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  jobDetailModal: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    minHeight: 300,
+    paddingBottom: 40,
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  detailWip: {
+    fontSize: 26,
+    fontWeight: 'bold',
+  },
+  detailSection: {
+    marginBottom: 16,
+  },
+  detailSectionLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailSectionValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editJobButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  editJobButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteJobButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#ef4444',
+  },
+  deleteJobButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

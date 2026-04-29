@@ -1,7 +1,7 @@
 
 import Constants from 'expo-constants';
 import { offlineStorage, Job as OfflineJob, Schedule, TechnicianProfile, Absence, StreakData } from './offlineStorage';
-import { applyAbsenceAdjustments, AbsenceRecord, calcDailyHoursFromSchedule } from './jobCalculations';
+import { applyAbsenceAdjustments, AbsenceRecord, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from './jobCalculations';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://ampq3swwzgcg2uwbx64vdbw83nxxnays.app.specular.dev';
 
@@ -335,7 +335,7 @@ export const api = {
 
     // ── Raw (unadjusted) contracted hours ────────────────────────────────────
     // Total contracted hours for the full month (no absence deductions yet)
-    const totalWorkingDaysInMonth = getWorkingDaysInMonth(year, monthNum, schedule);
+    const totalWorkingDaysInMonth = countWorkingDaysInMonth(year, monthNum, schedule.workingDays || [1, 2, 3, 4, 5]);
 
     // Calculate daily hours from schedule times (not from settings.monthlyTarget)
     const dailyHours = schedule.startTime && schedule.endTime
@@ -350,7 +350,27 @@ export const api = {
     const originalTotalHours = totalWorkingDaysInMonth * dailyHours;
 
     // Raw available hours = working days elapsed so far × daily hours
-    const workingDaysToDate = getWorkingDaysToDate(year, monthNum, schedule);
+    // Use the same countWorkingDaysInMonth logic but capped to today
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    let workingDaysToDate: number;
+    if (year > currentYear || (year === currentYear && monthNum > currentMonth)) {
+      workingDaysToDate = 0;
+    } else if (year < currentYear || (year === currentYear && monthNum < currentMonth)) {
+      workingDaysToDate = countWorkingDaysInMonth(year, monthNum, schedule.workingDays || [1, 2, 3, 4, 5]);
+    } else {
+      // Current month — count up to today
+      const wdArr = schedule.workingDays || [1, 2, 3, 4, 5];
+      let count = 0;
+      const d = new Date(year, monthNum - 1, 1);
+      for (let day = 1; day <= currentDay; day++) {
+        d.setDate(day);
+        if (wdArr.includes(d.getDay())) count++;
+      }
+      workingDaysToDate = count;
+    }
     const originalAvailableHours = workingDaysToDate * dailyHours;
 
     console.log(`API: Month ${month} — raw total=${originalTotalHours.toFixed(2)}h (${totalWorkingDaysInMonth} days × ${dailyHours.toFixed(2)}h), raw available=${originalAvailableHours.toFixed(2)}h (${workingDaysToDate} working days × ${dailyHours.toFixed(2)}h)`);
@@ -365,16 +385,16 @@ export const api = {
       if (seenDates.has(absence.absenceDate)) return;
       seenDates.add(absence.absenceDate);
 
-      // Resolve hours for this absence
+      // Resolve hours for this absence — use dailyHours (from schedule times) not stale dailyWorkingHours
       let hours = 0;
       if (absence.customHours !== undefined && absence.customHours > 0) {
         hours = Number(absence.customHours);
       } else if (absence.isHalfDay) {
-        hours = schedule.dailyWorkingHours / 2;
+        hours = dailyHours / 2;
       } else if (absence.daysCount && absence.daysCount > 0) {
-        hours = absence.daysCount * schedule.dailyWorkingHours;
+        hours = absence.daysCount * dailyHours;
       } else {
-        hours = schedule.dailyWorkingHours;
+        hours = dailyHours;
       }
 
       absenceRecords.push({
