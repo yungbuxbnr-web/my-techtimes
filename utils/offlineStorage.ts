@@ -47,6 +47,8 @@ export interface Schedule {
 
 export interface TechnicianProfile {
   name: string;
+  phone?: string;
+  location?: string;
 }
 
 export interface Absence {
