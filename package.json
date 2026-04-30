@@ -49,7 +49,7 @@
     "expo-network": "^8.0.7",
     "expo-notifications": "^0.32.16",
     "expo-print": "^15.0.8",
-    "expo-router": "^6.0.0",
+    "expo-router": "^5.0.7",
     "expo-secure-store": "^15.0.7",
     "expo-sharing": "^14.0.8",
     "expo-splash-screen": "^31.0.8",

@@ -60,7 +60,7 @@
         "READ_MEDIA_VIDEO",
         "CAMERA"
       ],
-      "versionCode": 16
+      "versionCode": 17
     },
     "web": {
       "favicon": "./assets/images/4f12d49b-2be5-47bf-859e-e05eaefa35aa.png",
@@ -78,7 +78,11 @@
               "type": "widget",
               "name": "DayProgressWidget",
               "deploymentTarget": "16.0",
-              "bundleIdentifier": "com.buxrug.techtime.widget"
+              "bundleIdentifier": "com.buxrug.techtime.widget",
+              "entitlements": {
+                "com.apple.security.application-groups": ["group.com.buxrug.techtime"]
+              },
+              "frameworks": ["WidgetKit", "SwiftUI"]
             }
           }
         }
@@ -114,6 +118,5 @@
       "router": {},
       "backendUrl": "https://e6kq9ru5w9var7qsbp5zq4xkcymcjbd3.app.specular.dev"
     }
-  },
-  "scheme": "Tech Times"
+  }
 }
