@@ -360,6 +360,7 @@ export async function maybeSendTargetReminderNotification(
   progressPercent: number,
   settings: NotificationSettings
 ): Promise<void> {
+  if (Platform.OS === 'web') return;
   if (!settings.targetReminder) {
     console.log('NotificationScheduler: Target reminder disabled, skipping');
     return;
@@ -403,6 +404,7 @@ export async function maybeSendEfficiencyAlertNotification(
   efficiencyPercent: number,
   settings: NotificationSettings
 ): Promise<void> {
+  if (Platform.OS === 'web') return;
   if (!settings.efficiencyAlert) {
     console.log('NotificationScheduler: Efficiency alert disabled, skipping');
     return;
@@ -444,6 +446,7 @@ export async function maybeSendEfficiencyAlertNotification(
  * Schedule (or cancel) the weekly report notification.
  */
 export async function scheduleWeeklyReportNotification(settings: NotificationSettings): Promise<void> {
+  if (Platform.OS === 'web') return;
   // Cancel any existing weekly-report notifications
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const existing = scheduled.filter(n => n.identifier.startsWith(NOTIFICATION_IDS.WEEKLY_REPORT));
@@ -487,6 +490,7 @@ export async function scheduleWeeklyReportNotification(settings: NotificationSet
  * Schedule (or cancel) the monthly report notification.
  */
 export async function scheduleMonthlyReportNotification(settings: NotificationSettings): Promise<void> {
+  if (Platform.OS === 'web') return;
   // Cancel any existing monthly-report notification
   try {
     await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.MONTHLY_REPORT);
@@ -528,6 +532,7 @@ export async function scheduleMonthlyReportNotification(settings: NotificationSe
  * Cancel all scheduled notifications
  */
 export async function cancelAllNotifications(): Promise<void> {
+  if (Platform.OS === 'web') return;
   console.log('NotificationScheduler: Cancelling all scheduled notifications');
   await Notifications.cancelAllScheduledNotificationsAsync();
   console.log('NotificationScheduler: All notifications cancelled');
@@ -538,6 +543,7 @@ export async function cancelAllNotifications(): Promise<void> {
  * Returns the count of newly scheduled notifications.
  */
 export async function forceRescheduleAllNotifications(): Promise<number> {
+  if (Platform.OS === 'web') return 0;
   console.log('NotificationScheduler: forceRescheduleAllNotifications — cancelling all and rescheduling');
   await Notifications.cancelAllScheduledNotificationsAsync();
   await scheduleAllNotifications();
@@ -550,6 +556,7 @@ export async function forceRescheduleAllNotifications(): Promise<number> {
  * Schedule all notifications based on current settings and schedule
  */
 export async function scheduleAllNotifications(): Promise<void> {
+  if (Platform.OS === 'web') return;
   console.log('NotificationScheduler: Scheduling all notifications');
 
   try {
@@ -606,6 +613,7 @@ export async function scheduleAllNotifications(): Promise<void> {
  * corresponding setting is enabled, re-schedules everything.
  */
 export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> {
+  if (Platform.OS === 'web') return;
   console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — checking OS-scheduled notifications');
 
   try {
@@ -663,6 +671,7 @@ export async function getScheduledNotifications(): Promise<Notifications.Notific
  * Test notification (for testing sound and vibration)
  */
 export async function sendTestNotification(settings: NotificationSettings): Promise<void> {
+  if (Platform.OS === 'web') return;
   console.log('NotificationScheduler: Sending test notification');
 
   await setupAndroidNotificationChannels();

@@ -45,7 +45,7 @@ export async function updateLiveWidget(): Promise<void> {
     console.log('LiveWidget: Fetching schedule and jobs for widget update');
     const [schedule, jobs] = await Promise.all([
       offlineStorage.getSchedule(),
-      offlineStorage.getJobs(),
+      offlineStorage.getAllJobs(),
     ]);
 
     const now = new Date();
