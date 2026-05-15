@@ -100,16 +100,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const available = compatible && enrolled;
       setBiometricsAvailable(available);
       console.log('AuthContext: Biometrics available:', available);
-      
-      // If biometrics become unavailable, disable the setting
-      if (!available) {
-        const currentBiometrics = await getSecureItem(BIOMETRICS_KEY);
-        if (currentBiometrics === 'true') {
-          console.log('AuthContext: Biometrics no longer available, disabling');
-          await setSecureItem(BIOMETRICS_KEY, 'false');
-          setBiometricsEnabledState(false);
-        }
-      }
+      // Note: we intentionally do NOT auto-clear the stored biometrics preference
+      // when available=false, because the hardware check can return false transiently
+      // during startup. The UI already hides the biometric button when biometricsAvailable
+      // is false, so the stored preference is safe to keep.
     } catch (error) {
       console.error('AuthContext: Error checking biometrics:', error);
       setBiometricsAvailable(false);

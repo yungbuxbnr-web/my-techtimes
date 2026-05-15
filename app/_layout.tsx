@@ -56,6 +56,7 @@ function RootLayoutContent() {
 
   // Reset badge count on initial mount
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     console.log('RootLayout: Resetting badge count on mount');
     Notifications.setBadgeCountAsync(0).catch(err =>
       console.error('RootLayout: Failed to reset badge count on mount:', err)
@@ -102,10 +103,6 @@ function RootLayoutContent() {
           console.log('RootLayout: Scheduling all notifications');
           await scheduleAllNotifications();
           console.log('RootLayout: Notifications scheduled successfully');
-
-          // Safety-net: verify work-schedule notifications are present after scheduling
-          console.log('RootLayout: Verifying work-schedule notifications on mount');
-          await ensureWorkScheduleNotificationsScheduled();
         } else {
           console.log('RootLayout: Notification permissions not granted');
         }
@@ -136,10 +133,6 @@ function RootLayoutContent() {
         // Register background mainframe for time tracking
         console.log('RootLayout: Registering background mainframe');
         await registerBackgroundMainframe();
-
-        // Run an immediate foreground sync on startup
-        console.log('RootLayout: Running initial foreground mainframe sync');
-        await runMainframeSync();
       } catch (error) {
         console.error('RootLayout: Error initializing app:', error);
       }
