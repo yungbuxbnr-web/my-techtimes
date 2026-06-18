@@ -32,7 +32,6 @@ yarn-error.*
 android/
 ios/
 
-pnpm-lock.yaml
 package-lock.json
 
 # Chat history contains presigned URLs that get flagged by GitHub
@@ -42,7 +41,5 @@ package-lock.json
 .vercel/
 .cache/
 build/
-bun.lock
-bun.lockb
 yarn.lock
 next-env.d.ts
