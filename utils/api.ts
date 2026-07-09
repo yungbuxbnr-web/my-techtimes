@@ -197,16 +197,32 @@ function getWorkingDaysToDate(year: number, month: number, schedule: Schedule): 
   
   const date = new Date(year, month - 1, 1);
   let count = 0;
+  // BUG 3 FIX: track Saturday counter for frequency logic
+  let saturdayCounter = 0;
 
   for (let day = 1; day <= lastDay; day++) {
     date.setDate(day);
     const dayOfWeek = date.getDay();
-    if (workingDays.includes(dayOfWeek)) {
-      count++;
+    if (!workingDays.includes(dayOfWeek)) continue;
+
+    // BUG 3 FIX: apply Saturday frequency logic inline
+    if (dayOfWeek === 6 && schedule.saturdayFrequency !== undefined) {
+      saturdayCounter++;
+      const freq = schedule.saturdayFrequency;
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (freq === 'none') continue;
+      else if (freq === '1-in-2' && saturdayCounter % 2 !== 1) continue;
+      else if (freq === '1-in-3' && saturdayCounter % 3 !== 1) continue;
+      else if (freq === '1-in-4' && saturdayCounter % 4 !== 1) continue;
+      else if (freq === 'custom') {
+        const customDates = schedule.customSaturdayDates ?? [];
+        if (!customDates.includes(dateStr)) continue;
+      }
     }
+    count++;
   }
 
-  console.log(`API: Calculated ${count} working days from ${year}-${month}-01 to ${year}-${month}-${lastDay}`);
+  console.log(`API: Calculated ${count} working days from ${year}-${month}-01 to ${year}-${month}-${lastDay} (satFreq: ${schedule.saturdayFrequency})`);
   return count;
 }
 
@@ -335,7 +351,8 @@ export const api = {
 
     // ── Raw (unadjusted) contracted hours ────────────────────────────────────
     // Total contracted hours for the full month (no absence deductions yet)
-    const totalWorkingDaysInMonth = countWorkingDaysInMonth(year, monthNum, schedule.workingDays || [1, 2, 3, 4, 5]);
+    // BUG 3 FIX: pass schedule so Saturday frequency is applied
+    const totalWorkingDaysInMonth = countWorkingDaysInMonth(year, monthNum, schedule.workingDays || [1, 2, 3, 4, 5], undefined, schedule);
 
     // Calculate daily hours from schedule times (not from settings.monthlyTarget)
     const dailyHours = schedule.startTime && schedule.endTime
@@ -359,15 +376,34 @@ export const api = {
     if (year > currentYear || (year === currentYear && monthNum > currentMonth)) {
       workingDaysToDate = 0;
     } else if (year < currentYear || (year === currentYear && monthNum < currentMonth)) {
-      workingDaysToDate = countWorkingDaysInMonth(year, monthNum, schedule.workingDays || [1, 2, 3, 4, 5]);
+      // BUG 3 FIX: pass schedule for Saturday frequency
+      workingDaysToDate = countWorkingDaysInMonth(year, monthNum, schedule.workingDays || [1, 2, 3, 4, 5], undefined, schedule);
     } else {
-      // Current month — count up to today
+      // Current month — count up to today applying Saturday frequency inline
+      // BUG 3 FIX: apply saturdayFrequency when counting days to date
       const wdArr = schedule.workingDays || [1, 2, 3, 4, 5];
       let count = 0;
+      let saturdayCounter = 0;
       const d = new Date(year, monthNum - 1, 1);
       for (let day = 1; day <= currentDay; day++) {
         d.setDate(day);
-        if (wdArr.includes(d.getDay())) count++;
+        const dow = d.getDay();
+        if (!wdArr.includes(dow)) continue;
+
+        if (dow === 6 && schedule.saturdayFrequency !== undefined) {
+          saturdayCounter++;
+          const freq = schedule.saturdayFrequency;
+          const dateStr = `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          if (freq === 'none') continue;
+          else if (freq === '1-in-2' && saturdayCounter % 2 !== 1) continue;
+          else if (freq === '1-in-3' && saturdayCounter % 3 !== 1) continue;
+          else if (freq === '1-in-4' && saturdayCounter % 4 !== 1) continue;
+          else if (freq === 'custom') {
+            const customDates = schedule.customSaturdayDates ?? [];
+            if (!customDates.includes(dateStr)) continue;
+          }
+        }
+        count++;
       }
       workingDaysToDate = count;
     }
@@ -403,6 +439,7 @@ export const api = {
         hours,
         type: absence.absenceType || 'absence',
         month: absence.month,
+        deductionType: absence.deductionType, // BUG 2 FIX: pass deductionType through
       });
     });
 

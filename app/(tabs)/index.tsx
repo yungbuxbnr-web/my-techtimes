@@ -15,7 +15,7 @@ import {
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { router, useFocusEffect } from 'expo-router';
-import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
+import { formatTime, formatDecimalHours, calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 import { api } from '@/utils/api';
 import CircularProgress from '@/components/CircularProgress';
 import AppBackground from '@/components/AppBackground';
@@ -73,7 +73,16 @@ export default function DashboardScreen() {
       setWeekStats(week);
       setTechnicianName(profile.name);
       setWorkingDays(schedule.workingDays || [1, 2, 3, 4, 5]);
-      setDailyHours(schedule.dailyWorkingHours || 8.5);
+      // BUG 4 FIX: use calculated daily hours from schedule times, not stale dailyWorkingHours field
+      const calculatedDailyHours = schedule.startTime && schedule.endTime
+        ? calcDailyHoursFromSchedule(
+            schedule.startTime,
+            schedule.endTime,
+            schedule.lunchStartTime ?? '12:00',
+            schedule.lunchEndTime ?? '12:30'
+          )
+        : (schedule.dailyWorkingHours || 8.5);
+      setDailyHours(calculatedDailyHours);
       setWorkSchedule(schedule);
       setStreaksEnabled(settings.streaksEnabled !== false);
       setStreakData(streaks);
