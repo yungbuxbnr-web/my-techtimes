@@ -90,7 +90,9 @@ export default function SettingsScreen() {
     loadWidgetPrefs();
     loadSchedule();
     loadLiveWidgetPref();
-    Notifications.setBadgeCountAsync(0).catch(() => {});
+    if (Platform.OS !== 'web') {
+      Notifications.setBadgeCountAsync(0).catch(() => {});
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -213,7 +215,7 @@ export default function SettingsScreen() {
         sched.lunchStartTime || '12:00',
         sched.lunchEndTime || '12:30'
       );
-      const wDays = countWorkingDaysInMonth(now.getFullYear(), now.getMonth() + 1, sched.workingDays || [1, 2, 3, 4, 5]);
+      const wDays = countWorkingDaysInMonth(now.getFullYear(), now.getMonth() + 1, sched.workingDays || [1, 2, 3, 4, 5], undefined, sched);
       setMonthlyTarget((wDays * dailyHrs).toFixed(1));
       
       console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);

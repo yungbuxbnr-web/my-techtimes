@@ -14,6 +14,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Absence, Schedule } from '@/utils/api';
+import { calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 import { getCachedBankHolidays, BankHoliday } from '@/utils/bankHolidays';
 
 interface DayInfo {
@@ -66,7 +67,12 @@ export default function WorkCalendarScreen() {
       console.log('WorkCalendarScreen: Effective working days after Saturday frequency:', effectiveWorkingDays);
       
       setWorkingDays(effectiveWorkingDays);
-      setDailyHours(schedule.dailyWorkingHours || 8.5);
+      setDailyHours(calcDailyHoursFromSchedule(
+        schedule.startTime || '07:00',
+        schedule.endTime || '18:00',
+        schedule.lunchStartTime || '12:00',
+        schedule.lunchEndTime || '12:30'
+      ));
       
       const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
       const monthAbsences = await api.getAbsences(monthStr);
@@ -87,55 +93,36 @@ export default function WorkCalendarScreen() {
     const lastDay = new Date(year, month + 1, 0);
     
     const days: DayInfo[] = [];
-    
-    // Helper function to check if a date is a working Saturday based on frequency
-    const isWorkingSaturday = (date: Date): boolean => {
-      if (date.getDay() !== 6) return false; // Not a Saturday
-      
-      if (schedule.saturdayFrequency === 'every') return true;
-      if (schedule.saturdayFrequency === 'none') return false;
-      
-      // For custom frequency patterns (1-in-2, 1-in-3, 1-in-4, custom)
-      if (schedule.nextWorkingSaturday) {
-        const nextWorkingSat = new Date(schedule.nextWorkingSaturday);
-        const dateStr = date.toISOString().split('T')[0];
-        const nextWorkingSatStr = nextWorkingSat.toISOString().split('T')[0];
-        
-        if (dateStr === nextWorkingSatStr) return true;
-        
-        // Calculate pattern-based Saturdays
-        if (schedule.saturdayFrequency === '1-in-2') {
-          const weeksDiff = Math.floor((date.getTime() - nextWorkingSat.getTime()) / (7 * 24 * 60 * 60 * 1000));
-          return weeksDiff % 2 === 0;
-        } else if (schedule.saturdayFrequency === '1-in-3') {
-          const weeksDiff = Math.floor((date.getTime() - nextWorkingSat.getTime()) / (7 * 24 * 60 * 60 * 1000));
-          return weeksDiff % 3 === 0;
-        } else if (schedule.saturdayFrequency === '1-in-4') {
-          const weeksDiff = Math.floor((date.getTime() - nextWorkingSat.getTime()) / (7 * 24 * 60 * 60 * 1000));
-          return weeksDiff % 4 === 0;
-        }
-      }
-      
-      // Check custom Saturday dates
-      if (schedule.customSaturdayDates && schedule.customSaturdayDates.length > 0) {
-        const dateStr = date.toISOString().split('T')[0];
-        return schedule.customSaturdayDates.includes(dateStr);
-      }
-      
-      return false;
-    };
+    let saturdayCounter = 0; // tracks Saturdays seen so far this month
     
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const date = new Date(year, month, day);
       const dateString = date.toISOString().split('T')[0];
       const dayOfWeek = date.getDay();
       
-      // Check if it's a working day (including Saturday logic)
+      // Check if it's a working day (including Saturday frequency logic)
       let isWorkingDay = workDays.includes(dayOfWeek);
       
-      // Special handling for Saturdays based on frequency
-      if (dayOfWeek === 6) {
-        isWorkingDay = isWorkingSaturday(date);
+      // Apply Saturday frequency logic matching countWorkingDaysInMonth
+      if (dayOfWeek === 6 && workDays.includes(6)) {
+        saturdayCounter++;
+        const freq = schedule.saturdayFrequency;
+        if (freq === 'none') {
+          isWorkingDay = false;
+        } else if (freq === 'every') {
+          isWorkingDay = true;
+        } else if (freq === '1-in-2') {
+          isWorkingDay = saturdayCounter % 2 === 1; // 1st, 3rd, 5th…
+        } else if (freq === '1-in-3') {
+          isWorkingDay = saturdayCounter % 3 === 1; // 1st, 4th, 7th…
+        } else if (freq === '1-in-4') {
+          isWorkingDay = saturdayCounter % 4 === 1; // 1st, 5th, 9th…
+        } else if (freq === 'custom') {
+          const customDates = schedule.customSaturdayDates ?? [];
+          isWorkingDay = customDates.includes(dateString);
+        }
+      } else if (dayOfWeek === 6 && !workDays.includes(6)) {
+        isWorkingDay = false;
       }
       
       // Check if there's an absence for this date

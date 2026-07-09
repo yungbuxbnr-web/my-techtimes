@@ -15,7 +15,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { router } from 'expo-router';
 import { api } from '@/utils/api';
-import { formatTime } from '@/utils/jobCalculations';
+import { formatTime, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from '@/utils/jobCalculations';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { updateDayProgressWidget } from '@/utils/widgetManager';
@@ -110,9 +110,19 @@ export default function StatsScreen() {
       const totalAw = yearJobs.reduce((sum, job) => sum + job.aw, 0);
       const soldHours = (totalAw * 5) / 60;
 
-      // Yearly target = monthly target × 12
-      const monthlyTarget = settings.monthlyTarget || 180;
-      const targetHours = monthlyTarget * 12;
+      // Yearly target = sum of actual working days across all 12 months × daily hours
+      const dailyHrs = calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      );
+      let totalWorkingDays = 0;
+      const yearStartYear = startDate.getFullYear();
+      for (let m = 1; m <= 12; m++) {
+        totalWorkingDays += countWorkingDaysInMonth(yearStartYear, m, sched.workingDays || [1, 2, 3, 4, 5], undefined, sched);
+      }
+      const targetHours = totalWorkingDays * dailyHrs;
 
       const progress = targetHours > 0 ? Math.min((soldHours / targetHours) * 100, 100) : 0;
       const remainingHours = Math.max(0, targetHours - soldHours);
@@ -145,7 +155,12 @@ export default function StatsScreen() {
       setRecentJobs(jobs);
       setSchedule(sched);
       setSettings(sett);
-      setDailyWorkingHours(sched.dailyWorkingHours || 8.5);
+      setDailyWorkingHours(calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      ));
       console.log('StatsScreen: Stats loaded successfully');
     } catch (error) {
       console.error('StatsScreen: Error loading stats:', error);
@@ -162,7 +177,12 @@ export default function StatsScreen() {
       const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
       const totalMinutes = totalAw * 5;
       const totalHours = totalMinutes / 60;
-      const dayHours = sched.dailyWorkingHours || 8.5;
+      const dayHours = calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      );
       const percentage = dayHours > 0 ? (totalHours / dayHours) * 100 : 0;
       
       setSelectedDayStats({
@@ -191,9 +211,15 @@ export default function StatsScreen() {
       const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
       const totalMinutes = totalAw * 5;
       const totalHours = totalMinutes / 60;
-      // Week target = 5 working days × daily hours
+      // Week target = working days × daily hours
       const weekWorkingDays = (sched.workingDays || [1, 2, 3, 4, 5]).length;
-      const weekTargetHours = weekWorkingDays * (sched.dailyWorkingHours || 8.5);
+      const weekDailyHrs = calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      );
+      const weekTargetHours = weekWorkingDays * weekDailyHrs;
       const percentage = weekTargetHours > 0 ? (totalHours / weekTargetHours) * 100 : 0;
       
       setSelectedWeekStats({
@@ -369,7 +395,9 @@ export default function StatsScreen() {
     const now = currentTime;
     const [startHour, startMin] = (schedule.startTime || '08:00').split(':').map(Number);
     const [endHour, endMin] = (schedule.endTime || '17:00').split(':').map(Number);
-    const lunchMinutes = schedule.lunchBreakMinutes || 30;
+    const lunchStart = (schedule.lunchStartTime || '12:00').split(':').map(Number);
+    const lunchEnd = (schedule.lunchEndTime || '12:30').split(':').map(Number);
+    const lunchMinutes = (lunchEnd[0] * 60 + lunchEnd[1]) - (lunchStart[0] * 60 + lunchStart[1]);
     
     const startOfDay = new Date(now);
     startOfDay.setHours(startHour, startMin, 0, 0);

@@ -16,7 +16,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { api, Job } from '@/utils/api';
 import CircularProgress from '@/components/CircularProgress';
-import { formatTime } from '@/utils/jobCalculations';
+import { calcDailyHoursFromSchedule, countWorkingDaysInMonth, formatTime } from '@/utils/jobCalculations';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
 
@@ -100,15 +100,27 @@ export default function CalendarScreen() {
         
         const dayOfWeek = currentDay.getDay();
         const isWorkingDay = workingDays.includes(dayOfWeek);
-        
-        const availableHours = isWorkingDay ? schedule.dailyWorkingHours : 0;
+
+        const dailyHrs = calcDailyHoursFromSchedule(
+          schedule.startTime || '07:00',
+          schedule.endTime || '18:00',
+          schedule.lunchStartTime || '12:00',
+          schedule.lunchEndTime || '12:30'
+        );
+        const availableHours = isWorkingDay ? dailyHrs : 0;
         const totalAw = dayJobs.reduce((sum, job) => sum + job.aw, 0);
         const soldHours = (totalAw * 5) / 60; // 1 AW = 5 minutes = 0.0833 hours
         const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
-        
-        // Progress is sold hours vs daily target (proportional to monthly target)
-        const workingDaysPerMonth = workingDays.length * 4.33; // Approximate
-        const dailyTarget = settings.monthlyTarget / workingDaysPerMonth;
+
+        // Progress is sold hours vs daily target (based on actual working days in month)
+        const actualWorkingDaysInMonth = countWorkingDaysInMonth(
+          currentDay.getFullYear(),
+          currentDay.getMonth() + 1,
+          workingDays,
+          undefined,
+          schedule
+        );
+        const dailyTarget = actualWorkingDaysInMonth > 0 ? settings.monthlyTarget / actualWorkingDaysInMonth : 0;
         const progress = dailyTarget > 0 ? (soldHours / dailyTarget) * 100 : 0;
         
         dayMap.set(dayDateStr, {
@@ -467,6 +479,16 @@ export default function CalendarScreen() {
     for (let m = 0; m < 12; m++) {
       months.push(m);
     }
+
+    // Pre-compute dailyHrs once for the year view (schedule is loaded into calendarData context)
+    // We derive it from the first DayData entry that has availableHours > 0
+    let yearViewDailyHrs = 8.5;
+    for (const [, dayData] of calendarData) {
+      if (dayData.availableHours > 0) {
+        yearViewDailyHrs = dayData.availableHours;
+        break;
+      }
+    }
     
     return (
       <View style={styles.yearViewContainer}>
@@ -475,7 +497,22 @@ export default function CalendarScreen() {
         <View style={styles.yearGrid}>
           {months.map((monthIndex) => {
             const monthDate = new Date(year, monthIndex, 1);
-            const monthStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+            const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+            // Gather jobs for this month from calendarData
+            let monthSoldHours = 0;
+            let monthWorkingDays = 0;
+            for (const [dateKey, dayData] of calendarData) {
+              if (dateKey.startsWith(monthPrefix)) {
+                monthSoldHours += dayData.soldHours;
+                if (dayData.availableHours > 0) {
+                  monthWorkingDays++;
+                }
+              }
+            }
+            const monthAvailableHours = monthWorkingDays * yearViewDailyHrs;
+            const monthEfficiency = monthAvailableHours > 0 ? (monthSoldHours / monthAvailableHours) * 100 : 0;
+            const clampedEfficiency = Math.min(monthEfficiency, 100);
             
             return (
               <TouchableOpacity
@@ -492,10 +529,10 @@ export default function CalendarScreen() {
                 
                 <View style={styles.yearMonthCircle}>
                   <CircularProgress
-                    percentage={50}
+                    percentage={clampedEfficiency}
                     size={60}
                     strokeWidth={6}
-                    color={theme.primary}
+                    color={getEfficiencyColor(clampedEfficiency)}
                     backgroundColor={theme.border}
                   />
                 </View>

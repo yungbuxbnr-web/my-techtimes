@@ -15,6 +15,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Absence } from '@/utils/api';
+import { calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function AbsenceLoggerScreen() {
@@ -58,10 +59,27 @@ export default function AbsenceLoggerScreen() {
   const getHoursForDate = (date: Date): number => {
     if (!schedule) return 0;
     const dayOfWeek = date.getDay();
-    if (dayOfWeek === 6 && schedule.saturdayDailyHours !== undefined) {
-      return schedule.saturdayDailyHours;
+    if (dayOfWeek === 6 && schedule.saturdayStartTime && schedule.saturdayEndTime) {
+      const lunchEndTime = schedule.saturdayLunchBreakMinutes
+        ? (() => {
+            const h = Math.floor(schedule.saturdayLunchBreakMinutes / 60);
+            const m = schedule.saturdayLunchBreakMinutes % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          })()
+        : '12:00';
+      return calcDailyHoursFromSchedule(
+        schedule.saturdayStartTime,
+        schedule.saturdayEndTime,
+        '12:00',
+        lunchEndTime
+      );
     }
-    return schedule.dailyWorkingHours;
+    return calcDailyHoursFromSchedule(
+      schedule.startTime || '07:00',
+      schedule.endTime || '18:00',
+      schedule.lunchStartTime || '12:00',
+      schedule.lunchEndTime || '12:30'
+    );
   };
 
   const isAbsenceFuture = (absenceDate: string): boolean => {
@@ -100,6 +118,8 @@ export default function AbsenceLoggerScreen() {
       ? `Scheduled for ${selectedDate.toLocaleDateString('en-GB')} — will be deducted when the date arrives`
       : `Deducted immediately from available hours`;
 
+    const deductionType = isFuture ? 'target' : 'available';
+
     try {
       await api.createAbsence({
         month: monthStr,
@@ -107,7 +127,7 @@ export default function AbsenceLoggerScreen() {
         daysCount: 1,
         isHalfDay,
         customHours: hours,
-        deductionType: 'target',
+        deductionType,
         absenceType,
         note: `${absenceTypeName} - ${durationName}`,
       });

@@ -16,7 +16,7 @@ import { router } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
-import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
+import { formatTime, formatDecimalHours, calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 import { useResponsiveLayout, getPadding, getFontSize, getSpacing } from '@/utils/responsive';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -186,9 +186,17 @@ export default function InsightsScreen() {
       // Calculate day stats
       calculateDayStats(filteredJobs);
       
-      // Load goals
-      const settings = await api.getSettings();
+      // Load goals from settings and schedule
+      const [settings, sched] = await Promise.all([api.getSettings(), api.getSchedule()]);
+      const dailyHrs = calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      );
       setMonthlyTarget(settings.monthlyTarget || 180);
+      setWeeklyTarget((settings.weeklyStreakTarget || 5) * dailyHrs);
+      setDailyTarget(dailyHrs);
       
       console.log('InsightsScreen: Data loaded successfully');
     } catch (error) {
@@ -202,14 +210,37 @@ export default function InsightsScreen() {
     loadInsightsData();
   }, [loadInsightsData]);
 
+  const RECOGNISED_JOB_TYPES = [
+    'Service', 'MOT', 'Repair', 'Diagnostic', 'Tyres', 'Brakes', 'Electrical',
+    'Suspension', 'Clutch', 'Gearbox', 'Engine', 'Exhaust', 'Air Con',
+    'Bodywork', 'Recall', 'PDI', 'Warranty',
+  ];
+
+  const getJobType = (job: Job): string => {
+    if (job.notes && job.notes.trim().length > 0) {
+      const firstWord = job.notes.trim().split(/\s+/)[0];
+      const twoWords = job.notes.trim().split(/\s+/).slice(0, 2).join(' ');
+      // Check two-word matches first (e.g. "Air Con")
+      for (const t of RECOGNISED_JOB_TYPES) {
+        if (twoWords.toLowerCase().startsWith(t.toLowerCase())) return t;
+      }
+      // Then single-word matches
+      for (const t of RECOGNISED_JOB_TYPES) {
+        if (firstWord.toLowerCase() === t.toLowerCase()) return t;
+      }
+    }
+    // Fall back to VHC label only if notes is empty
+    if (job.vhcStatus && job.vhcStatus !== 'NONE') return `VHC ${job.vhcStatus}`;
+    return 'General';
+  };
+
   const calculateJobTypeStats = (jobList: Job[]): JobTypeStats[] => {
     console.log('InsightsScreen: Calculating job type stats');
     
-    // Use VHC status as job type proxy
     const typeMap = new Map<string, { count: number; totalAw: number }>();
     
     jobList.forEach(job => {
-      const type = job.vhcStatus === 'NONE' ? 'Standard' : `VHC ${job.vhcStatus}`;
+      const type = getJobType(job);
       const existing = typeMap.get(type) || { count: 0, totalAw: 0 };
       existing.count++;
       existing.totalAw += job.aw;
@@ -499,10 +530,7 @@ export default function InsightsScreen() {
           style={[styles.kpiCard, { backgroundColor: theme.card, width: kpiCardWidth }]}
           onPress={() => {
             if (jobTypeStats.length > 0) {
-              handleDrilldown(`${jobTypeStats[0].type} Jobs`, (job) => {
-                const type = job.vhcStatus === 'NONE' ? 'Standard' : `VHC ${job.vhcStatus}`;
-                return type === jobTypeStats[0].type;
-              });
+              handleDrilldown(`${jobTypeStats[0].type} Jobs`, (job) => getJobType(job) === jobTypeStats[0].type);
             }
           }}
         >
@@ -609,10 +637,7 @@ export default function InsightsScreen() {
                 <TouchableOpacity
                   style={styles.jobTypeRow}
                   onPress={() => {
-                    handleDrilldown(`${stat.type} Jobs`, (job) => {
-                      const type = job.vhcStatus === 'NONE' ? 'Standard' : `VHC ${job.vhcStatus}`;
-                      return type === stat.type;
-                    });
+                    handleDrilldown(`${stat.type} Jobs`, (job) => getJobType(job) === stat.type);
                   }}
                 >
                   <View style={styles.jobTypeLeft}>
