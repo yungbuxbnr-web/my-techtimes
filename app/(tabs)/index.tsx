@@ -310,7 +310,11 @@ export default function DashboardScreen() {
   const workdayProgress = calculateWorkdayProgress();
 
   const calculateTimeElapsed = (): { progressPct: number; label: string } => {
-    if (!workSchedule) return { progressPct: 0, label: '0h 0m elapsed' };
+    if (!workSchedule) return { progressPct: 0, label: 'No schedule' };
+    if (workdayProgress.isAbsent) return { progressPct: 0, label: 'Absent today' };
+    if (!workdayProgress.isWorkDay) return { progressPct: 0, label: 'Not a work day' };
+    if (workdayProgress.beforeWork) return { progressPct: 0, label: 'Before shift' };
+    if (workdayProgress.afterWork) return { progressPct: 100, label: 'Shift complete' };
 
     const parseTimeToMinutes = (timeStr: string) => {
       const [h, m] = timeStr.split(':').map(Number);
@@ -690,7 +694,7 @@ export default function DashboardScreen() {
               )}
 
               {/* Today's Live Progress — concentric rings (landscape) */}
-              {workSchedule && workdayProgress.isWorkDay && !workdayProgress.isAbsent && (
+              {workSchedule && (
                 <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
                   <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
                   <DailyRings
@@ -965,7 +969,7 @@ export default function DashboardScreen() {
             )}
 
             {/* Today's Live Progress — concentric rings */}
-            {workSchedule && workdayProgress.isWorkDay && !workdayProgress.isAbsent && (
+            {workSchedule && (
               <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
                 <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
                 <DailyRings
