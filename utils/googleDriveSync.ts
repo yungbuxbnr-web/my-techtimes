@@ -7,6 +7,12 @@ import type { Job, Schedule } from './offlineStorage';
 
 WebBrowser.maybeCompleteAuthSession();
 
+// Safe URL-encoded form builder — avoids Hermes URLSearchParams polyfill issues
+const encodeForm = (params: Record<string, string>): string =>
+  Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+
 // ─── CONFIGURATION ────────────────────────────────────────────────────────────
 // Replace with your real Web OAuth Client ID from Google Cloud Console
 // APIs & Services → Credentials → OAuth 2.0 Client IDs → Web client
@@ -75,12 +81,12 @@ export async function exchangeCodeForTokens(
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
+    body: encodeForm({
       code,
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
-    }).toString(),
+    }),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -141,11 +147,11 @@ async function refreshAccessToken(): Promise<string | null> {
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
+      body: encodeForm({
         refresh_token: refreshToken,
         client_id: GOOGLE_CLIENT_ID,
         grant_type: 'refresh_token',
-      }).toString(),
+      }),
     });
     if (!res.ok) {
       console.error('GoogleDriveSync: Token refresh failed with status:', res.status);

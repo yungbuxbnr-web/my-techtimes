@@ -27,6 +27,22 @@ import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import * as Haptics from 'expo-haptics';
 import { updateWidgetData } from '@/utils/widgetManager';
+
+// Safe Haptics wrapper — no-ops on web/unsupported platforms
+const safeHaptics = {
+  impactAsync: async (style: Haptics.ImpactFeedbackStyle) => {
+    if (Platform.OS === 'web') return;
+    try { await safeHaptics.impactAsync(style); } catch {}
+  },
+  notificationAsync: async (type: Haptics.NotificationFeedbackType) => {
+    if (Platform.OS === 'web') return;
+    try { await safeHaptics.notificationAsync(type); } catch {}
+  },
+  selectionAsync: async () => {
+    if (Platform.OS === 'web') return;
+    try { await safeHaptics.selectionAsync(); } catch {}
+  },
+};
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 
 interface JobSuggestion {
@@ -212,7 +228,7 @@ export default function AddJobModal() {
 
   const selectSuggestion = (suggestion: JobSuggestion) => {
     console.log('AddJobModal: User selected suggestion - auto-filling all fields:', suggestion);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     setWipNumber(suggestion.wipNumber);
     setVehicleReg(suggestion.vehicleReg);
@@ -235,19 +251,19 @@ export default function AddJobModal() {
 
     if (!validateWipNumber(wipNumber)) {
       toastManager.error('WIP number must be exactly 5 digits');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (!vehicleReg.trim()) {
       toastManager.error('Vehicle registration is required');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (!validateAW(aw)) {
       toastManager.error('AW must be between 0 and 100');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
@@ -289,7 +305,7 @@ export default function AddJobModal() {
         await updateWidgetData();
         setSaveNotificationType('success');
         toastManager.success('Job updated successfully!');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         console.log('AddJobModal: Closing modal after successful update');
         router.back();
       } else {
@@ -318,7 +334,7 @@ export default function AddJobModal() {
 
         setSaveNotificationType('success');
         toastManager.success('Job saved successfully!');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
         console.log('AddJobModal: Job saved - all stats will update live');
         console.log('AddJobModal: Closing modal after successful save');
@@ -328,7 +344,7 @@ export default function AddJobModal() {
       console.error('AddJobModal: Error saving job:', error);
       setSaveNotificationType('error');
       toastManager.error(error instanceof Error ? error.message : 'Failed to save job');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
       setTimeout(() => {
         setShowSaveNotification(false);
@@ -340,7 +356,7 @@ export default function AddJobModal() {
 
   const handleScanReg = async (source: 'camera' | 'gallery') => {
     console.log('AddJobModal: User scanning registration from', source);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
       const result = source === 'camera'
@@ -361,7 +377,7 @@ export default function AddJobModal() {
 
         const ocrResult: OCRRegResult = await api.scanRegistration(result.assets[0].uri);
 
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
         Alert.alert(
           'Confirm Registration',
@@ -387,7 +403,7 @@ export default function AddJobModal() {
 
   const handleScanJobCard = async (source: 'camera' | 'gallery') => {
     console.log('AddJobModal: User scanning job card from', source);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
       const result = source === 'camera'
@@ -408,7 +424,7 @@ export default function AddJobModal() {
 
         const ocrResult: OCRJobCardResult = await api.scanJobCard(result.assets[0].uri);
 
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
         Alert.alert(
           'Confirm Job Card Details',
@@ -435,7 +451,7 @@ export default function AddJobModal() {
 
   const handleTakeJobCardPhoto = async (source: 'camera' | 'gallery') => {
     console.log('AddJobModal: User taking job card photo from', source);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
       const result = source === 'camera'
@@ -454,7 +470,7 @@ export default function AddJobModal() {
         console.log('AddJobModal: Job card photo selected:', result.assets[0].uri);
         setJobCardImageUri(result.assets[0].uri);
         toastManager.success('Job card photo attached!');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
       console.error('AddJobModal: Error taking job card photo:', error);
@@ -464,7 +480,7 @@ export default function AddJobModal() {
 
   const handleRemoveJobCardPhoto = () => {
     console.log('AddJobModal: User removed job card photo');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setJobCardImageUri(undefined);
     toastManager.info('Job card photo removed');
   };
@@ -481,7 +497,7 @@ export default function AddJobModal() {
         newDateTime.setDate(selectedDate.getDate());
         setJobDateTime(newDateTime);
         console.log('AddJobModal: Android date updated to:', newDateTime.toLocaleDateString());
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         // Chain to time picker on Android
         setShowTimePicker(true);
       }
@@ -500,7 +516,7 @@ export default function AddJobModal() {
       newDateTime.setDate(selectedDate.getDate());
       setJobDateTime(newDateTime);
       console.log('AddJobModal: iOS date updated to:', newDateTime.toLocaleDateString());
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setShowDatePicker(false);
     }
   };
@@ -516,7 +532,7 @@ export default function AddJobModal() {
         newDateTime.setMinutes(selectedDate.getMinutes());
         setJobDateTime(newDateTime);
         console.log('AddJobModal: Android time updated to:', newDateTime.toLocaleTimeString());
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
       return;
     }
@@ -532,7 +548,7 @@ export default function AddJobModal() {
       newDateTime.setMinutes(selectedDate.getMinutes());
       setJobDateTime(newDateTime);
       console.log('AddJobModal: iOS time updated to:', newDateTime.toLocaleTimeString());
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setShowTimePicker(false);
     }
   };
@@ -606,7 +622,7 @@ export default function AddJobModal() {
                   style={[styles.scanButton, { backgroundColor: theme.secondary }]}
                   onPress={() => {
                     console.log('AddJobModal: User tapped Scan Job Card button');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     Alert.alert('Scan Job Card', 'Choose source:', [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Camera', onPress: () => handleScanJobCard('camera') },
@@ -738,7 +754,7 @@ export default function AddJobModal() {
                   style={[styles.scanButton, { backgroundColor: theme.secondary }]}
                   onPress={() => {
                     console.log('AddJobModal: User tapped Scan Reg button');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     Alert.alert('Scan Registration', 'Choose source:', [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Camera', onPress: () => handleScanReg('camera') },
@@ -795,7 +811,7 @@ export default function AddJobModal() {
                 }]}
                 onPress={() => {
                   console.log('AddJobModal: User tapped AW picker button');
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setShowAwPicker(true);
                 }}
               >
@@ -822,7 +838,7 @@ export default function AddJobModal() {
                   ]}
                   onPress={() => {
                     console.log('AddJobModal: User selected VHC GREEN');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setVhcStatus(vhcStatus === 'GREEN' ? 'NONE' : 'GREEN');
                   }}
                 >
@@ -847,7 +863,7 @@ export default function AddJobModal() {
                   ]}
                   onPress={() => {
                     console.log('AddJobModal: User selected VHC ORANGE');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setVhcStatus(vhcStatus === 'ORANGE' ? 'NONE' : 'ORANGE');
                   }}
                 >
@@ -872,7 +888,7 @@ export default function AddJobModal() {
                   ]}
                   onPress={() => {
                     console.log('AddJobModal: User selected VHC RED');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setVhcStatus(vhcStatus === 'RED' ? 'NONE' : 'RED');
                   }}
                 >
@@ -916,7 +932,7 @@ export default function AddJobModal() {
                   }]}
                   onPress={() => {
                     console.log('AddJobModal: User tapped date picker button');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setShowDatePicker(true);
                   }}
                 >
@@ -937,7 +953,7 @@ export default function AddJobModal() {
                   }]}
                   onPress={() => {
                     console.log('AddJobModal: User tapped time picker button');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setShowTimePicker(true);
                   }}
                 >
@@ -1002,7 +1018,7 @@ export default function AddJobModal() {
                     style={[styles.imageButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}
                     onPress={() => {
                       console.log('AddJobModal: User tapped Take Photo button');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       handleTakeJobCardPhoto('camera');
                     }}
                   >
@@ -1018,7 +1034,7 @@ export default function AddJobModal() {
                     style={[styles.imageButton, { backgroundColor: theme.secondary, borderColor: theme.secondary }]}
                     onPress={() => {
                       console.log('AddJobModal: User tapped Choose from Gallery button');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       handleTakeJobCardPhoto('gallery');
                     }}
                   >
@@ -1038,7 +1054,7 @@ export default function AddJobModal() {
               style={[styles.saveButton, { backgroundColor: theme.primary }]}
               onPress={() => {
                 console.log('AddJobModal: User tapped Save/Update Record button');
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 handleSave(false);
               }}
               disabled={saving}
@@ -1111,7 +1127,7 @@ export default function AddJobModal() {
                     ]}
                     onPress={() => {
                       console.log('AddJobModal: User selected AW value:', value);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setAw(value);
                       setShowAwPicker(false);
                     }}

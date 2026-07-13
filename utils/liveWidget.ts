@@ -102,18 +102,10 @@ export async function updateLiveWidget(): Promise<void> {
         title,
         body,
         priority: Notifications.AndroidNotificationPriority.LOW,
-        // @ts-expect-error — ongoing is a valid Android field not in expo-notifications types
         ongoing: true,
         data: { type: 'live-widget' },
         channelId: LIVE_WIDGET_CHANNEL,
         autoDismiss: false,
-        actions: [
-          {
-            identifier: 'ADD_JOB',
-            buttonTitle: '+ Add Job',
-            options: { opensAppToForeground: true },
-          },
-        ],
       } as any,
       trigger: null,
     });

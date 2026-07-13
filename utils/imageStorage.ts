@@ -1,5 +1,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import {
   documentDirectory,
   getInfoAsync,
@@ -89,8 +90,20 @@ export async function saveJobImage(jobId: string, sourceUri: string): Promise<St
     console.log('ImageStorage: Saving job image for jobId:', jobId, 'sourceUri:', sourceUri);
     await ensureImageDir();
 
+    let workingUri = sourceUri;
+    if (Platform.OS === 'android' && sourceUri.startsWith('content://')) {
+      const tmpPath = (documentDirectory ?? '') + `tmp_${Date.now()}.jpg`;
+      try {
+        await copyAsync({ from: sourceUri, to: tmpPath });
+        workingUri = tmpPath;
+        console.log('ImageStorage: Copied content:// URI to temp file:', tmpPath);
+      } catch (copyErr) {
+        console.warn('ImageStorage: Could not copy content:// URI, proceeding with original:', copyErr);
+      }
+    }
+
     const manipResult = await manipulateAsync(
-      sourceUri,
+      workingUri,
       [{ resize: { width: 1920 } }],
       { compress: 0.82, format: SaveFormat.JPEG }
     );

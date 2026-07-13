@@ -328,6 +328,7 @@ export default function DashboardScreen() {
     const lunchEndMinutes = parseTimeToMinutes(workSchedule.lunchEndTime || '12:30');
     const lunchDuration = lunchEndMinutes - lunchStartMinutes;
     const totalWorkMinutes = endMinutes - startMinutes - lunchDuration;
+    if (totalWorkMinutes <= 0) return { progressPct: 0, label: 'Not configured' };
 
     if (nowMinutes <= startMinutes) {
       return { progressPct: 0, label: '0h 0m elapsed' };
@@ -699,9 +700,9 @@ export default function DashboardScreen() {
                   <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
                   <DailyRings
                     dailyHours={dailyHours}
-                    timeElapsedProgress={timeElapsed.progressPct}
+                    timeElapsedProgress={Math.min(100, Math.max(0, timeElapsed.progressPct || 0))}
                     timeElapsedLabel={timeElapsed.label}
-                    soldHoursProgress={soldHoursProgress}
+                    soldHoursProgress={Math.min(100, Math.max(0, soldHoursProgress || 0))}
                     soldHoursLabel={soldHoursLabel}
                     soldColor={soldColor}
                     theme={theme}

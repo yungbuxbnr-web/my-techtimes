@@ -554,7 +554,8 @@ export async function exportToJson(jobs: Job[]): Promise<string> {
 
   const jsonString = JSON.stringify(exportData, null, 2);
   const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
-  const fileUri = FileSystem.documentDirectory + fileName;
+  const docDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '';
+  const fileUri = docDir + fileName;
 
   await FileSystem.writeAsStringAsync(fileUri, jsonString);
   console.log('ExportUtils: JSON exported to', fileUri);

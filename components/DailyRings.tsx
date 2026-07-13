@@ -28,7 +28,9 @@ function circumference(radius: number) {
 function dashOffset(radius: number, progress: number) {
   const circ = circumference(radius);
   const clamped = Math.min(100, Math.max(0, progress));
-  return circ * (1 - clamped / 100);
+  const result = circ * (1 - clamped / 100);
+  if (!isFinite(result) || isNaN(result)) return circ;
+  return result;
 }
 
 export default function DailyRings({
@@ -128,7 +130,7 @@ export default function DailyRings({
         </Svg>
 
         {/* Centre label absolutely positioned over SVG */}
-        <View style={styles.centreLabel} pointerEvents="none">
+        <View style={styles.centreLabel}>
           <Text style={[styles.centreLabelValue, { color: theme.primary }]}>
             {dailyHoursDisplay}
           </Text>
@@ -174,6 +176,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
+    pointerEvents: 'none',
   },
   centreLabelValue: {
     fontSize: 18,
