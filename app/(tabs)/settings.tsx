@@ -1451,10 +1451,61 @@ export default function SettingsScreen() {
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
-          
+
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: theme.background }]}
-            onPress={() => router.push('/about')}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Privacy Notice');
+              router.push('/privacy');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="shield.fill"
+              android_material_icon_name="security"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Privacy Notice</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Copyright');
+              router.push('/copyright');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="c.circle.fill"
+              android_material_icon_name="copyright"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Copyright</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Terms & Conditions');
+              router.push('/terms');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="doc.text.fill"
+              android_material_icon_name="description"
+              size={20}
+              color={theme.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Terms &amp; Conditions</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped About TechTimes');
+              router.push('/about');
+            }}
           >
             <IconSymbol
               ios_icon_name="info.circle"

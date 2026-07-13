@@ -9,7 +9,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -20,7 +20,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 export default function AboutScreen() {
   console.log('AboutScreen: Rendering comprehensive about page');
   const { theme } = useThemeContext();
-  const router = useRouter();
   const [exporting, setExporting] = useState(false);
 
   const handleExportToPDF = async () => {
@@ -90,10 +89,13 @@ export default function AboutScreen() {
             th, td { padding: 11px; text-align: left; border-bottom: 1px solid #ddd; }
             th { background: #0a0a5e; color: white; font-weight: 600; }
             tr:hover { background: #f5f8ff; }
+            .eff-green { background: #e8f5e9; color: #2e7d32; font-weight: bold; }
+            .eff-yellow { background: #fff8e1; color: #f57f17; font-weight: bold; }
+            .eff-red { background: #ffebee; color: #c62828; font-weight: bold; }
             .page-break { page-break-after: always; }
-            .footer { margin-top: 50px; padding: 28px; border-radius: 15px; text-align: center; background: linear-gradient(135deg, #f0f4ff 0%, #e0e8ff 100%); }
-            .footer h3 { color: #0a0a5e; margin-bottom: 14px; }
-            .footer p { color: #555; font-size: 13px; line-height: 1.6; }
+            .footer { margin-top: 50px; padding: 28px; border-radius: 15px; text-align: center; background: linear-gradient(135deg, #0a0a2e 0%, #1a1a5e 100%); }
+            .footer h3 { color: #00d4ff; margin-bottom: 14px; }
+            .footer p { color: #aaaacc; font-size: 13px; line-height: 1.6; }
           </style>
         </head>
         <body>
@@ -102,7 +104,7 @@ export default function AboutScreen() {
               <h1>⚙️ Tech Times</h1>
               <div class="subtitle">Complete User Guide &amp; Feature Documentation</div>
               <div class="meta">
-                <strong>Version:</strong> 1.0.0 &nbsp;|&nbsp;
+                <strong>Version:</strong> 1.0.9 &nbsp;|&nbsp;
                 <strong>Generated:</strong> ${currentDate}
               </div>
             </div>
@@ -111,39 +113,35 @@ export default function AboutScreen() {
               <h2>📑 Table of Contents</h2>
               <ul>
                 <li><a href="#about">1. About Tech Times</a></li>
-                <li><a href="#getting-started">2. Getting Started &amp; Setup</a></li>
-                <li><a href="#security">3. PIN Security &amp; Biometrics</a></li>
-                <li><a href="#dashboard">4. Dashboard</a></li>
-                <li><a href="#adding-jobs">5. Adding Jobs</a></li>
-                <li><a href="#smart-entry">6. Smart Job Entry (AI-Powered)</a></li>
-                <li><a href="#job-records">7. Job Records Tab</a></li>
-                <li><a href="#job-store">8. Job Store (Search &amp; Reference)</a></li>
-                <li><a href="#media">9. Media — Photo Library</a></li>
-                <li><a href="#insights">10. Insights Tab</a></li>
-                <li><a href="#stats">11. Time Statistics Tab</a></li>
-                <li><a href="#streaks">12. Streaks &amp; Analytics</a></li>
-                <li><a href="#work-schedule">13. Work Schedule Configuration</a></li>
+                <li><a href="#aw-system">2. Core Concept &amp; The AW System</a></li>
+                <li><a href="#dashboard">3. Dashboard</a></li>
+                <li><a href="#adding-jobs">4. Adding Jobs</a></li>
+                <li><a href="#smart-entry">5. Smart Job Entry (AI)</a></li>
+                <li><a href="#job-records">6. Job Records Tab</a></li>
+                <li><a href="#job-store">7. Job Store Tab</a></li>
+                <li><a href="#media">8. Media Tab</a></li>
+                <li><a href="#insights">9. Insights Tab</a></li>
+                <li><a href="#stats">10. Time Statistics Tab</a></li>
+                <li><a href="#streaks">11. Streaks</a></li>
+                <li><a href="#calendar">12. Performance Calendar</a></li>
+                <li><a href="#work-schedule">13. Work Schedule</a></li>
                 <li><a href="#absence">14. Absence Logger</a></li>
-                <li><a href="#calendar">15. Performance Calendar</a></li>
-                <li><a href="#efficiency">16. Understanding Efficiency</a></li>
-                <li><a href="#formulas">17. Formula Settings</a></li>
-                <li><a href="#export">18. Export &amp; Backup</a></li>
-                <li><a href="#notifications">19. Notifications</a></li>
-                <li><a href="#appearance">20. Appearance &amp; Themes</a></li>
-                <li><a href="#widgets">21. Home Screen Widgets (iOS)</a></li>
-                <li><a href="#privacy">22. Privacy &amp; Data</a></li>
-                <li><a href="#tips">23. Tips &amp; Best Practices</a></li>
-                <li><a href="#troubleshooting">24. Troubleshooting</a></li>
+                <li><a href="#export">15. Export &amp; Backup</a></li>
+                <li><a href="#notifications">16. Notifications</a></li>
+                <li><a href="#security">17. Security</a></li>
+                <li><a href="#privacy">18. Privacy &amp; Data</a></li>
+                <li><a href="#widgets">19. iOS &amp; Android Widgets</a></li>
+                <li><a href="#appearance">20. Appearance</a></li>
+                <li><a href="#formulas">21. Formula Settings</a></li>
+                <li><a href="#tips">22. Tips &amp; Best Practices</a></li>
+                <li><a href="#troubleshooting">23. Troubleshooting</a></li>
               </ul>
             </div>
 
             <div class="section" id="about">
               <h2>📱 1. About Tech Times</h2>
-              <p>Tech Times is a secure, offline-first personal job tracking application designed specifically for vehicle technicians. Track your Allocated Work (AW) units, monitor efficiency, manage your productivity, and analyse your performance — all while keeping your data private and secure on your device.</p>
-              <div class="highlight">
-                <strong>🎯 Core Purpose:</strong>
-                <p>Tech Times helps vehicle technicians log jobs with WIP numbers, vehicle registrations, AW values, and VHC statuses. It calculates real-time efficiency, tracks streaks, and generates professional PDF reports — entirely offline with no cloud dependency.</p>
-              </div>
+              <p>Tech Times is a fully offline, PIN-secured personal job tracking app built exclusively for vehicle technicians. Every feature is designed around one core unit: the AW (Allocated Work), where 1 AW = 5 minutes of sold labour time.</p>
+              <p>The app tracks jobs, calculates efficiency in real time, monitors monthly targets, and generates professional PDF reports — all without any internet connection, cloud storage, or external servers. Your data never leaves your device.</p>
               <div class="feature-grid">
                 <div class="feature-card"><strong>🔒 Fully Offline</strong>All data stored locally. No cloud, no servers, complete privacy.</div>
                 <div class="feature-card"><strong>🔐 PIN + Biometrics</strong>4-digit PIN and fingerprint/Face ID protect your data.</div>
@@ -152,1067 +150,761 @@ export default function AboutScreen() {
                 <div class="feature-card"><strong>📸 Photo Attachments</strong>Attach job card photos; browse all images in the Media gallery.</div>
                 <div class="feature-card"><strong>📤 PDF / JSON Export</strong>Daily, weekly, monthly, or all-time reports with efficiency bars.</div>
                 <div class="feature-card"><strong>🔔 Smart Notifications</strong>Work start/end, lunch, daily reminders, efficiency alerts.</div>
-                <div class="feature-card"><strong>📅 Performance Calendar</strong>Month view with efficiency circles on every working day.</div>
+                <div class="feature-card"><strong>📅 Performance Calendar</strong>4 view modes with efficiency rings on every working day.</div>
                 <div class="feature-card"><strong>🔥 Streaks</strong>Daily and weekly logging streaks with a visual calendar heatmap.</div>
                 <div class="feature-card"><strong>📈 Insights Tab</strong>Job mix, repeat regs, trends, goals, and drilldown analysis.</div>
                 <div class="feature-card"><strong>🎨 Dark / Light Themes</strong>Workshop-themed backgrounds with adjustable overlay strength.</div>
-                <div class="feature-card"><strong>📱 iOS Widgets</strong>Home screen widget showing today's AW, efficiency, and last backup.</div>
+                <div class="feature-card"><strong>📱 iOS &amp; Android Widgets</strong>Home screen widgets showing today's progress and efficiency.</div>
               </div>
             </div>
 
             <div class="page-break"></div>
 
-            <div class="section" id="getting-started">
-              <h2>🚀 2. Getting Started &amp; Setup</h2>
-              <h3>First-Time Setup Wizard</h3>
-              <p>On first launch, the setup wizard guides you through:</p>
-              <ol>
-                <li><strong>Technician Name</strong> — Used on PDF reports and the dashboard header.</li>
-                <li><strong>Create a PIN</strong> — Choose a secure 4-digit PIN (default: 3101). Change it immediately in Settings.</li>
-                <li><strong>Work Schedule</strong> — Set your working days, start/end times, lunch break, and Saturday frequency.</li>
-                <li><strong>Monthly Target Hours</strong> — Your target sold hours for the month (e.g. 180 h).</li>
-                <li><strong>Biometric Login</strong> — Optionally enable fingerprint or Face ID for quick access.</li>
-              </ol>
-              <div class="success-box">
-                <strong>✅ Setup Complete:</strong> After finishing setup, a welcome animation confirms the app is ready. You can revisit all settings at any time from the Settings tab.
-              </div>
-            </div>
-
-            <div class="section" id="security">
-              <h2>🔐 3. PIN Security &amp; Biometrics</h2>
+            <div class="section" id="aw-system">
+              <h2>⚙️ 2. Core Concept &amp; The AW System</h2>
+              <p>The AW (Allocated Work) is the fundamental unit of Tech Times. Every job is measured in AWs, and all efficiency calculations derive from this unit.</p>
+              <div class="formula">1 AW = 5 minutes &nbsp;|&nbsp; 12 AW = 1 hour &nbsp;|&nbsp; 96 AW = 8 hours</div>
+              <h3>Key Formulas</h3>
+              <div class="formula">Sold Hours = Total AW × 5 ÷ 60</div>
+              <div class="formula">Efficiency = Sold Hours ÷ Available Hours × 100</div>
+              <div class="formula">Available Hours = Working Days Elapsed × Daily Hours − Absences</div>
+              <div class="formula">Target Hours = Working Days in Month × Daily Hours</div>
+              <h3>Efficiency Colour Thresholds</h3>
               <table>
-                <tr><th>Feature</th><th>Description</th></tr>
-                <tr><td><strong>PIN Protection</strong></td><td>4-digit PIN required on every app open. Default: 3101 — change immediately.</td></tr>
-                <tr><td><strong>Biometric Login</strong></td><td>Fingerprint or Face ID for instant access (optional, enable in Settings → Security).</td></tr>
-                <tr><td><strong>Smart Lock Timeout</strong></td><td>Less than 30 min away: no lock. 30 min–1 hr: lock but resume current page. Over 1 hr: lock and return to home.</td></tr>
-                <tr><td><strong>Change PIN</strong></td><td>Settings → Security → Change PIN. Requires current PIN to confirm.</td></tr>
-                <tr><td><strong>PIN-only or Biometrics-only</strong></td><td>You can disable PIN if biometrics are enabled, or vice versa — but at least one must remain active.</td></tr>
+                <tr><th>Efficiency</th><th>Colour</th><th>Status</th></tr>
+                <tr><td class="eff-green">≥ 65%</td><td class="eff-green">Green</td><td class="eff-green">Excellent</td></tr>
+                <tr><td class="eff-yellow">≥ 31%</td><td class="eff-yellow">Yellow</td><td class="eff-yellow">Good</td></tr>
+                <tr><td class="eff-red">&lt; 31%</td><td class="eff-red">Red</td><td class="eff-red">Needs Improvement</td></tr>
               </table>
-              <div class="warning-box">
-                <strong>⚠️ Forgotten PIN:</strong> There is no PIN recovery. If you forget your PIN you must reinstall the app and lose all data. Create regular JSON backups to prevent data loss.
+              <div class="info-box">
+                <strong>ℹ️ Configurable Thresholds:</strong> The green and yellow thresholds can be adjusted in Settings → Formula Settings to match your workshop's targets.
               </div>
             </div>
-
-            <div class="page-break"></div>
 
             <div class="section" id="dashboard">
-              <h2>📱 4. Dashboard</h2>
-              <p>The Dashboard (home tab) is your real-time command centre. It auto-refreshes every 30 seconds and reloads instantly when you return from adding a job.</p>
+              <h2>📱 3. Dashboard</h2>
+              <p>The Dashboard is your real-time command centre. It auto-refreshes every 30 seconds and reloads instantly when you return from adding a job.</p>
               <h3>Dashboard Components</h3>
-              <h4>⏰ Live Clock</h4>
+              <h4>⏰ Live Clock &amp; Date</h4>
               <p>Large digital clock updating every second, with today's date below it.</p>
               <h4>🔥 Streaks Card</h4>
-              <p>Shows your current daily logging streak and best-ever streak. Tap to open the full Streaks &amp; Analytics screen. Displays the best day this month (highest AW). Can be disabled in Settings → Streaks &amp; Analytics.</p>
+              <p>Shows current streak, best streak, and best day this month (highest AW). Tap to open the full Streaks screen.</p>
               <h4>⏱️ Workday Progress Bar</h4>
-              <p>A live progress bar spanning your configured work start to end time. A yellow section marks the lunch break window. Shows status: Before Work / Working / Lunch Break / Work Complete / Absent / Not a Work Day.</p>
-              <h4>🎯 Monthly Target Ring</h4>
-              <p>Circular progress ring showing sold hours vs. your monthly target. Colour-coded green/yellow/red. Tap to open Target Details.</p>
-              <h4>📊 Efficiency Ring</h4>
-              <p>Current month efficiency (sold hours ÷ available hours × 100). Colour-coded. Tap to open Efficiency Details.</p>
+              <p>Live progress bar spanning your configured work start to end time. A yellow section marks the lunch break window. States: Before Work / Working / Lunch Break / Work Complete / Absent / Not a Work Day.</p>
+              <h4>🎯 Today's Live Progress Rings (3 Concentric)</h4>
+              <ul>
+                <li><strong>Inner ring</strong> — daily target hours (static reference)</li>
+                <li><strong>Middle ring</strong> — time elapsed through workday (live, moves every minute)</li>
+                <li><strong>Outer ring</strong> — sold hours today vs daily target (updates as you add jobs). Turns yellow if within 15% behind pace, red if more than 15% behind.</li>
+              </ul>
+              <h4>📊 Monthly Target Ring</h4>
+              <p>Sold hours vs monthly target. Colour-coded. Tap to open Target Details.</p>
+              <h4>📈 Efficiency Ring</h4>
+              <p>Sold hours ÷ available hours × 100. Colour-coded. Tap to open Efficiency Details.</p>
               <h4>📋 Monthly Breakdown Card</h4>
-              <p>Shows: Total AW, Total Sold Hours, Monthly Target Hours, Total Available Hours, and Efficiency %.</p>
-              <h4>📦 Stat Tiles (2×2 grid)</h4>
+              <p>Total AW, Sold Hours, Target Hours, Available Hours, Efficiency %.</p>
+              <h4>📦 4 Stat Tiles</h4>
               <ul>
                 <li><strong>Total AWs</strong> — tap for Total AW Details</li>
                 <li><strong>Time Logged</strong> — tap for Time Logged Details</li>
                 <li><strong>Jobs Done</strong> — tap for Jobs Done Details</li>
                 <li><strong>Hours Remaining</strong> — tap for Hours Remaining Details</li>
               </ul>
-              <h4>📅 Performance Calendar Button</h4>
-              <p>Quick link to the full Performance Calendar screen.</p>
               <h4>Today &amp; This Week Cards</h4>
-              <p>Tap either card for a detailed breakdown of that period.</p>
+              <p>Both tappable for detailed breakdowns of that period.</p>
               <h4>➕ Add New Job Button</h4>
               <p>Opens the Add Job modal directly from the dashboard.</p>
+              <h4>📅 Performance Calendar Quick Link</h4>
+              <p>Quick navigation to the full Performance Calendar screen.</p>
               <h4>Landscape / Tablet Layout</h4>
               <p>On wider screens the dashboard switches to a two-column layout automatically.</p>
-              <h4>Overtime / Compensation Days</h4>
-              <p>Tap any non-working day on the dashboard mini-calendar to mark it as Overtime or Compensation.</p>
             </div>
 
             <div class="page-break"></div>
 
             <div class="section" id="adding-jobs">
-              <h2>📝 5. Adding Jobs</h2>
+              <h2>📝 4. Adding Jobs</h2>
               <p>Tap <strong>Add New Job</strong> on the Dashboard or the <strong>+ Add Job</strong> button in Job Records to open the Add Job modal.</p>
               <h3>Job Fields</h3>
               <table>
                 <tr><th>Field</th><th>Details</th></tr>
                 <tr><td><strong>WIP Number *</strong></td><td>Exactly 5 digits (e.g. 12345). Validated on save.</td></tr>
                 <tr><td><strong>Vehicle Registration *</strong></td><td>Auto-uppercased. Scan button available (camera or gallery OCR).</td></tr>
-                <tr><td><strong>AW Value *</strong></td><td>0–100. Select from a scrollable picker. Live time preview shown (e.g. 12 AW = 1h 00m).</td></tr>
-                <tr><td><strong>VHC Status</strong></td><td>Colour buttons: Green / Orange / Red. Tap again to deselect (returns to NONE).</td></tr>
-                <tr><td><strong>Date &amp; Time</strong></td><td>Defaults to now. Tap date or time button to change. Cannot be set in the future.</td></tr>
+                <tr><td><strong>AW Value *</strong></td><td>0–100. Live time preview shown (e.g. 20 AW = 1h 40m).</td></tr>
+                <tr><td><strong>VHC Status</strong></td><td>Colour buttons: Green / Orange / Red / None. Tap again to deselect.</td></tr>
+                <tr><td><strong>Date &amp; Time</strong></td><td>Defaults to now. Tap to change. Cannot be set in the future.</td></tr>
                 <tr><td><strong>Notes</strong></td><td>Optional free-text notes about the job.</td></tr>
-                <tr><td><strong>Job Card Photo</strong></td><td>Optional. Take a photo or choose from gallery. Stored locally and visible in Media tab.</td></tr>
+                <tr><td><strong>Job Card Photo</strong></td><td>Optional. Take a photo or choose from gallery. Stored locally.</td></tr>
               </table>
               <h3>Scan Buttons</h3>
               <ul>
-                <li><strong>Scan Card</strong> (next to WIP) — OCR scans a job card image to extract WIP number and registration simultaneously.</li>
-                <li><strong>Scan Reg</strong> (next to Registration) — OCR scans a number plate image to extract the registration.</li>
+                <li><strong>Scan Card</strong> — OCR scans a job card image to extract WIP number and registration simultaneously.</li>
+                <li><strong>Scan Reg</strong> — OCR scans a number plate image to extract the registration.</li>
               </ul>
               <h3>Memory Autocomplete</h3>
-              <p>As you type in the WIP or Registration field, a dropdown shows matching previous jobs. Tap any suggestion to auto-fill WIP, Registration, AW, VHC Status, and Notes from that job's last entry. Suggestions are sorted by recency.</p>
-              <h3>AW Conversion</h3>
+              <p>As you type in the WIP or Registration field, a dropdown shows matching previous jobs. Tap any suggestion to auto-fill all fields from that job's last entry.</p>
               <div class="formula">1 AW = 5 minutes &nbsp;|&nbsp; 12 AW = 1 hour &nbsp;|&nbsp; 96 AW = 8 hours</div>
-              <p>The live time display updates as you change the AW value, showing both HH:MM and decimal hours.</p>
-              <h3>Saving</h3>
-              <p>Tap <strong>Save Record</strong>. A process notification confirms success. The modal closes and the dashboard updates immediately. Widget data is also refreshed on save.</p>
-            </div>
-
-            <div class="page-break"></div>
-
-            <div class="section" id="smart-entry">
-              <h2>🧠 6. Smart Job Entry (AI-Powered)</h2>
-              <p>Access via Settings → Quick Links or directly. Describe a job in plain English and the AI extracts the structured data.</p>
-              <h3>How It Works</h3>
-              <p>Type a natural-language description such as:</p>
-              <ul>
-                <li>"12345 ABC123 20 AW green vhc"</li>
-                <li>"WIP 54321 reg XYZ789 15 hours"</li>
-                <li>"Job 11111 for ABC456 took 25 AW, orange VHC, brake service"</li>
-              </ul>
-              <p>The AI parser extracts: WIP Number, Vehicle Registration, AW Value, VHC Status, and Notes. A confidence score (0–100%) is shown. If confidence is below 70% or data is ambiguous, a clarification prompt appears.</p>
-              <h3>Pattern Analysis</h3>
-              <p>Tap the chart icon in the header (requires at least 5 jobs) to see an AI analysis of your input patterns: average AW, input speed, most frequent vehicles, and personalised suggestions.</p>
-              <h3>Saving</h3>
-              <p>Review the extracted data, then tap <strong>Save Job</strong>. The form resets for the next entry.</p>
-            </div>
-
-            <div class="section" id="job-records">
-              <h2>📋 7. Job Records Tab</h2>
-              <p>Browse all jobs for the selected month, sorted newest first.</p>
-              <h3>Features</h3>
-              <ul>
-                <li><strong>Month Navigation</strong> — Use ← → arrows to move between months.</li>
-                <li><strong>Totals Bar</strong> — Shows job count, total AWs, and total time for the month.</li>
-                <li><strong>Edit Job</strong> — Tap Edit on any job card to modify WIP, Reg, AW, VHC, date/time, notes, and photos.</li>
-                <li><strong>Delete Job</strong> — Tap the × button with confirmation.</li>
-                <li><strong>Photo Badge</strong> — Jobs with attached photos show a "Has photos" indicator.</li>
-                <li><strong>VHC Colour Strip</strong> — A coloured left border and badge shows VHC status at a glance.</li>
-              </ul>
-              <h3>Selection Mode &amp; Bulk Export</h3>
-              <p>Long-press any job to enter selection mode. Tap jobs to select/deselect. The selection bar shows total AWs and hours for selected jobs. Tap <strong>Export PDF</strong> to generate a PDF for the selected jobs only.</p>
-            </div>
-
-            <div class="section" id="job-store">
-              <h2>🔍 8. Job Store (Search &amp; Reference)</h2>
-              <p>The Job Store tab provides a searchable, filterable view of <em>all</em> jobs across all time — not limited to a single month.</p>
-              <h3>Search</h3>
-              <p>Search by WIP number, vehicle registration, or notes text. Results update live as you type.</p>
-              <h3>Filters</h3>
-              <ul>
-                <li><strong>Date Range</strong> — All Time, Today, This Week, This Month.</li>
-                <li><strong>VHC Status</strong> — All, No VHC, Green, Orange, Red.</li>
-              </ul>
-              <h3>Sort Options</h3>
-              <p>Newest First, Oldest First, Highest AW, Lowest AW, WIP A–Z, WIP Z–A.</p>
-              <h3>Totals Bar</h3>
-              <p>Shows live totals (jobs, AWs, hours) for the current filtered/searched result set.</p>
-            </div>
-
-            <div class="page-break"></div>
-
-            <div class="section" id="media">
-              <h2>📸 9. Media — Photo Library</h2>
-              <p>The Media tab is a full-screen photo gallery of all job card images attached to jobs.</p>
-              <h3>Features</h3>
-              <ul>
-                <li><strong>3-Column Grid</strong> — All photos displayed in a responsive grid with vehicle registration overlaid on each thumbnail.</li>
-                <li><strong>Stats Bar</strong> — Shows total photo count and total storage used (in MB).</li>
-                <li><strong>Full-Screen Viewer</strong> — Tap any photo to view it full-screen with the vehicle reg and WIP number shown in the header.</li>
-                <li><strong>Delete Photo</strong> — Long-press any thumbnail to delete it (with confirmation). Cannot be undone.</li>
-                <li><strong>Fade-in Animation</strong> — Photos animate in smoothly when the tab loads.</li>
-              </ul>
-              <div class="info-box">
-                <strong>💡 Note:</strong> Photos are stored locally on your device. They are not included in JSON exports but are preserved as long as the app is installed.
+              <div class="success-box">
+                <strong>✅ On Save:</strong> Widget data is refreshed and the dashboard updates immediately. A process notification confirms success.
               </div>
             </div>
 
+            <div class="section" id="smart-entry">
+              <h2>🧠 5. Smart Job Entry (AI)</h2>
+              <p>Access via Settings → Quick Links. Describe a job in plain English and the AI extracts the structured data.</p>
+              <h3>Example Inputs</h3>
+              <ul>
+                <li>"12345 ABC123 20 AW green vhc"</li>
+                <li>"Job 11111 for ABC456 took 25 AW, orange VHC, brake service"</li>
+                <li>"WIP 54321 reg XYZ789 15 hours"</li>
+              </ul>
+              <p>A confidence score (0–100%) is shown. Below 70% triggers a clarification prompt.</p>
+              <h3>Pattern Analysis</h3>
+              <p>Tap the chart icon (requires 5+ jobs) to see: avg AW, input speed, most frequent vehicles, and personalised suggestions.</p>
+            </div>
+
+            <div class="page-break"></div>
+
+            <div class="section" id="job-records">
+              <h2>📋 6. Job Records Tab</h2>
+              <p>Browse jobs by month using ← → navigation. Totals bar shows job count, total AWs, and total time. Edit any job or delete with confirmation. VHC colour strip on each card. Long-press for selection mode → bulk PDF export of selected jobs.</p>
+            </div>
+
+            <div class="section" id="job-store">
+              <h2>🔍 7. Job Store Tab</h2>
+              <p>Search all jobs across all time by WIP, reg, or notes. Filters: date range (All Time/Today/This Week/This Month), VHC status. Sort: Newest, Oldest, Highest AW, Lowest AW, WIP A–Z, WIP Z–A. Live totals bar for filtered results.</p>
+            </div>
+
+            <div class="section" id="media">
+              <h2>📸 8. Media Tab</h2>
+              <p>3-column photo grid of all job card images. Vehicle reg overlaid on each thumbnail. Stats bar: photo count + storage used (MB). Tap for full-screen view with WIP + reg. Long-press to delete (with confirmation). Photos stored locally, not included in JSON exports.</p>
+            </div>
+
             <div class="section" id="insights">
-              <h2>📈 10. Insights Tab</h2>
-              <p>Deep analytics across configurable date ranges with six sub-tabs.</p>
-              <h3>Date Range Filter</h3>
-              <p>Today, 7 Days, 30 Days, This Month, or Custom (pick start and end dates).</p>
-              <h3>Shift Filter</h3>
-              <p>All Day or My Shift (filters jobs logged within your configured work hours only).</p>
+              <h2>📈 9. Insights Tab</h2>
+              <p>6 sub-tabs across configurable date ranges (Today/7d/30d/This Month/Custom). Optional shift filter.</p>
               <h3>Sub-Tabs</h3>
-              <table>
-                <tr><th>Tab</th><th>What It Shows</th></tr>
-                <tr><td><strong>Overview</strong></td><td>KPI cards: Jobs Logged, Total AW, AW Hours, Avg AW/Job, Top Job Type. Quick drilldowns: Biggest AW, No Tags, Has Notes, Comebacks.</td></tr>
-                <tr><td><strong>Job Mix</strong></td><td>Ranked list of job types by VHC status (Standard, VHC Green/Orange/Red) with count, %, total AW, and avg AW. Tap any row to drilldown.</td></tr>
-                <tr><td><strong>Efficiency</strong></td><td>Average AW per day and total time logged for the period.</td></tr>
-                <tr><td><strong>Repeats</strong></td><td>Top 20 most-repeated vehicle registrations with visit count, total AW, and last seen date. Tap to see full history for that reg.</td></tr>
-                <tr><td><strong>Trends</strong></td><td>Horizontal scrollable bar chart of jobs per day over the selected period.</td></tr>
-                <tr><td><strong>Goals</strong></td><td>Monthly target progress bar, remaining hours, required daily pace, and best day this period.</td></tr>
-              </table>
-              <h3>Drilldown Modal</h3>
-              <p>Tap any KPI card or job type row to open a drilldown list of matching jobs. Sort by: Newest, Highest AW, Reg Repeats, Most Notes.</p>
+              <ul>
+                <li><strong>Overview</strong> — KPI cards + quick drilldowns: Biggest AW, No Tags, Has Notes, Comebacks</li>
+                <li><strong>Job Mix</strong> — job types ranked by keyword from notes: Service/MOT/Repair/Diagnostic/etc.</li>
+                <li><strong>Efficiency</strong> — avg AW/day, total time</li>
+                <li><strong>Repeats</strong> — top 20 most-repeated regs with visit count, total AW, last seen</li>
+                <li><strong>Trends</strong> — bar chart of jobs per day</li>
+                <li><strong>Goals</strong> — monthly target progress, remaining hours, required daily pace, best day</li>
+              </ul>
+              <div class="info-box">
+                <strong>ℹ️ Drilldown Modal:</strong> Tap any KPI to see a filtered job list, sortable by Newest/Highest AW/Reg Repeats/Most Notes.
+              </div>
             </div>
 
             <div class="page-break"></div>
 
             <div class="section" id="stats">
-              <h2>⏱️ 11. Time Statistics Tab</h2>
-              <p>Live timers and navigable period statistics.</p>
-              <h3>Live Timers</h3>
-              <ul>
-                <li><strong>Available Hours Today</strong> — Counts up from your work start time, subtracting lunch break. Stops at end time.</li>
-                <li><strong>Time Elapsed Today</strong> — HH:MM:SS since your work start time.</li>
-                <li><strong>Time Remaining Today</strong> — HH:MM:SS until your work end time.</li>
-              </ul>
-              <h3>Monthly Performance Card</h3>
-              <p>Large efficiency percentage with colour coding, plus Total AW, Sold Hours, Available Hours, and Remaining Hours.</p>
-              <h3>Yearly Performance Card</h3>
-              <p>Progress bar for your work year (configurable start date). Shows Sold Hours vs. Target Hours (monthly target × 12) and remaining hours. Tap the date button to change your work year start date (e.g. 1 April for an April–March year).</p>
-              <h3>Period Statistics</h3>
-              <p>Three navigable cards with ← → arrows:</p>
-              <ul>
-                <li><strong>Day</strong> — Jobs, AWs, Hours, % for any selected day.</li>
-                <li><strong>Week</strong> — Jobs, AWs, Hours, % for any selected week (Sunday–Saturday).</li>
-                <li><strong>Month</strong> — Jobs, AWs, Hours, % for any selected month.</li>
-              </ul>
-              <h3>All Time Stats</h3>
-              <p>Lifetime totals: Total Jobs, Total AWs, Total Hours since app installation.</p>
-              <h3>Recent Jobs</h3>
-              <p>The 10 most recently logged jobs with WIP, reg, date, AW, and time.</p>
+              <h2>⏱️ 10. Time Statistics Tab</h2>
+              <p>Live timers: Available Hours Today (counts up from work start minus lunch), Time Elapsed Today (HH:MM:SS), Time Remaining Today (HH:MM:SS).</p>
+              <p>Monthly Performance card: large efficiency % with colour, Total AW, Sold Hours, Available Hours, Remaining Hours. Yearly Performance: progress bar for work year (configurable start date), sold vs target vs remaining. Period stats: Day/Week/Month navigable with ← →. All-time totals. 10 most recent jobs.</p>
             </div>
 
             <div class="section" id="streaks">
-              <h2>🔥 12. Streaks &amp; Analytics</h2>
-              <p>Access from the Dashboard streaks card or Settings → Quick Links.</p>
-              <h3>Daily Streak</h3>
-              <p>Counts consecutive days on which at least 1 job was logged. Shows current streak and best-ever streak.</p>
-              <h3>Weekly Streak</h3>
-              <p>Counts consecutive weeks meeting your weekly job target (configurable in Settings → Streaks &amp; Analytics, default: 5 jobs/week). Shows current and best weekly streak.</p>
-              <h3>Highlights</h3>
-              <ul>
-                <li><strong>Best Day This Month</strong> — Date with the highest total AW, with job count and time.</li>
-                <li><strong>Most Productive Day</strong> — Date with the most jobs logged.</li>
-              </ul>
-              <h3>Monthly Calendar Heatmap</h3>
-              <p>A calendar grid for the selected month. Days with jobs logged are highlighted with a dot and job count. Today is outlined. Navigate months with ← → arrows. Summary shows Total Jobs, Total AWs, and Avg AW/Job for the month.</p>
+              <h2>🔥 11. Streaks</h2>
+              <p>Daily streak: consecutive days with ≥1 job logged. Weekly streak: consecutive weeks meeting weekly job target (configurable, default 5/week). Best day this month (highest AW). Most productive day (most jobs). Monthly calendar heatmap: days with jobs highlighted with dot + count. Navigate months with ← →.</p>
             </div>
 
-            <div class="page-break"></div>
+            <div class="section" id="calendar">
+              <h2>📅 12. Performance Calendar</h2>
+              <p>4 view modes:</p>
+              <ul>
+                <li><strong>Day</strong> — efficiency ring + progress ring + jobs list</li>
+                <li><strong>Week</strong> — 7 day cards with mini rings</li>
+                <li><strong>Month</strong> — full grid with tiny rings per day + month summary rings at top</li>
+                <li><strong>Year</strong> — 12 month cards with rings</li>
+              </ul>
+              <p>Navigate with ← → and Today button. Tap any day to see jobs, sold hours, efficiency.</p>
+            </div>
 
             <div class="section" id="work-schedule">
-              <h2>⚙️ 13. Work Schedule Configuration</h2>
-              <p>Settings → Quick Links → Work Schedule</p>
-              <table>
-                <tr><th>Setting</th><th>Description</th></tr>
-                <tr><td><strong>Working Days</strong></td><td>Toggle Mon–Sun. Tap to include/exclude each day.</td></tr>
-                <tr><td><strong>Start Time</strong></td><td>Daily work start (24-hour, e.g. 07:00).</td></tr>
-                <tr><td><strong>End Time</strong></td><td>Daily work end (24-hour, e.g. 18:00).</td></tr>
-                <tr><td><strong>Lunch Start / End</strong></td><td>Lunch break window used for the progress bar overlay.</td></tr>
-                <tr><td><strong>Lunch Break (minutes)</strong></td><td>Unpaid break deducted from available hours.</td></tr>
-                <tr><td><strong>Saturday Frequency</strong></td><td>No Saturdays, Every Saturday, 1-in-2, 1-in-3, 1-in-4, or Custom Dates.</td></tr>
-                <tr><td><strong>Saturday Hours</strong></td><td>Separate start/end times and lunch break for Saturdays (if different from weekdays).</td></tr>
-                <tr><td><strong>Next Working Saturday</strong></td><td>Set the date of your next working Saturday for rotation-based patterns.</td></tr>
-              </table>
-              <div class="formula">Daily Working Hours = (End Time − Start Time) − Lunch Break Minutes ÷ 60</div>
-              <p><strong>Example:</strong> 07:00–18:00 with 30 min lunch = (11 h) − 0.5 h = <strong>10.5 h/day</strong></p>
-              <p>Your schedule affects: available hours calculations, efficiency %, workday progress bar, calendar working-day highlighting, and PDF export available hours.</p>
+              <h2>📆 13. Work Schedule</h2>
+              <p>Settings → Quick Links → Work Schedule. Fields: working days (Mon–Sun toggle), start/end time, lunch start/end, lunch break minutes, Saturday frequency (None/Every/1-in-2/1-in-3/1-in-4/Custom), Saturday start/end times, next working Saturday date.</p>
+              <div class="formula">Daily Hours = (End Time − Start Time) − Lunch Minutes ÷ 60</div>
+              <p>Affects: available hours, efficiency, workday progress bar, calendar, PDF exports.</p>
             </div>
 
             <div class="section" id="absence">
               <h2>🏖️ 14. Absence Logger</h2>
-              <p>Settings → Quick Links → Absence Logger</p>
-              <h3>Absence Types</h3>
-              <ul>
-                <li><strong>Holiday</strong> — Planned vacation or time off.</li>
-                <li><strong>Sickness</strong> — Sick leave or medical appointments.</li>
-                <li><strong>Training</strong> — Training courses or professional development.</li>
-              </ul>
-              <h3>Duration Options</h3>
-              <ul>
-                <li><strong>Full Day</strong> — Entire working day (uses your configured daily hours for that day).</li>
-                <li><strong>Half Day</strong> — Half of your daily working hours.</li>
-              </ul>
-              <h3>Effect on Calculations</h3>
-              <p>Logged absences reduce available hours for that day, which adjusts efficiency calculations. The dashboard workday progress bar shows "Absent" on absence days. Absences are visible in the calendar view.</p>
-              <h3>Overtime &amp; Compensation Days</h3>
-              <p>Non-working days can be marked as Overtime (adds available hours) or Compensation (marks a day off in lieu) directly from the dashboard calendar.</p>
-            </div>
-
-            <div class="page-break"></div>
-
-            <div class="section" id="calendar">
-              <h2>📅 15. Performance Calendar</h2>
-              <p>Access from the Dashboard → Performance Calendar button.</p>
-              <h3>What It Shows</h3>
-              <p>A monthly calendar where each working day displays two concentric efficiency circles:</p>
-              <ul>
-                <li><strong>Outer Circle</strong> — Efficiency for that day (sold hours ÷ available hours). Green ≥ 65%, Yellow ≥ 31%, Red below 31%.</li>
-                <li><strong>Inner Circle</strong> — Progress toward the daily target hours.</li>
-              </ul>
-              <p>Non-working days are greyed out. Absence days show a special indicator. Overtime/compensation days are marked distinctly.</p>
-              <h3>Navigation</h3>
-              <p>Use ← → arrows to move between months. Tap any day to see a summary (jobs, sold hours, efficiency). Tap a working day to mark it as overtime or compensation if needed.</p>
-            </div>
-
-            <div class="section" id="efficiency">
-              <h2>📊 16. Understanding Efficiency</h2>
-              <div class="formula">Efficiency % = (Sold Hours ÷ Available Hours) × 100</div>
-              <table>
-                <tr><th>Term</th><th>Definition</th></tr>
-                <tr><td><strong>Sold Hours</strong></td><td>Total AW × 5 minutes ÷ 60 = hours billed to jobs.</td></tr>
-                <tr><td><strong>Available Hours</strong></td><td>Working days in the period × daily working hours (minus absences).</td></tr>
-                <tr><td><strong>Target Hours</strong></td><td>Your configured monthly target (e.g. 180 h). Used for the target ring, not efficiency.</td></tr>
-              </table>
-              <h3>Colour Thresholds (configurable in Formula Settings)</h3>
-              <ul>
-                <li><strong style="color:#4CAF50;">🟢 Green — ≥ 65%:</strong> Excellent performance.</li>
-                <li><strong style="color:#FF9800;">🟡 Yellow — ≥ 31%:</strong> Good / acceptable performance.</li>
-                <li><strong style="color:#f44336;">🔴 Red — below 31%:</strong> Needs improvement.</li>
-              </ul>
-              <div class="info-box">
-                <strong>💡 Example:</strong> 10 working days × 10.5 h = 105 available hours. You logged 840 AW = 70 sold hours. Efficiency = 70 ÷ 105 × 100 = <strong>66.7% (Green)</strong>.
-              </div>
-            </div>
-
-            <div class="section" id="formulas">
-              <h2>🔢 17. Formula Settings</h2>
-              <p>Settings → Quick Links → Formula Settings. Customise the core calculation parameters:</p>
-              <table>
-                <tr><th>Parameter</th><th>Default</th><th>Effect</th></tr>
-                <tr><td><strong>AW to Minutes</strong></td><td>5</td><td>How many minutes 1 AW equals. Change if your garage uses a different unit.</td></tr>
-                <tr><td><strong>Efficiency Green Threshold</strong></td><td>65%</td><td>Minimum % for green colour coding.</td></tr>
-                <tr><td><strong>Efficiency Yellow Threshold</strong></td><td>31%</td><td>Minimum % for yellow colour coding. Below this = red.</td></tr>
-                <tr><td><strong>Default Monthly Target</strong></td><td>180 h</td><td>Pre-fills the monthly target for new months.</td></tr>
-                <tr><td><strong>Default Daily Hours</strong></td><td>8.5 h</td><td>Fallback if schedule times are not set.</td></tr>
-                <tr><td><strong>Default Lunch Break</strong></td><td>30 min</td><td>Fallback lunch break duration.</td></tr>
-              </table>
+              <p>Types: Holiday, Sickness, Training. Duration: Full Day, Half Day, Custom Hours. Deduction type: past/today absences reduce available hours; future absences reduce target hours. Dashboard shows "Absent" on absence days. Non-working days can be marked Overtime (adds available hours) or Compensation (day off in lieu) from the dashboard calendar.</p>
             </div>
 
             <div class="page-break"></div>
 
             <div class="section" id="export">
-              <h2>📤 18. Export &amp; Backup</h2>
-              <p>Settings → Data Management</p>
-              <h3>Export Data (PDF or JSON)</h3>
-              <p>Choose a period and format:</p>
-              <table>
-                <tr><th>Period</th><th>Description</th></tr>
-                <tr><td><strong>Daily</strong></td><td>All jobs for a single selected day.</td></tr>
-                <tr><td><strong>Weekly</strong></td><td>All jobs for a selected Sunday–Saturday week.</td></tr>
-                <tr><td><strong>Monthly</strong></td><td>All jobs for a selected month.</td></tr>
-                <tr><td><strong>All Time</strong></td><td>Every job ever logged.</td></tr>
-              </table>
-              <h4>PDF Format</h4>
-              <p>Professional report containing: technician name, date range, job table (WIP, Reg, VHC, AW, Hours), day totals, week totals, month totals, and efficiency progress bars with colour coding. Suitable for management reports.</p>
-              <h4>JSON Format (Priority / Backup)</h4>
-              <p>Structured data file preserving all job fields and timestamps. Use for backup and restore. Can be re-imported into Tech Times.</p>
-              <h3>Create Backup (JSON)</h3>
-              <p>Exports all jobs to a timestamped JSON file. Share to iCloud, Google Drive, or email. Updates the widget's "last backup" timestamp.</p>
-              <h3>Import Jobs (JSON)</h3>
-              <p>Select a JSON backup file. A progress notification shows each job being validated and created. Reports success/failure counts. Duplicate detection prevents re-importing the same jobs.</p>
-              <h3>Clear All Data</h3>
-              <p>Permanently deletes all jobs, settings, and data. Requires double confirmation. Cannot be undone — always backup first.</p>
-              <h3>About Page PDF</h3>
-              <p>Tap <strong>Export Complete Guide as PDF</strong> on this About page to generate and share this full user guide as a PDF.</p>
+              <h2>📤 15. Export &amp; Backup</h2>
+              <h3>PDF Export</h3>
+              <p>Date ranges: Daily/Weekly/Monthly/All Time. Contents: technician name, date range, job table (WIP, Reg, VHC, AW, Hours), day/week/month totals, efficiency progress bars with colour coding.</p>
+              <h3>JSON Backup</h3>
+              <p>Full backup of all jobs with all fields. Import: select JSON file, progress notification, duplicate detection. Clear All Data: double confirmation required.</p>
+              <div class="warning-box">
+                <strong>⚠️ Important:</strong> Create regular JSON backups. A forgotten PIN requires reinstalling the app and all data will be lost.
+              </div>
             </div>
 
             <div class="section" id="notifications">
-              <h2>🔔 19. Notifications</h2>
-              <p>Settings → Quick Links → Notifications</p>
-              <h3>Work Schedule Notifications</h3>
-              <ul>
-                <li><strong>Work Start</strong> — Notifies when your configured work day begins.</li>
-                <li><strong>Work End</strong> — Notifies when your work day ends.</li>
-                <li><strong>Lunch Start</strong> — Notifies when your lunch break starts.</li>
-                <li><strong>Lunch End</strong> — Notifies when your lunch break ends.</li>
-              </ul>
-              <h3>Performance Notifications</h3>
-              <ul>
-                <li><strong>Daily Reminder</strong> — Reminds you to log jobs at a configurable time (24-hour format).</li>
-                <li><strong>Weekly Report</strong> — Weekly performance summary on a chosen day of the week.</li>
-                <li><strong>Monthly Report</strong> — End-of-month statistics summary.</li>
-                <li><strong>Target Reminder</strong> — Alert when approaching your monthly target.</li>
-                <li><strong>Efficiency Alert</strong> — Alert when efficiency drops below a configurable threshold (default 75%).</li>
-              </ul>
-              <h3>Sound &amp; Vibration</h3>
-              <p>Choose notification sound (Default or Silent) and vibration pattern (Default, Short, Long, Double). Test your settings with the <strong>Test Notification</strong> button. All notifications are rescheduled automatically when you save settings.</p>
+              <h2>🔔 16. Notifications</h2>
+              <p>Work schedule: Work Start, Work End, Lunch Start, Lunch End. Performance: Daily Reminder (configurable time), Weekly Report (configurable day), Monthly Report, Target Reminder, Efficiency Alert (configurable threshold, default 75%). Sound: Default or Silent. Vibration: Default/Short/Long/Double. Test Notification button. All notifications rescheduled automatically on schedule change.</p>
+            </div>
+
+            <div class="section" id="security">
+              <h2>🔐 17. Security</h2>
+              <table>
+                <tr><th>Feature</th><th>Description</th></tr>
+                <tr><td><strong>PIN Protection</strong></td><td>4-digit PIN required on every app open.</td></tr>
+                <tr><td><strong>Biometric Login</strong></td><td>Fingerprint or Face ID for instant access (optional).</td></tr>
+                <tr><td><strong>Smart Lock Timeout</strong></td><td>&lt;30 min: no lock. 30 min–1 hr: lock but resume last screen. &gt;1 hr: lock and return to home.</td></tr>
+                <tr><td><strong>Change PIN</strong></td><td>Settings → Security → Change PIN. Requires current PIN.</td></tr>
+              </table>
+              <div class="warning-box">
+                <strong>⚠️ Forgotten PIN:</strong> There is no PIN recovery. If you forget your PIN you must reinstall the app. Create regular JSON backups to prevent data loss.
+              </div>
+            </div>
+
+            <div class="section" id="privacy">
+              <h2>🔒 18. Privacy &amp; Data</h2>
+              <p>All data stored locally (AsyncStorage + device file system). No internet required. No data sent to servers. No analytics, no tracking, no cloud sync.</p>
+              <div class="success-box">
+                <strong>✅ GDPR Compliant:</strong> Only vehicle regs and job data stored. No customer personal info. Permissions: Camera (optional), Photo Library (optional), Notifications (optional), Biometrics (optional).
+              </div>
+            </div>
+
+            <div class="section" id="widgets">
+              <h2>📱 19. iOS &amp; Android Widgets</h2>
+              <h3>iOS Widget</h3>
+              <p>SwiftUI WidgetKit home screen widget showing circular progress ring with current time. Updated on every job save, edit, delete, import, or backup. Add via home screen long-press → Widgets → Tech Times.</p>
+              <h3>Android Widget</h3>
+              <p>Persistent notification in notification shade showing shift progress % and elapsed time with "+ Add Job" action button (deep-links to techtimes://add-job). Android home screen widget showing day progress, elapsed time, last backup timestamp.</p>
             </div>
 
             <div class="page-break"></div>
 
             <div class="section" id="appearance">
-              <h2>🎨 20. Appearance &amp; Themes</h2>
-              <p>Settings → Appearance</p>
-              <h3>Dark / Light Mode</h3>
-              <ul>
-                <li><strong>Dark Mode</strong> — Dark workshop-themed backgrounds. Easier on the eyes in low light. Saves battery on OLED screens.</li>
-                <li><strong>Light Mode</strong> — Bright workshop backgrounds. Better visibility in bright environments.</li>
-              </ul>
-              <h3>Background Overlay Strength</h3>
-              <p>A slider (30%–90%) controls how dark the overlay is over the background image. Adjust for the best balance between aesthetics and readability. Changes apply immediately across all screens.</p>
+              <h2>🎨 20. Appearance</h2>
+              <p>Dark Mode (workshop backgrounds, OLED battery saving) / Light Mode (bright environments). Background Overlay Strength slider (30%–90%) — controls darkness of background image overlay. Changes apply immediately across all screens.</p>
             </div>
 
-            <div class="section" id="widgets">
-              <h2>📱 21. Home Screen Widgets (iOS)</h2>
-              <p>Tech Times supports iOS home screen widgets that display live data without opening the app.</p>
-              <h3>Widget Data</h3>
-              <p>The widget is updated automatically whenever you:</p>
-              <ul>
-                <li>Save a new job</li>
-                <li>Edit or delete a job</li>
-                <li>Import jobs from a backup</li>
-                <li>Create a backup (updates the "last backup" timestamp)</li>
-              </ul>
-              <p>Widget data includes today's AW total, current efficiency, and last backup time. Add the widget from your iOS home screen long-press menu → Widgets → Tech Times.</p>
+            <div class="section" id="formulas">
+              <h2>🔢 21. Formula Settings</h2>
+              <table>
+                <tr><th>Setting</th><th>Default</th></tr>
+                <tr><td>AW to Minutes</td><td>5 minutes</td></tr>
+                <tr><td>Efficiency Green Threshold</td><td>65%</td></tr>
+                <tr><td>Efficiency Yellow Threshold</td><td>31%</td></tr>
+                <tr><td>Default Monthly Target</td><td>180 hours</td></tr>
+                <tr><td>Default Daily Hours</td><td>8.5 hours</td></tr>
+                <tr><td>Default Lunch Break</td><td>30 minutes</td></tr>
+              </table>
             </div>
-
-            <div class="section" id="privacy">
-              <h2>🔒 22. Privacy &amp; Data</h2>
-              <div class="success-box">
-                <strong>✅ Complete Privacy:</strong>
-                <ul>
-                  <li>All data stored locally on your device using AsyncStorage and the device file system.</li>
-                  <li>No internet connection required for any feature.</li>
-                  <li>No data sent to external servers, no analytics, no tracking.</li>
-                  <li>No cloud synchronisation.</li>
-                </ul>
-              </div>
-              <h3>GDPR Compliance</h3>
-              <p>Tech Times only stores vehicle registration numbers and job data. No customer names, addresses, phone numbers, or emails are collected or stored. You own and control all your data. Export or delete it at any time.</p>
-              <h3>Permissions Requested</h3>
-              <ul>
-                <li><strong>Camera</strong> — To take job card photos and scan registrations/job cards (optional).</li>
-                <li><strong>Photo Library</strong> — To choose existing photos for job cards (optional).</li>
-                <li><strong>Notifications</strong> — For reminders and alerts (optional).</li>
-                <li><strong>Biometrics</strong> — For fingerprint/Face ID login (optional).</li>
-              </ul>
-            </div>
-
-            <div class="page-break"></div>
 
             <div class="section" id="tips">
-              <h2>💡 23. Tips &amp; Best Practices</h2>
-              <h3>Daily Workflow</h3>
-              <ol>
-                <li>Check the dashboard at the start of the day for yesterday's stats and today's target.</li>
-                <li>Log jobs as you complete them — use autocomplete for repeat vehicles.</li>
-                <li>Use the Scan Card button to OCR-fill WIP and registration from the job card.</li>
-                <li>Review efficiency at end of day using the efficiency ring.</li>
-                <li>Check the Streaks card to maintain your daily logging streak.</li>
-              </ol>
-              <h3>Weekly &amp; Monthly</h3>
+              <h2>💡 22. Tips &amp; Best Practices</h2>
+              <h3>Daily</h3>
               <ul>
-                <li>Check the Insights → Repeats tab to spot vehicles that return frequently.</li>
-                <li>Use Insights → Trends to identify your most and least productive days.</li>
-                <li>Export a monthly PDF report for your records or to share with management.</li>
-                <li>Create a JSON backup weekly and save it to cloud storage.</li>
+                <li>Check dashboard at start of day</li>
+                <li>Log jobs as completed using autocomplete for repeat vehicles</li>
+                <li>Use Scan Card for OCR fill</li>
+                <li>Review efficiency ring at end of day</li>
+                <li>Check streaks card to maintain your streak</li>
+              </ul>
+              <h3>Weekly / Monthly</h3>
+              <ul>
+                <li>Check Insights → Repeats for frequent vehicles</li>
+                <li>Check Insights → Trends for your most productive days</li>
+                <li>Export monthly PDF for records</li>
+                <li>Create JSON backup weekly</li>
               </ul>
               <h3>Speed Tips</h3>
               <ul>
-                <li>Use VHC colour buttons — much faster than a dropdown.</li>
-                <li>Enable biometric login for instant app access.</li>
-                <li>Use Smart Job Entry for rapid natural-language logging.</li>
-                <li>Long-press jobs in Job Records to enter selection mode for bulk PDF export.</li>
-                <li>Use the Job Store tab to quickly look up any past job by WIP or reg.</li>
+                <li>Use VHC colour buttons for fast status entry</li>
+                <li>Enable biometric login for instant access</li>
+                <li>Use Smart Job Entry for natural language input</li>
+                <li>Long-press jobs for bulk PDF export</li>
+                <li>Use Job Store for quick lookup across all time</li>
               </ul>
               <h3>Accuracy Tips</h3>
               <ul>
-                <li>Double-check WIP numbers — they must be exactly 5 digits.</li>
-                <li>Log absences promptly so efficiency calculations stay accurate.</li>
-                <li>Keep your work schedule up to date if your hours change.</li>
-                <li>Adjust formula thresholds in Formula Settings if your garage uses different efficiency targets.</li>
+                <li>Double-check WIP numbers (must be exactly 5 digits)</li>
+                <li>Log absences promptly to keep efficiency accurate</li>
+                <li>Keep work schedule up to date</li>
+                <li>Adjust formula thresholds if your workshop targets differ</li>
               </ul>
             </div>
 
             <div class="section" id="troubleshooting">
-              <h2>❓ 24. Troubleshooting</h2>
-              <h3>Efficiency Seems Wrong</h3>
-              <ol>
-                <li>Check Settings → Work Schedule — verify working days, start/end times, and lunch break.</li>
-                <li>Check Settings → Absence Logger — ensure absences are logged correctly.</li>
-                <li>Check Settings → Formula Settings — verify AW-to-minutes and threshold values.</li>
-                <li>Confirm jobs are logged on the correct dates.</li>
-              </ol>
-              <h3>Biometrics Not Working</h3>
-              <ul>
-                <li>Ensure biometrics are enrolled in your device settings.</li>
-                <li>Check app permissions in device settings.</li>
-                <li>Try disabling and re-enabling biometrics in Settings → Security.</li>
-                <li>Use PIN as fallback.</li>
-              </ul>
-              <h3>Export / PDF Not Working</h3>
-              <ul>
-                <li>Check storage permissions in device settings.</li>
-                <li>Ensure sufficient free storage space.</li>
-                <li>Try a smaller date range (e.g. Daily instead of All Time).</li>
-                <li>Restart the app and try again.</li>
-              </ul>
-              <h3>Notifications Not Appearing</h3>
-              <ul>
-                <li>Check notification permissions in device settings.</li>
-                <li>Ensure Do Not Disturb is not active.</li>
-                <li>Check battery optimisation settings (Android may block background notifications).</li>
-                <li>Use the Test Notification button in Notification Settings to verify.</li>
-              </ul>
-              <h3>Import Failing</h3>
-              <ul>
-                <li>Ensure the file is a valid Tech Times JSON backup (not a PDF or CSV).</li>
-                <li>Check the file is not corrupted.</li>
-                <li>The file must contain a "jobs" array in the expected format.</li>
-              </ul>
-              <h3>Widget Not Updating (iOS)</h3>
-              <ul>
-                <li>Save a new job or create a backup to trigger a widget refresh.</li>
-                <li>Remove and re-add the widget from the home screen.</li>
-                <li>Ensure the app has been opened at least once after installation.</li>
-              </ul>
+              <h2>🔧 23. Troubleshooting</h2>
+              <table>
+                <tr><th>Issue</th><th>Solution</th></tr>
+                <tr><td><strong>Efficiency wrong</strong></td><td>Check work schedule, absence logger, formula settings, and job dates.</td></tr>
+                <tr><td><strong>Biometrics not working</strong></td><td>Check device enrollment, app permissions, try disable/re-enable, use PIN fallback.</td></tr>
+                <tr><td><strong>Export/PDF not working</strong></td><td>Check storage permissions, free space, try smaller date range, restart app.</td></tr>
+                <tr><td><strong>Notifications not appearing</strong></td><td>Check permissions, Do Not Disturb, Android battery optimisation, use Test Notification.</td></tr>
+                <tr><td><strong>Import failing</strong></td><td>Ensure valid Tech Times JSON (not PDF/CSV), check file not corrupted, must contain "jobs" array.</td></tr>
+                <tr><td><strong>Widget not updating (iOS)</strong></td><td>Save a job or create backup to trigger refresh, remove and re-add widget.</td></tr>
+              </table>
             </div>
 
             <div class="footer">
-              <h3>Tech Times v1.0.0</h3>
+              <h3>⚙️ Tech Times v1.0.9</h3>
               <p>Secure Personal Job Tracking for Vehicle Technicians</p>
-              <p style="margin-top: 12px;">Created by <strong>b.rugge</strong> — Owner &amp; Creator</p>
-              <p style="margin-top: 16px; font-size: 12px;">
-                Features covered: Dashboard • Job Management • Smart AI Entry • Media Gallery • Insights • Time Statistics<br>
-                Streaks • Work Schedule • Absence Logger • Performance Calendar • Efficiency • Formula Settings<br>
-                PDF/JSON Export • Notifications • Themes • iOS Widgets • PIN Security • Privacy
-              </p>
-              <p style="margin-top: 12px; font-size: 11px; color: #888;">Generated: ${currentDate}</p>
+              <p style="margin-top: 10px;">Created by b.rugge — Owner &amp; Creator</p>
+              <p style="margin-top: 8px;">© 2025 b.rugge / Tech Times. All rights reserved.</p>
+              <p style="margin-top: 8px; font-size: 12px;">Generated: ${currentDate}</p>
             </div>
           </div>
         </body>
         </html>
       `;
 
-      console.log('AboutScreen: Generating PDF from HTML');
       const { uri } = await Print.printToFileAsync({ html, base64: false });
-      console.log('AboutScreen: PDF generated at:', uri);
+      console.log('AboutScreen: PDF generated at', uri);
 
-      const fileName = `TechTimes_User_Guide_${new Date().toISOString().split('T')[0]}.pdf`;
-      const newUri = FileSystem.documentDirectory + fileName;
+      const fileName = `TechTimes_Guide_v1.0.9_${now.toISOString().split('T')[0]}.pdf`;
+      const destUri = FileSystem.documentDirectory + fileName;
+      await FileSystem.moveAsync({ from: uri, to: destUri });
+      console.log('AboutScreen: PDF moved to', destUri);
 
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(uri);
-        if (fileInfo.exists) {
-          const destInfo = await FileSystem.getInfoAsync(newUri);
-          if (destInfo.exists) {
-            await FileSystem.deleteAsync(newUri, { idempotent: true });
-          }
-          await FileSystem.moveAsync({ from: uri, to: newUri });
-          console.log('AboutScreen: PDF moved to:', newUri);
-        } else {
-          throw new Error('PDF generation failed — source file not found');
-        }
-      } catch (moveError) {
-        console.error('AboutScreen: Error moving PDF file:', moveError);
-      }
-
-      const shareUri = await FileSystem.getInfoAsync(newUri).then(info =>
-        info.exists ? newUri : uri
-      );
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(shareUri, {
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(destUri, {
           mimeType: 'application/pdf',
-          dialogTitle: 'Share Tech Times Complete User Guide',
+          dialogTitle: 'Share Tech Times Guide',
           UTI: 'com.adobe.pdf',
         });
         console.log('AboutScreen: PDF shared successfully');
-        Alert.alert('Success', 'Complete user guide exported as PDF and ready to share!');
       } else {
-        Alert.alert('Error', 'Sharing is not available on this device');
+        Alert.alert('PDF Saved', `Guide saved to: ${destUri}`);
       }
     } catch (error) {
-      console.error('AboutScreen: Error exporting PDF:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Export Error', `Failed to export user guide: ${errorMessage}\n\nPlease try again.`);
+      console.error('AboutScreen: PDF export failed', error);
+      Alert.alert('Export Failed', 'Could not generate PDF. Please try again.');
     } finally {
       setExporting(false);
     }
   };
 
-  const exportButtonLabel = exporting ? 'Generating PDF...' : 'Export Complete Guide as PDF';
-
   return (
-    <>
+    <AppBackground>
       <Stack.Screen
         options={{
-          headerShown: true,
           title: 'About Tech Times',
           headerStyle: { backgroundColor: theme.card },
           headerTintColor: theme.text,
         }}
       />
-      <AppBackground>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={[
-            styles.contentContainer,
-            Platform.OS === 'android' && { paddingTop: 16 },
-          ]}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header Card */}
+        <View style={[styles.header, { backgroundColor: theme.card }]}>
+          <IconSymbol
+            ios_icon_name="wrench.and.screwdriver.fill"
+            android_material_icon_name="build"
+            size={52}
+            color={theme.primary}
+          />
+          <Text style={[styles.appName, { color: theme.text }]}>Tech Times</Text>
+          <Text style={[styles.versionText, { color: theme.primary }]}>Version 1.0.9</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            Secure Personal Job Tracking for Vehicle Technicians
+          </Text>
+          <Text style={[styles.creator, { color: theme.textSecondary }]}>
+            Created by b.rugge — Owner &amp; Creator
+          </Text>
+        </View>
+
+        {/* Export Button */}
+        <TouchableOpacity
+          style={[styles.exportButton, { backgroundColor: theme.primary }]}
+          onPress={handleExportToPDF}
+          disabled={exporting}
         >
-          {/* ── Header ── */}
-          <View style={[styles.header, { backgroundColor: theme.card }]}>
-            <IconSymbol
-              ios_icon_name="wrench.and.screwdriver.fill"
-              android_material_icon_name="build"
-              size={56}
-              color={theme.primary}
-            />
-            <Text style={[styles.appName, { color: theme.text }]}>Tech Times</Text>
-            <Text style={[styles.version, { color: theme.textSecondary }]}>Version 1.0.0</Text>
-            <Text style={[styles.tagline, { color: theme.textSecondary }]}>
-              Secure Personal Job Tracking for Vehicle Technicians
+          <IconSymbol
+            ios_icon_name="arrow.down.doc.fill"
+            android_material_icon_name="picture_as_pdf"
+            size={20}
+            color="#fff"
+          />
+          <Text style={styles.exportButtonText}>
+            {exporting ? 'Generating PDF…' : 'Export Complete Guide as PDF'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Section 1 — About Tech Times */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>1. About Tech Times</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Tech Times is a fully offline, PIN-secured personal job tracking app built exclusively for vehicle technicians. Every feature is designed around one core unit: the AW (Allocated Work), where 1 AW = 5 minutes of sold labour time.
+          </Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            The app tracks jobs, calculates efficiency in real time, monitors monthly targets, and generates professional PDF reports — all without any internet connection, cloud storage, or external servers. Your data never leaves your device.
+          </Text>
+          <View style={[styles.successBox, { backgroundColor: theme.background, borderLeftColor: '#4caf50' }]}>
+            <Text style={[styles.text, { color: theme.text, marginBottom: 0 }]}>
+              ✅ 100% offline. No cloud. No tracking. No servers. Your data stays on your device.
             </Text>
           </View>
+        </View>
 
-          {/* ── Export Button ── */}
-          <TouchableOpacity
-            style={[styles.exportButton, { backgroundColor: theme.primary }]}
-            onPress={handleExportToPDF}
-            disabled={exporting}
-          >
-            <IconSymbol
-              ios_icon_name="square.and.arrow.up"
-              android_material_icon_name="share"
-              size={22}
-              color="#fff"
-            />
-            <Text style={styles.exportButtonText}>{exportButtonLabel}</Text>
-          </TouchableOpacity>
-
-          {/* ── About ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📱 About Tech Times</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Tech Times is a secure, offline-first personal job tracking app designed for vehicle technicians. Log jobs with WIP numbers, vehicle registrations, AW values, and VHC statuses. Calculate real-time efficiency, track streaks, and generate professional PDF reports — entirely on your device with no internet required.
-            </Text>
-            <View style={[styles.infoBox, { backgroundColor: theme.background, borderLeftColor: theme.primary }]}>
-              <Text style={[styles.infoText, { color: theme.text }]}>
-                <Text style={{ fontWeight: 'bold' }}>Created by: </Text>
-                b.rugge — Owner &amp; Creator
-              </Text>
+        {/* Section 2 — Core Concept & The AW System */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>2. Core Concept &amp; The AW System</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            The AW (Allocated Work) is the fundamental unit of Tech Times. Every job is measured in AWs, and all efficiency calculations derive from this unit.
+          </Text>
+          <View style={[styles.formulaBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
+            <Text style={[styles.formulaText, { color: theme.text }]}>1 AW = 5 minutes</Text>
+            <Text style={[styles.formulaText, { color: theme.text }]}>Sold Hours = Total AW × 5 ÷ 60</Text>
+            <Text style={[styles.formulaText, { color: theme.text }]}>Efficiency = Sold Hours ÷ Available Hours × 100</Text>
+            <Text style={[styles.formulaText, { color: theme.text }]}>Available Hours = Working Days Elapsed × Daily Hours − Absences</Text>
+            <Text style={[styles.formulaText, { color: theme.text }]}>Target Hours = Working Days in Month × Daily Hours</Text>
+          </View>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Efficiency Colour Thresholds</Text>
+          <View style={styles.thresholdRow}>
+            <View style={[styles.thresholdBadge, { backgroundColor: '#1b5e20' }]}>
+              <Text style={styles.thresholdText}>≥65% — Excellent</Text>
             </View>
           </View>
-
-          {/* ── Key Features ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>✨ Key Features</Text>
-            <View style={styles.featureList}>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🔒 Fully offline — all data stored locally, no cloud</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🔐 PIN + biometric (fingerprint/Face ID) security</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>📊 Live dashboard with efficiency rings and workday progress bar</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🧠 AI-powered Smart Job Entry with natural language parsing</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🔍 Memory autocomplete — auto-fills from previous jobs</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>📸 Job card photo attachments with a full Media gallery tab</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>📤 PDF and JSON export (daily / weekly / monthly / all time)</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🔔 Work schedule, daily, weekly, and efficiency notifications</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>📅 Performance calendar with efficiency circles per day</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🔥 Daily and weekly logging streaks with calendar heatmap</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>📈 Insights tab — job mix, repeat regs, trends, goals, drilldowns</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>⏱️ Live timers — available hours, time elapsed, time remaining</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>📱 iOS home screen widgets with live AW and efficiency data</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🎨 Dark and light workshop themes with adjustable overlay</Text>
-              <Text style={[styles.feature, { color: theme.textSecondary }]}>🔢 Configurable formula settings (AW rate, efficiency thresholds)</Text>
+          <View style={styles.thresholdRow}>
+            <View style={[styles.thresholdBadge, { backgroundColor: '#e65100' }]}>
+              <Text style={styles.thresholdText}>≥31% — Good</Text>
             </View>
           </View>
-
-          {/* ── Dashboard ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📱 Dashboard</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Your real-time command centre. Auto-refreshes every 30 seconds and instantly on return from adding a job.
-            </Text>
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>What's on the Dashboard</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Live clock (updates every second)\n'}
-              {'• Streaks card — current & best daily/weekly streak\n'}
-              {'• Workday progress bar with lunch break overlay\n'}
-              {'• Monthly Target ring — sold hours vs. target\n'}
-              {'• Efficiency ring — sold hours ÷ available hours\n'}
-              {'• Monthly Breakdown card (AW, sold hours, available hours, efficiency)\n'}
-              {'• Stat tiles: Total AWs, Time Logged, Jobs Done, Hours Remaining\n'}
-              {'• Today and This Week summary cards\n'}
-              {'• Add New Job button\n'}
-              {'• Performance Calendar quick link'}
-            </Text>
-          </View>
-
-          {/* ── Job Management ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📝 Job Management</Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Fields Tracked Per Job</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• WIP Number (5 digits, required)\n'}
-              {'• Vehicle Registration (auto-uppercase, required)\n'}
-              {'• AW Value (0–100, required)\n'}
-              {'• VHC Status (Green / Orange / Red / None)\n'}
-              {'• Date & Time (editable, defaults to now)\n'}
-              {'• Notes (optional free text)\n'}
-              {'• Job Card Photo (optional, stored locally)'}
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>AW Conversion</Text>
-            <Text style={[styles.formula, { color: theme.text, backgroundColor: theme.background }]}>
-              1 AW = 5 min  |  12 AW = 1 h  |  96 AW = 8 h
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Scan Buttons (OCR)</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Scan Card — OCR a job card image to extract WIP + registration simultaneously\n'}
-              {'• Scan Reg — OCR a number plate image to extract the registration'}
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Memory Autocomplete</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Start typing in the WIP or Registration field to see matching previous jobs. Tap a suggestion to auto-fill all fields (WIP, Reg, AW, VHC, Notes) from that job's last entry.
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Job Records Tab</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Browse jobs by month with ← → navigation\n'}
-              {'• Edit any job (WIP, Reg, AW, VHC, date/time, notes, photos)\n'}
-              {'• Delete jobs with confirmation\n'}
-              {'• Long-press to enter selection mode for bulk PDF export'}
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Job Store Tab</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Search all jobs across all time by WIP, registration, or notes. Filter by date range and VHC status. Sort by date, AW, or WIP number.
-            </Text>
-          </View>
-
-          {/* ── Smart Job Entry ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>🧠 Smart Job Entry (AI)</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Describe a job in plain English and the AI extracts the structured data:
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'Example: "12345 ABC123 20 AW green vhc"\n'}
-              {'Example: "Job 11111 for ABC456 took 25 AW, orange VHC, brake service"'}
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              A confidence score is shown. If below 70%, a clarification prompt appears. The AI learns from your previous jobs to improve suggestions over time. Tap the chart icon for a full pattern analysis (requires 5+ jobs).
-            </Text>
-          </View>
-
-          {/* ── Media ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📸 Media — Photo Library</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• 3-column grid of all job card photos\n'}
-              {'• Vehicle registration overlaid on each thumbnail\n'}
-              {'• Stats bar: total photo count and storage used (MB)\n'}
-              {'• Tap any photo for full-screen view with WIP and reg\n'}
-              {'• Long-press to delete a photo (with confirmation)\n'}
-              {'• Photos are stored locally and not included in JSON exports'}
-            </Text>
-          </View>
-
-          {/* ── Insights ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📈 Insights Tab</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Deep analytics with six sub-tabs across configurable date ranges (Today, 7d, 30d, This Month, Custom). Optional shift filter limits results to your work hours.
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Overview — KPI cards + quick drilldowns (Biggest AW, No Tags, Has Notes, Comebacks)\n'}
-              {'• Job Mix — job types ranked by VHC status with count, %, AW\n'}
-              {'• Efficiency — average AW per day and total time logged\n'}
-              {'• Repeats — top 20 most-repeated vehicle registrations\n'}
-              {'• Trends — bar chart of jobs per day\n'}
-              {'• Goals — monthly target progress, remaining hours, required daily pace'}
-            </Text>
-          </View>
-
-          {/* ── Stats ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>⏱️ Time Statistics Tab</Text>
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Live Timers</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Available Hours Today — counts up from work start, minus lunch\n'}
-              {'• Time Elapsed Today — HH:MM:SS since work start\n'}
-              {'• Time Remaining Today — HH:MM:SS until work end'}
-            </Text>
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Period Statistics</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Navigate any day, week, or month with ← → arrows to see Jobs, AWs, Hours, and Efficiency %. Yearly performance card with configurable work-year start date. All-time totals and 10 most recent jobs.
-            </Text>
-          </View>
-
-          {/* ── Efficiency ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📊 Efficiency Calculation</Text>
-            <Text style={[styles.formula, { color: theme.text, backgroundColor: theme.background }]}>
-              Efficiency % = (Sold Hours ÷ Available Hours) × 100
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Sold Hours = Total AW × 5 min ÷ 60\n'}
-              {'• Available Hours = working days × daily hours (minus absences)\n'}
-              {'• Target Hours = your monthly target (separate from efficiency)'}
-            </Text>
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Colour Thresholds (configurable)</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'🟢 Green — ≥ 65%: Excellent\n'}
-              {'🟡 Yellow — ≥ 31%: Good\n'}
-              {'🔴 Red — below 31%: Needs improvement'}
-            </Text>
-          </View>
-
-          {/* ── Work Schedule ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>⚙️ Work Schedule</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Settings → Quick Links → Work Schedule
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Working days (Mon–Sun toggle)\n'}
-              {'• Start / End time (24-hour)\n'}
-              {'• Lunch start / end time and duration (minutes)\n'}
-              {'• Saturday frequency: None, Every, 1-in-2, 1-in-3, 1-in-4, Custom\n'}
-              {'• Separate Saturday start/end times and lunch break\n'}
-              {'• Next working Saturday date for rotation patterns'}
-            </Text>
-            <Text style={[styles.formula, { color: theme.text, backgroundColor: theme.background }]}>
-              Daily Hours = (End − Start) − Lunch Break ÷ 60
-            </Text>
-          </View>
-
-          {/* ── Absence Logger ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>🏖️ Absence Logger</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Settings → Quick Links → Absence Logger
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Types: Holiday, Sickness, Training\n'}
-              {'• Duration: Full Day or Half Day\n'}
-              {'• Absences reduce available hours and adjust efficiency calculations\n'}
-              {'• Dashboard shows "Absent" on absence days\n'}
-              {'• Non-working days can be marked as Overtime or Compensation from the dashboard calendar'}
-            </Text>
-          </View>
-
-          {/* ── Export ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📤 Export &amp; Backup</Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>PDF Reports</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'Periods: Daily, Weekly (Sun–Sat), Monthly, All Time\n'}
-              {'Contents: technician name, date range, job table (WIP, Reg, VHC, AW, Hours), day/week/month totals, efficiency progress bars with colour coding.'}
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>JSON Backup &amp; Restore</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Create Backup — exports all jobs to a timestamped JSON file\n'}
-              {'• Import Jobs — select a JSON file; progress notification shows each job being created\n'}
-              {'• Duplicate detection prevents re-importing the same jobs\n'}
-              {'• Share backups to iCloud, Google Drive, or email'}
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: theme.text }]}>Bulk Export from Job Records</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Long-press jobs to enter selection mode, then tap Export PDF to generate a report for selected jobs only.
-            </Text>
-          </View>
-
-          {/* ── Notifications ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>🔔 Notifications</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Settings → Quick Links → Notifications
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'Work Schedule: Work Start, Work End, Lunch Start, Lunch End\n\n'}
-              {'Performance: Daily Reminder (configurable time), Weekly Report (configurable day), Monthly Report, Target Reminder, Efficiency Alert (configurable threshold)\n\n'}
-              {'Sound: Default or Silent\n'}
-              {'Vibration: Default, Short, Long, Double\n\n'}
-              {'Use Test Notification to verify your settings before saving.'}
-            </Text>
-          </View>
-
-          {/* ── Security ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>🔒 Security &amp; Privacy</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• 4-digit PIN required on every app open\n'}
-              {'• Optional biometric login (fingerprint / Face ID)\n'}
-              {'• Smart lock timeout: auto-locks after 30 min–1 hr away\n'}
-              {'• All data stored locally — no internet, no cloud, no analytics\n'}
-              {'• GDPR compliant — only vehicle regs and job data stored\n'}
-              {'• No customer personal information collected'}
-            </Text>
-            <View style={[styles.warningBox, { backgroundColor: theme.background, borderLeftColor: '#ff9800' }]}>
-              <Text style={[styles.text, { color: theme.textSecondary }]}>
-                ⚠️ If you forget your PIN, you must reinstall the app. Create regular JSON backups to prevent data loss.
-              </Text>
+          <View style={styles.thresholdRow}>
+            <View style={[styles.thresholdBadge, { backgroundColor: '#b71c1c' }]}>
+              <Text style={styles.thresholdText}>&lt;31% — Needs Improvement</Text>
             </View>
           </View>
+        </View>
 
-          {/* ── Widgets ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>📱 iOS Home Screen Widgets</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Tech Times supports iOS home screen widgets showing live data. Widget data updates automatically when you save a job, edit/delete a job, import jobs, or create a backup. Add via iOS home screen long-press → Widgets → Tech Times.
+        {/* Section 3 — Dashboard */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>3. Dashboard</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Real-time command centre. Auto-refreshes every 30 seconds and on every return from adding a job.
+          </Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Components</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            • Live clock (updates every second) + date{'\n'}
+            • Streaks card (current streak, best streak, best day this month) — tappable{'\n'}
+            • Workday progress bar with lunch break overlay — states: Before Work / Working / Lunch Break / Work Complete / Absent / Not a Work Day{'\n'}
+            • Today's Live Progress rings (3 concentric): inner = daily target hours (static), middle = time elapsed (live, every minute), outer = sold hours today vs daily target (updates as you add jobs). Outer ring turns yellow if within 15% behind pace, red if more than 15% behind{'\n'}
+            • Monthly Target ring — sold hours vs monthly target, tappable{'\n'}
+            • Efficiency ring — sold hours ÷ available hours × 100, tappable{'\n'}
+            • Monthly Breakdown card: Total AW, Sold Hours, Target Hours, Available Hours, Efficiency %{'\n'}
+            • 4 stat tiles: Total AWs, Time Logged, Jobs Done, Hours Remaining — all tappable{'\n'}
+            • Today card and This Week card — both tappable{'\n'}
+            • Add New Job button{'\n'}
+            • Performance Calendar quick link{'\n'}
+            • Landscape/tablet: auto 2-column layout
+          </Text>
+        </View>
+
+        {/* Section 4 — Adding Jobs */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>4. Adding Jobs</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Fields: WIP Number (5 digits required), Vehicle Registration (auto-uppercase), AW Value (0–100, live time preview), VHC Status (Green/Orange/Red/None), Date &amp; Time (editable, defaults to now), Notes (optional), Job Card Photo (optional, camera or gallery).
+          </Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Scan Card button (OCR extracts WIP + reg from job card image). Scan Reg button (OCR extracts reg from number plate). Memory autocomplete: typing in WIP or Reg shows matching previous jobs, tap to auto-fill all fields. On save: widget data refreshed, dashboard updates immediately.
+          </Text>
+        </View>
+
+        {/* Section 5 — Smart Job Entry */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>5. Smart Job Entry (AI)</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Natural language parsing. Examples:
+          </Text>
+          <View style={[styles.infoBox, { backgroundColor: theme.background, borderLeftColor: theme.primary }]}>
+            <Text style={[styles.text, { color: theme.text, marginBottom: 0 }]}>
+              "12345 ABC123 20 AW green vhc"{'\n'}
+              "Job 11111 for ABC456 took 25 AW, orange VHC, brake service"
             </Text>
           </View>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Confidence score shown (0–100%). Below 70% triggers clarification prompt. Chart icon shows pattern analysis (requires 5+ jobs): avg AW, input speed, most frequent vehicles.
+          </Text>
+        </View>
 
-          {/* ── Themes ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>🎨 Appearance &amp; Themes</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• Dark Mode — workshop backgrounds, easier on eyes in low light\n'}
-              {'• Light Mode — bright backgrounds, better in bright environments\n'}
-              {'• Background Overlay Strength slider (30%–90%) — adjust readability vs. aesthetics\n'}
-              {'• Changes apply immediately across all screens'}
+        {/* Section 6 — Job Records */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>6. Job Records Tab</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Browse jobs by month (← → navigation). Totals bar: job count, total AWs, total time. Edit any job. Delete with confirmation. VHC colour strip on each card. Long-press for selection mode → bulk PDF export of selected jobs.
+          </Text>
+        </View>
+
+        {/* Section 7 — Job Store */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>7. Job Store Tab</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Search all jobs across all time by WIP, reg, or notes. Filters: date range (All Time/Today/This Week/This Month), VHC status. Sort: Newest, Oldest, Highest AW, Lowest AW, WIP A–Z, WIP Z–A. Live totals bar for filtered results.
+          </Text>
+        </View>
+
+        {/* Section 8 — Media */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>8. Media Tab</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            3-column photo grid of all job card images. Vehicle reg overlaid on each thumbnail. Stats bar: photo count + storage used (MB). Tap for full-screen view with WIP + reg. Long-press to delete (with confirmation). Photos stored locally, not included in JSON exports.
+          </Text>
+        </View>
+
+        {/* Section 9 — Insights */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>9. Insights Tab</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            6 sub-tabs across configurable date ranges (Today/7d/30d/This Month/Custom). Optional shift filter. Sub-tabs: Overview (KPI cards + quick drilldowns: Biggest AW, No Tags, Has Notes, Comebacks), Job Mix (job types ranked by keyword from notes: Service/MOT/Repair/Diagnostic/etc.), Efficiency (avg AW/day, total time), Repeats (top 20 most-repeated regs with visit count, total AW, last seen), Trends (bar chart of jobs per day), Goals (monthly target progress, remaining hours, required daily pace, best day).
+          </Text>
+          <View style={[styles.infoBox, { backgroundColor: theme.background, borderLeftColor: theme.primary }]}>
+            <Text style={[styles.text, { color: theme.text, marginBottom: 0 }]}>
+              Drilldown modal: tap any KPI to see filtered job list, sort by Newest/Highest AW/Reg Repeats/Most Notes.
             </Text>
           </View>
+        </View>
 
-          {/* ── Formula Settings ── */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>🔢 Formula Settings</Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              Settings → Quick Links → Formula Settings
-            </Text>
-            <Text style={[styles.text, { color: theme.textSecondary }]}>
-              {'• AW to Minutes (default: 5) — change if your garage uses a different unit\n'}
-              {'• Efficiency Green Threshold (default: 65%)\n'}
-              {'• Efficiency Yellow Threshold (default: 31%)\n'}
-              {'• Default Monthly Target (default: 180 h)\n'}
-              {'• Default Daily Hours (default: 8.5 h)\n'}
-              {'• Default Lunch Break (default: 30 min)'}
+        {/* Section 10 — Time Statistics */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>10. Time Statistics Tab</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Live timers: Available Hours Today (counts up from work start minus lunch), Time Elapsed Today (HH:MM:SS), Time Remaining Today (HH:MM:SS). Monthly Performance card: large efficiency % with colour, Total AW, Sold Hours, Available Hours, Remaining Hours. Yearly Performance: progress bar for work year (configurable start date), sold vs target vs remaining. Period stats: Day/Week/Month navigable with ← →. All-time totals. 10 most recent jobs.
+          </Text>
+        </View>
+
+        {/* Section 11 — Streaks */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>11. Streaks</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Daily streak: consecutive days with ≥1 job logged. Weekly streak: consecutive weeks meeting weekly job target (configurable, default 5/week). Best day this month (highest AW). Most productive day (most jobs). Monthly calendar heatmap: days with jobs highlighted with dot + count. Navigate months with ← →.
+          </Text>
+        </View>
+
+        {/* Section 12 — Performance Calendar */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>12. Performance Calendar</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            4 view modes: Day (efficiency ring + progress ring + jobs list), Week (7 day cards with mini rings), Month (full grid with tiny rings per day + month summary rings at top), Year (12 month cards with rings). Navigate with ← → and Today button. Tap any day to see jobs, sold hours, efficiency.
+          </Text>
+        </View>
+
+        {/* Section 13 — Work Schedule */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>13. Work Schedule</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Settings → Quick Links → Work Schedule. Fields: working days (Mon–Sun toggle), start/end time, lunch start/end, lunch break minutes, Saturday frequency (None/Every/1-in-2/1-in-3/1-in-4/Custom), Saturday start/end times, next working Saturday date.
+          </Text>
+          <View style={[styles.formulaBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
+            <Text style={[styles.formulaText, { color: theme.text }]}>Daily Hours = (End − Start) − Lunch ÷ 60</Text>
+          </View>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Affects: available hours, efficiency, workday progress bar, calendar, PDF exports.
+          </Text>
+        </View>
+
+        {/* Section 14 — Absence Logger */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>14. Absence Logger</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Types: Holiday, Sickness, Training. Duration: Full Day, Half Day, Custom Hours. Deduction type: past/today absences reduce available hours; future absences reduce target hours. Dashboard shows "Absent" on absence days. Non-working days can be marked Overtime (adds available hours) or Compensation (day off in lieu) from the dashboard calendar.
+          </Text>
+        </View>
+
+        {/* Section 15 — Export & Backup */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>15. Export &amp; Backup</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>PDF Export</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Date ranges: Daily/Weekly/Monthly/All Time. Contents: technician name, date range, job table (WIP, Reg, VHC, AW, Hours), day/week/month totals, efficiency progress bars with colour coding.
+          </Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>JSON Backup</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Full backup of all jobs with all fields. Import: select JSON file, progress notification, duplicate detection. Clear All Data: double confirmation required.
+          </Text>
+          <View style={[styles.warningBox, { backgroundColor: theme.background, borderLeftColor: '#ff9800' }]}>
+            <Text style={[styles.text, { color: theme.text, marginBottom: 0 }]}>
+              ⚠️ Create regular JSON backups. A forgotten PIN requires reinstalling the app and all data will be lost.
             </Text>
           </View>
+        </View>
 
-          {/* ── Footer ── */}
-          <View style={[styles.footer, { backgroundColor: theme.card }]}>
-            <Text style={[styles.footerTitle, { color: theme.text }]}>Tech Times v1.0.0</Text>
-            <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-              Secure Personal Job Tracking for Vehicle Technicians
-            </Text>
-            <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-              {'\nCreated by b.rugge — Owner & Creator\n'}
-              {'\n© 2024 Tech Times. All rights reserved.'}
+        {/* Section 16 — Notifications */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>16. Notifications</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Work schedule: Work Start, Work End, Lunch Start, Lunch End. Performance: Daily Reminder (configurable time), Weekly Report (configurable day), Monthly Report, Target Reminder, Efficiency Alert (configurable threshold, default 75%). Sound: Default or Silent. Vibration: Default/Short/Long/Double. Test Notification button. All notifications rescheduled automatically on schedule change.
+          </Text>
+        </View>
+
+        {/* Section 17 — Security */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>17. Security</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            4-digit PIN on every open. Optional biometric (fingerprint/Face ID). Smart lock timeout: &lt;30 min = no lock, 30 min–1 hr = lock but resume last screen, &gt;1 hr = lock and return to home. Change PIN requires current PIN.
+          </Text>
+          <View style={[styles.warningBox, { backgroundColor: theme.background, borderLeftColor: '#ff9800' }]}>
+            <Text style={[styles.text, { color: theme.text, marginBottom: 0 }]}>
+              ⚠️ Warning: forgotten PIN requires reinstall — create regular JSON backups.
             </Text>
           </View>
+        </View>
 
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </AppBackground>
-    </>
+        {/* Section 18 — Privacy & Data */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>18. Privacy &amp; Data</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            All data stored locally (AsyncStorage + device file system). No internet required. No data sent to servers. No analytics, no tracking, no cloud sync. GDPR compliant: only vehicle regs and job data stored, no customer personal info.
+          </Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Permissions: Camera (optional, for photos/OCR), Photo Library (optional), Notifications (optional), Biometrics (optional).
+          </Text>
+        </View>
+
+        {/* Section 19 — Widgets */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>19. iOS &amp; Android Widgets</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>iOS</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            SwiftUI WidgetKit home screen widget showing circular progress ring with current time. Updated on every job save, edit, delete, import, or backup. Add via home screen long-press → Widgets → Tech Times.
+          </Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Android</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Persistent notification in notification shade showing shift progress % and elapsed time with "+ Add Job" action button (deep-links to techtimes://add-job). Android home screen widget showing day progress, elapsed time, last backup timestamp.
+          </Text>
+        </View>
+
+        {/* Section 20 — Appearance */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>20. Appearance</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            Dark Mode (workshop backgrounds, OLED battery saving) / Light Mode (bright environments). Background Overlay Strength slider (30%–90%) — controls darkness of background image overlay. Changes apply immediately across all screens.
+          </Text>
+        </View>
+
+        {/* Section 21 — Formula Settings */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>21. Formula Settings</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            AW to Minutes (default 5), Efficiency Green Threshold (default 65%), Efficiency Yellow Threshold (default 31%), Default Monthly Target (default 180h), Default Daily Hours (default 8.5h), Default Lunch Break (default 30 min).
+          </Text>
+        </View>
+
+        {/* Section 22 — Tips & Best Practices */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>22. Tips &amp; Best Practices</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Daily</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            • Check dashboard at start of day{'\n'}
+            • Log jobs as completed, use autocomplete for repeat vehicles{'\n'}
+            • Use Scan Card for OCR fill{'\n'}
+            • Review efficiency ring at end of day{'\n'}
+            • Check streaks card
+          </Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Weekly / Monthly</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            • Check Insights → Repeats for frequent vehicles{'\n'}
+            • Check Insights → Trends for productive days{'\n'}
+            • Export monthly PDF{'\n'}
+            • Create JSON backup weekly
+          </Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Speed Tips</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            • VHC colour buttons, biometric login, Smart Job Entry{'\n'}
+            • Long-press for bulk export, Job Store for quick lookup
+          </Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Accuracy Tips</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>
+            • Double-check WIP numbers (5 digits){'\n'}
+            • Log absences promptly, keep schedule up to date{'\n'}
+            • Adjust formula thresholds if needed
+          </Text>
+        </View>
+
+        {/* Section 23 — Troubleshooting */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>23. Troubleshooting</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Efficiency wrong</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>Check work schedule, absence logger, formula settings, job dates.</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Biometrics not working</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>Check device enrollment, app permissions, try disable/re-enable, use PIN fallback.</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Export/PDF not working</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>Check storage permissions, free space, try smaller date range, restart app.</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Notifications not appearing</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>Check permissions, Do Not Disturb, Android battery optimisation, use Test Notification.</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Import failing</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>Ensure valid Tech Times JSON (not PDF/CSV), check file not corrupted, must contain "jobs" array.</Text>
+          <Text style={[styles.subsectionTitle, { color: theme.text }]}>Widget not updating (iOS)</Text>
+          <Text style={[styles.text, { color: theme.textSecondary }]}>Save a job or create backup to trigger refresh, remove and re-add widget.</Text>
+        </View>
+
+        {/* Footer */}
+        <View style={[styles.footer, { backgroundColor: theme.card }]}>
+          <Text style={[styles.footerText, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>Tech Times v1.0.9</Text>
+          <Text style={[styles.footerText, { color: theme.textSecondary }]}>Secure Personal Job Tracking for Vehicle Technicians</Text>
+          <Text style={[styles.footerText, { color: theme.textSecondary }]}>Created by b.rugge — Owner &amp; Creator</Text>
+          <Text style={[styles.footerText, { color: theme.textSecondary }]}>© 2025 Tech Times. All rights reserved.</Text>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-  },
-  header: {
-    alignItems: 'center',
-    padding: 28,
-    borderRadius: 16,
-    marginBottom: 20,
-  },
-  appName: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginTop: 12,
-  },
-  version: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  tagline: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 10,
-    fontStyle: 'italic',
-    paddingHorizontal: 20,
-  },
+  container: { flex: 1 },
+  contentContainer: { padding: 16 },
+  header: { alignItems: 'center', padding: 28, borderRadius: 16, marginBottom: 20 },
+  appName: { fontSize: 28, fontWeight: 'bold', marginTop: 12 },
+  versionText: { fontSize: 15, fontWeight: '600', marginTop: 4 },
+  subtitle: { fontSize: 14, textAlign: 'center', marginTop: 6, fontStyle: 'italic', paddingHorizontal: 20 },
+  creator: { fontSize: 12, marginTop: 8 },
   exportButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 18,
+    padding: 16,
     borderRadius: 12,
     marginBottom: 20,
     gap: 10,
   },
-  exportButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  section: {
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 14,
-  },
-  subsectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 14,
-    marginBottom: 8,
-  },
-  text: {
-    fontSize: 14,
-    lineHeight: 24,
-    marginBottom: 8,
-  },
-  featureList: {
-    gap: 10,
-  },
-  feature: {
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  formula: {
+  exportButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  section: { padding: 20, borderRadius: 12, marginBottom: 16 },
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 14 },
+  subsectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 14, marginBottom: 8 },
+  text: { fontSize: 14, lineHeight: 24, marginBottom: 8 },
+  formulaBox: {
     padding: 14,
     borderRadius: 8,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    borderWidth: 1,
+    marginVertical: 12,
+  },
+  formulaText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     fontSize: 13,
-    marginVertical: 10,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  infoBox: {
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    marginTop: 12,
-  },
-  infoText: {
-    fontSize: 14,
     lineHeight: 22,
-  },
-  warningBox: {
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  footer: {
-    padding: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  footerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  footerText: {
-    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 20,
+    fontWeight: '600',
   },
+  thresholdRow: { marginBottom: 6 },
+  thresholdBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  thresholdText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  infoBox: { padding: 16, borderRadius: 8, borderLeftWidth: 4, marginTop: 12 },
+  warningBox: { padding: 16, borderRadius: 8, borderLeftWidth: 4, marginTop: 8, marginBottom: 4 },
+  successBox: { padding: 16, borderRadius: 8, borderLeftWidth: 4, marginTop: 8, marginBottom: 4 },
+  footer: { padding: 24, borderRadius: 12, alignItems: 'center', marginBottom: 16 },
+  footerText: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
 });
