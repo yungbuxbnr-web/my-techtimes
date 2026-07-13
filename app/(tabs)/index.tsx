@@ -18,6 +18,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { formatTime, formatDecimalHours, calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 import { api } from '@/utils/api';
 import CircularProgress from '@/components/CircularProgress';
+import DailyRings from '@/components/DailyRings';
 import AppBackground from '@/components/AppBackground';
 import { useResponsiveLayout, getPadding, getFontSize, getSpacing, getCardPadding } from '@/utils/responsive';
 
@@ -307,6 +308,61 @@ export default function DashboardScreen() {
   };
 
   const workdayProgress = calculateWorkdayProgress();
+
+  const calculateTimeElapsed = (): { progressPct: number; label: string } => {
+    if (!workSchedule) return { progressPct: 0, label: '0h 0m elapsed' };
+
+    const parseTimeToMinutes = (timeStr: string) => {
+      const [h, m] = timeStr.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+    const startMinutes = parseTimeToMinutes(workSchedule.startTime || '07:00');
+    const endMinutes = parseTimeToMinutes(workSchedule.endTime || '18:00');
+    const lunchStartMinutes = parseTimeToMinutes(workSchedule.lunchStartTime || '12:00');
+    const lunchEndMinutes = parseTimeToMinutes(workSchedule.lunchEndTime || '12:30');
+    const lunchDuration = lunchEndMinutes - lunchStartMinutes;
+    const totalWorkMinutes = endMinutes - startMinutes - lunchDuration;
+
+    if (nowMinutes <= startMinutes) {
+      return { progressPct: 0, label: '0h 0m elapsed' };
+    }
+
+    if (nowMinutes >= endMinutes) {
+      const totalH = Math.floor(totalWorkMinutes / 60);
+      const totalM = totalWorkMinutes % 60;
+      return { progressPct: 100, label: `${totalH}h ${totalM}m elapsed` };
+    }
+
+    let elapsedMinutes = nowMinutes - startMinutes;
+    if (nowMinutes > lunchEndMinutes) {
+      elapsedMinutes -= lunchDuration;
+    } else if (nowMinutes > lunchStartMinutes) {
+      elapsedMinutes -= nowMinutes - lunchStartMinutes;
+    }
+    elapsedMinutes = Math.max(0, elapsedMinutes);
+
+    const progressPct = Math.min(100, (elapsedMinutes / totalWorkMinutes) * 100);
+    const elapsedH = Math.floor(elapsedMinutes / 60);
+    const elapsedM = elapsedMinutes % 60;
+    return { progressPct, label: `${elapsedH}h ${elapsedM}m elapsed` };
+  };
+
+  const timeElapsed = calculateTimeElapsed();
+
+  const soldHoursToday = todayStats ? (todayStats.totalAw * 5) / 60 : 0;
+  const soldHoursProgress = dailyHours > 0 ? Math.min(100, (soldHoursToday / dailyHours) * 100) : 0;
+  const soldHoursLabel = soldHoursToday.toFixed(1) + 'h / ' + dailyHours.toFixed(1) + 'h';
+
+  const getSoldColor = () => {
+    if (!theme) return '#4caf50';
+    const diff = soldHoursProgress - timeElapsed.progressPct;
+    if (diff >= -15) return theme.chartGreen;
+    if (diff >= -30) return theme.chartYellow;
+    return theme.chartRed;
+  };
+  const soldColor = getSoldColor();
 
   const handlePreviousMonth = () => {
     const newMonth = new Date(selectedMonth);
@@ -633,6 +689,22 @@ export default function DashboardScreen() {
                 </View>
               )}
 
+              {/* Today's Live Progress — concentric rings (landscape) */}
+              {workSchedule && workdayProgress.isWorkDay && !workdayProgress.isAbsent && (
+                <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
+                  <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
+                  <DailyRings
+                    dailyHours={dailyHours}
+                    timeElapsedProgress={timeElapsed.progressPct}
+                    timeElapsedLabel={timeElapsed.label}
+                    soldHoursProgress={soldHoursProgress}
+                    soldHoursLabel={soldHoursLabel}
+                    soldColor={soldColor}
+                    theme={theme}
+                  />
+                </View>
+              )}
+
               {/* Monthly Breakdown */}
               <View style={[styles.card, { backgroundColor: theme.card, padding: cardPadding }]}>
                 <Text style={[styles.cardTitle, { color: theme.text, fontSize: getFontSize(18, layout) }]}>Monthly Breakdown</Text>
@@ -889,6 +961,22 @@ export default function DashboardScreen() {
                     </View>
                   </>
                 )}
+              </View>
+            )}
+
+            {/* Today's Live Progress — concentric rings */}
+            {workSchedule && workdayProgress.isWorkDay && !workdayProgress.isAbsent && (
+              <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
+                <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
+                <DailyRings
+                  dailyHours={dailyHours}
+                  timeElapsedProgress={timeElapsed.progressPct}
+                  timeElapsedLabel={timeElapsed.label}
+                  soldHoursProgress={soldHoursProgress}
+                  soldHoursLabel={soldHoursLabel}
+                  soldColor={soldColor}
+                  theme={theme}
+                />
               </View>
             )}
 
@@ -1570,5 +1658,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  liveProgressCard: {
+    borderRadius: 16,
+    marginBottom: 20,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  liveProgressTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
   },
 });
