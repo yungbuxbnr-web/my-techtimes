@@ -103,20 +103,28 @@ export async function configureNotificationHandler(settings: NotificationSetting
     handleNotification: async (notification) => {
       console.log('NotificationScheduler: Handling notification:', notification.request.identifier);
 
-      // Trigger vibration if enabled
-      if (settings.vibrationEnabled && Platform.OS !== 'web') {
+      // Trigger vibration if enabled (iOS only — Android handles vibration via channel config)
+      if (settings.vibrationEnabled && Platform.OS === 'ios') {
         try {
-          if (Platform.OS === 'ios') {
-            if (settings.vibrationPattern === 'short') {
-              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            } else if (settings.vibrationPattern === 'long') {
-              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            } else if (settings.vibrationPattern === 'double') {
+          if (settings.vibrationPattern === 'short') {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          } else if (settings.vibrationPattern === 'long') {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          } else if (settings.vibrationPattern === 'double') {
+            try {
               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), 100);
-            } else {
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (e) {
+              console.error('NotificationScheduler: Haptics double (first) failed:', e);
             }
+            setTimeout(() => {
+              try {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              } catch (e) {
+                console.error('NotificationScheduler: Haptics double (second) failed:', e);
+              }
+            }, 100);
+          } else {
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         } catch (error) {
           console.error('NotificationScheduler: Error triggering vibration:', error);

@@ -192,20 +192,23 @@ async function markDueAbsences(): Promise<void> {
 
 // ─── Background task definition ──────────────────────────────────────────────
 
-TaskManager.defineTask(TASK_NAME, async () => {
-  console.log('Mainframe: Background task triggered');
-  try {
-    await runMainframeSync();
-    return BackgroundFetch.BackgroundFetchResult.NewData;
-  } catch (error) {
-    console.error('Mainframe: Background task failed:', error);
-    return BackgroundFetch.BackgroundFetchResult.Failed;
-  }
-});
+if (Platform.OS !== 'web') {
+  TaskManager.defineTask(TASK_NAME, async () => {
+    console.log('Mainframe: Background task triggered');
+    try {
+      await runMainframeSync();
+      return BackgroundFetch.BackgroundFetchResult.NewData;
+    } catch (error) {
+      console.error('Mainframe: Background task failed:', error);
+      return BackgroundFetch.BackgroundFetchResult.Failed;
+    }
+  });
+}
 
 // ─── Registration helpers ─────────────────────────────────────────────────────
 
 export async function registerBackgroundMainframe(): Promise<void> {
+  if (Platform.OS === 'web') return;
   try {
     const status = await BackgroundFetch.getStatusAsync();
     console.log('Mainframe: BackgroundFetch status:', status);

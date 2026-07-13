@@ -161,6 +161,7 @@ export async function syncWidgetDataFromStorage(): Promise<void> {
     await updateWidgetData();
     return;
   }
+  // No-op on web or any non-iOS platform — avoids any iOS-specific import attempts
   if (Platform.OS !== 'ios') return;
 
   try {
@@ -369,6 +370,7 @@ export async function updateLastBackupTimestamp(): Promise<void> {
  */
 export async function updateDayProgressWidget(): Promise<void> {
   console.log('WidgetManager: updateDayProgressWidget called');
+  // No-op on Android/web — avoids any iOS-specific import attempts
   if (Platform.OS !== 'ios') {
     console.log('WidgetManager: Skipping Day Progress widget reload (not iOS)');
     return;

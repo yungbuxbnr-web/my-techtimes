@@ -101,7 +101,6 @@ export async function updateLiveWidget(): Promise<void> {
       content: {
         title,
         body,
-        sticky: true,
         priority: Notifications.AndroidNotificationPriority.LOW,
         // @ts-expect-error — ongoing is a valid Android field not in expo-notifications types
         ongoing: true,

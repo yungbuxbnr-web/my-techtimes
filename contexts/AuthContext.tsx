@@ -74,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticatedRef = useRef(isAuthenticated);
   const lockOnResumeRef = useRef(lockOnResume);
   const lastBackgroundTimeRef = useRef<number | null>(null);
+  const appStateRef = useRef<AppStateStatus>('active');
   
   // Update refs when state changes
   useEffect(() => {
@@ -165,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Handle app state changes with time-based locking
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      const currentAppState = AppState.currentState;
+      const currentAppState = appStateRef.current;
       
       // App going to background - record the time
       if (currentAppState === 'active' && nextAppState.match(/inactive|background/)) {
@@ -218,6 +219,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // No action needed, user stays authenticated
         }
       }
+
+      appStateRef.current = nextAppState;
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -240,8 +243,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedPin === pin) {
         console.log('AuthContext: PIN verified successfully');
         setIsAuthenticated(true);
-        // Clear the background time on successful login
-        await setSecureItem(LAST_BACKGROUND_TIME_KEY, '');
+        // Clear the background time on successful login (use '0' to avoid parseInt('', 10) = NaN)
+        await setSecureItem(LAST_BACKGROUND_TIME_KEY, '0');
         lastBackgroundTimeRef.current = null;
         return true;
       }
@@ -359,8 +362,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.success) {
         console.log('AuthContext: Biometric authentication successful');
         setIsAuthenticated(true);
-        // Clear the background time on successful login
-        await setSecureItem(LAST_BACKGROUND_TIME_KEY, '');
+        // Clear the background time on successful login (use '0' to avoid parseInt('', 10) = NaN)
+        await setSecureItem(LAST_BACKGROUND_TIME_KEY, '0');
         lastBackgroundTimeRef.current = null;
         return true;
       }

@@ -135,11 +135,12 @@ function RootLayoutContent() {
         await registerBackgroundMainframe();
       } catch (error) {
         console.error('RootLayout: Error initializing app:', error);
+      } finally {
+        setIsReady(true);
       }
     };
     
     initApp();
-    setIsReady(true);
   }, []);
 
   // Save current route when navigating
@@ -235,8 +236,8 @@ function RootLayoutContent() {
           // If more than 1 hour, return to home screen after login
           if (timeElapsed >= LOCK_TIMEOUT) {
             console.log('RootLayout: More than 1 hour elapsed, will return to home after login');
-            // Clear the saved route so user goes to home
-            await setSecureItem(LAST_ROUTE_KEY, '');
+            // Store a valid fallback route so the router always has a valid target
+            await setSecureItem(LAST_ROUTE_KEY, '(tabs)');
             lastRouteRef.current = null;
           }
           // Otherwise, the saved route will be used to resume
@@ -256,6 +257,7 @@ function RootLayoutContent() {
   // Handle navigation after authentication
   useEffect(() => {
     if (!isReady) return;
+    if (!isAuthenticated) return;
     
     const handleNavigation = async () => {
       if (isAuthenticated) {
