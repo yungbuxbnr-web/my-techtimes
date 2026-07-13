@@ -18,10 +18,10 @@ export default function AppBackground({ children, style }: AppBackgroundProps) {
       resizeMode="cover"
     >
       <View 
-        pointerEvents="none"
         style={[
           styles.overlay, 
           { 
+            pointerEvents: 'none',
             backgroundColor: isDarkMode 
               ? `rgba(0, 0, 0, ${overlayStrength})` 
               : `rgba(255, 255, 255, ${overlayStrength})`

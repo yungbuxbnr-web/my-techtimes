@@ -398,7 +398,7 @@ export async function maybeSendTargetReminderNotification(
       badge: 1,
       ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.WORK }),
     },
-    trigger: null,
+    trigger: { seconds: 1 },
   });
 
   await AsyncStorage.setItem(NOTIF_TARGET_FIRED_KEY, today);
@@ -443,7 +443,7 @@ export async function maybeSendEfficiencyAlertNotification(
       badge: 1,
       ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
     },
-    trigger: null,
+    trigger: { seconds: 1 },
   });
 
   await AsyncStorage.setItem(NOTIF_EFFICIENCY_FIRED_KEY, today);
@@ -698,7 +698,7 @@ export async function sendTestNotification(settings: NotificationSettings): Prom
       badge: 1,
       ...(Platform.OS === 'android' && { channelId }),
     },
-    trigger: null, // Send immediately
+    trigger: { seconds: 1 }, // Fire immediately (trigger: null can throw on some Samsung firmware)
   });
 
   console.log('NotificationScheduler: Test notification sent');

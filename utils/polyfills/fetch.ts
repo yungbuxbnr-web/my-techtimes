@@ -1,9 +1,9 @@
-import { fetch as expoFetch } from 'expo/fetch';
 // @ts-expect-error - no type declarations for this internal module
 import { polyfillGlobal } from 'react-native/Libraries/Utilities/PolyfillFunctions';
 
-// Replace global fetch with expo/fetch which supports streaming response bodies
-polyfillGlobal('fetch', () => expoFetch);
+// NOTE: We intentionally do NOT polyfill global fetch with expo/fetch.
+// expo/fetch causes Better Auth's client to return a Kotlin-incompatible
+// type on Android, crashing the JS bridge. The default Hermes fetch is used instead.
 
 // Dynamic imports so missing packages don't break the bundle
 Promise.all([

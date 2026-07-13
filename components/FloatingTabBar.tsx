@@ -131,8 +131,8 @@ export default function FloatingTabBar({
         },
         android: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
-            : 'rgba(255, 255, 255, 0.6)',
+            ? 'rgba(28, 28, 30, 1.0)'
+            : 'rgba(255, 255, 255, 1.0)',
         },
         web: {
           backgroundColor: theme.dark
@@ -154,6 +154,14 @@ export default function FloatingTabBar({
     },
   };
 
+  // On iOS use BlurView for the frosted glass effect; on Android/web use a plain
+  // View with a solid background colour (expo-blur has no Android implementation
+  // and renders transparent, making the tab bar invisible on Samsung devices).
+  const TabBarContainer = Platform.OS === 'ios' ? BlurView : View;
+  const containerProps = Platform.OS === 'ios'
+    ? { intensity: 80, style: [dynamicStyles.blurContainer, { borderRadius }] as any }
+    : { style: [dynamicStyles.blurContainer, { borderRadius }] as any };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <View style={[
@@ -165,10 +173,7 @@ export default function FloatingTabBar({
           paddingBottom: Platform.OS === 'android' ? 8 : 0,
         }
       ]}>
-        <BlurView
-          intensity={80}
-          style={[dynamicStyles.blurContainer, { borderRadius }]}
-        >
+        <TabBarContainer {...containerProps}>
           <View style={dynamicStyles.background} />
           <Animated.View style={[dynamicStyles.indicator, indicatorStyle]} />
           <View style={styles.tabsContainer}>
@@ -205,7 +210,7 @@ export default function FloatingTabBar({
               );
             })}
           </View>
-        </BlurView>
+        </TabBarContainer>
       </View>
     </SafeAreaView>
   );

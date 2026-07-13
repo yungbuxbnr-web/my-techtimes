@@ -10,6 +10,14 @@ const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
 export async function setupLiveWidgetChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
+  // Guard against re-creating the channel on every launch — calling
+  // setNotificationChannelAsync repeatedly on Samsung devices can cause a race
+  // condition that corrupts the channel configuration.
+  const existing = await Notifications.getNotificationChannelAsync(LIVE_WIDGET_CHANNEL);
+  if (existing) {
+    console.log('LiveWidget: Channel already exists, skipping creation');
+    return;
+  }
   console.log('LiveWidget: Setting up live-widget notification channel');
   await Notifications.setNotificationChannelAsync(LIVE_WIDGET_CHANNEL, {
     name: 'Live Widget',

@@ -122,7 +122,7 @@ export async function getStoredAccessToken(): Promise<string | null> {
     STORAGE_KEYS.ACCESS_TOKEN,
     STORAGE_KEYS.TOKEN_EXPIRY,
   ]);
-  const accessToken = token[1];
+  const accessToken = token[1] ?? null;
   const expiryTime = Number(expiry[1] ?? 0);
   if (!accessToken) {
     console.log('GoogleDriveSync: No access token found');
@@ -190,10 +190,12 @@ export async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUs
 }
 
 export async function getStoredUser(): Promise<GoogleUser | null> {
-  const [[, email], [, name]] = await AsyncStorage.multiGet([
+  const [[, emailRaw], [, nameRaw]] = await AsyncStorage.multiGet([
     STORAGE_KEYS.USER_EMAIL,
     STORAGE_KEYS.USER_NAME,
   ]);
+  const email = emailRaw ?? null;
+  const name = nameRaw ?? null;
   if (!email) return null;
   return { email, name: name ?? '' };
 }
