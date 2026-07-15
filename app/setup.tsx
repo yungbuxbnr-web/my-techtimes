@@ -17,6 +17,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { api } from '@/utils/api';
 import AppBackground from '@/components/AppBackground';
 import { SetupCompleteScreen } from '@/components/SetupCompleteScreen';
+import { activityLogger } from '@/utils/activityLogger';
 
 const PIN_KEY = 'user_pin';
 const SETUP_COMPLETE_KEY = 'setup_complete';
@@ -54,6 +55,7 @@ export default function SetupScreen() {
 
   const handleNameSubmit = () => {
     console.log('Setup: Submitting technician name:', technicianName);
+    activityLogger.info('SETUP', 'Name submitted', { name: technicianName.trim() });
     if (!technicianName.trim()) {
       Alert.alert('Required', 'Please enter your full name');
       return;
@@ -63,6 +65,7 @@ export default function SetupScreen() {
 
   const handlePinSubmit = () => {
     console.log('Setup: Submitting PIN, length:', pin.length);
+    activityLogger.info('SETUP', 'PIN submitted');
     if (pin.length < 4 || pin.length > 6) {
       Alert.alert('Invalid PIN', 'PIN must be 4-6 digits');
       return;
@@ -85,6 +88,7 @@ export default function SetupScreen() {
     setLoading(true);
     try {
       console.log('Setup: Saving technician profile to backend');
+      activityLogger.info('SETUP', 'Saving profile to backend');
       // Save technician profile to backend
       await api.updateTechnicianProfile({ name: technicianName.trim() });
       
@@ -97,10 +101,12 @@ export default function SetupScreen() {
       await setSecureItem(SETUP_COMPLETE_KEY, 'true');
       
       console.log('Setup: Setup complete, showing completion animation');
+      activityLogger.info('SETUP', 'Setup complete');
       // Show completion animation
       setStep('complete');
     } catch (error) {
       console.error('Setup: Error completing setup:', error);
+      activityLogger.error('SETUP', 'Setup failed', { error: String(error) });
       Alert.alert('Error', 'Failed to complete setup. Please try again.');
       setLoading(false);
     }
@@ -108,6 +114,7 @@ export default function SetupScreen() {
 
   const handleSetupComplete = () => {
     console.log('Setup: Animation complete, navigating to login');
+    activityLogger.info('SETUP', 'Navigating to pin-login after setup');
     router.replace('/pin-login');
   };
 

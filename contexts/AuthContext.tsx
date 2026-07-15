@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { AppState, AppStateStatus, Platform } from 'react-native';
+import { activityLogger } from '@/utils/activityLogger';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -88,10 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkBiometricsAvailability = useCallback(async () => {
     try {
       console.log('AuthContext: Checking biometrics availability');
+      activityLogger.info('AUTH', 'Checking biometrics availability');
 
       // Biometrics only available on native platforms
       if (Platform.OS === 'web') {
         console.log('AuthContext: Biometrics not available on web');
+        activityLogger.info('AUTH', 'Biometrics not available on web');
         setBiometricsAvailable(false);
         return;
       }
@@ -103,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
 
       let available = await checkOnce();
+      activityLogger.debug('AUTH', 'Biometrics first check result', { available });
 
       // If not available, check if user previously had biometrics enabled.
       // If so, retry up to 3 times (handles transient Android startup failures).
@@ -110,10 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedBiometrics = await getSecureItem(BIOMETRICS_KEY);
         if (storedBiometrics === 'true') {
           console.log('AuthContext: Biometrics not available on first check but previously enabled — retrying up to 3 times');
+          activityLogger.warn('AUTH', 'Biometrics not available on first check but previously enabled — retrying');
           for (let i = 0; i < 3; i++) {
             await new Promise(r => setTimeout(r, 500));
             available = await checkOnce();
             console.log('AuthContext: Biometrics retry', i + 1, '— available:', available);
+            activityLogger.debug('AUTH', `Biometrics retry ${i + 1}`, { available });
             if (available) break;
           }
         }
@@ -121,8 +127,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setBiometricsAvailable(available);
       console.log('AuthContext: Biometrics available:', available);
+      activityLogger.info('AUTH', 'Biometrics availability check complete', { available });
     } catch (error) {
       console.error('AuthContext: Error checking biometrics:', error);
+      activityLogger.error('AUTH', 'Error checking biometrics', { error: String(error) });
       setBiometricsAvailable(false);
     }
   }, []);
@@ -249,15 +257,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (pin: string): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting login with PIN');
+      activityLogger.info('AUTH', 'Attempting PIN login');
       const storedPin = await getSecureItem(PIN_KEY);
       
       if (!storedPin) {
         console.error('AuthContext: No stored PIN found');
+        activityLogger.error('AUTH', 'Login failed — no stored PIN found');
         return false;
       }
       
       if (storedPin === pin) {
         console.log('AuthContext: PIN verified successfully');
+        activityLogger.info('AUTH', 'Login success — PIN verified');
         setIsAuthenticated(true);
         // Clear the background time on successful login (use '0' to avoid parseInt('', 10) = NaN)
         await setSecureItem(LAST_BACKGROUND_TIME_KEY, '0');
@@ -266,15 +277,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.log('AuthContext: Incorrect PIN');
+      activityLogger.warn('AUTH', 'Login failure — incorrect PIN');
       return false;
     } catch (error) {
       console.error('AuthContext: Login failed:', error);
+      activityLogger.error('AUTH', 'Login error', { error: String(error) });
       return false;
     }
   }, []);
 
   const logout = useCallback(() => {
     console.log('AuthContext: Logging out');
+    activityLogger.info('AUTH', 'Logout');
     setIsAuthenticated(false);
   }, []);
 
@@ -350,10 +364,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authenticateWithBiometrics = useCallback(async (): Promise<boolean> => {
     try {
       console.log('AuthContext: Attempting biometric authentication');
+      activityLogger.info('AUTH', 'Attempting biometric authentication', { biometricsAvailable, biometricsEnabled });
       
       // Check if biometrics are available on native platforms
       if (Platform.OS === 'web') {
         console.log('AuthContext: Biometrics not available on web');
+        activityLogger.info('AUTH', 'Biometric auth skipped — web platform');
         return false;
       }
       
@@ -361,11 +377,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Log but don't bail out — availability check may have been transient on Android.
         // Let the OS attempt auth and fail naturally if truly unavailable.
         console.warn('AuthContext: biometricsAvailable is false, attempting auth anyway (may be transient)');
+        activityLogger.warn('AUTH', 'biometricsAvailable is false — attempting auth anyway (may be transient)');
       }
 
       // Check if biometrics are enabled in settings
       if (!biometricsEnabled) {
         console.log('AuthContext: Biometrics not enabled in settings');
+        activityLogger.info('AUTH', 'Biometric auth skipped — not enabled in settings');
         return false;
       }
       
@@ -378,6 +396,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (result.success) {
         console.log('AuthContext: Biometric authentication successful');
+        activityLogger.info('AUTH', 'Biometric authentication successful');
         setIsAuthenticated(true);
         // Clear the background time on successful login (use '0' to avoid parseInt('', 10) = NaN)
         await setSecureItem(LAST_BACKGROUND_TIME_KEY, '0');
@@ -386,9 +405,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.log('AuthContext: Biometric authentication failed or cancelled');
+      activityLogger.warn('AUTH', 'Biometric authentication failed or cancelled', { error: (result as any).error });
       return false;
     } catch (error) {
       console.error('AuthContext: Error with biometric authentication:', error);
+      activityLogger.error('AUTH', 'Biometric authentication error', { error: String(error) });
       return false;
     }
   }, [biometricsAvailable, biometricsEnabled]);

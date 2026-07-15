@@ -1485,6 +1485,31 @@ export default function SettingsScreen() {
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Diagnostics</Text>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.background }]}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Activity Logs');
+              router.push('/activity-logs');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="list.bullet.clipboard"
+              android_material_icon_name="terminal"
+              size={20}
+              color="#ff9800"
+            />
+            <View style={{ flex: 1, alignItems: 'flex-start' }}>
+              <Text style={[styles.actionButtonText, { color: '#ff9800' }]}>Activity Logs</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary, marginTop: 2 }]}>
+                View app logs &amp; diagnose issues
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
 
           <TouchableOpacity

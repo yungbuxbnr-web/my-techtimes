@@ -13,6 +13,7 @@ import { registerBackgroundMainframe, runMainframeSync } from '@/utils/backgroun
 import { setupLiveWidgetChannel, updateLiveWidget } from '@/utils/liveWidget';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
+import { activityLogger } from '@/utils/activityLogger';
 
 const LAST_ROUTE_KEY = 'last_route';
 const LAST_BACKGROUND_TIME_KEY = 'last_background_time';
@@ -45,6 +46,9 @@ async function getSecureItem(key: string): Promise<string | null> {
 }
 
 function RootLayoutContent() {
+  // Install global error handlers FIRST — before any hooks
+  activityLogger.installGlobalHandlers();
+
   const router = useRouter();
   const segments = useSegments();
   const { isAuthenticated, logout } = useAuth();
@@ -92,51 +96,67 @@ function RootLayoutContent() {
 
   useEffect(() => {
     console.log('RootLayout: App initializing');
+    activityLogger.info('APP_LIFECYCLE', 'App initializing');
     
     // Initialize notifications and background permissions
     const initApp = async () => {
       try {
         console.log('RootLayout: Requesting notification permissions');
+        activityLogger.info('NOTIFICATIONS', 'Requesting notification permissions');
         const hasNotificationPermission = await requestNotificationPermissions();
         
         if (hasNotificationPermission) {
           console.log('RootLayout: Scheduling all notifications');
+          activityLogger.info('NOTIFICATIONS', 'Scheduling all notifications');
           await scheduleAllNotifications();
           console.log('RootLayout: Notifications scheduled successfully');
+          activityLogger.info('NOTIFICATIONS', 'Notifications scheduled successfully');
         } else {
           console.log('RootLayout: Notification permissions not granted');
+          activityLogger.warn('NOTIFICATIONS', 'Notification permissions not granted');
         }
 
         // Request background permissions for live clock and work schedule
         console.log('RootLayout: Requesting background permissions');
+        activityLogger.info('BACKGROUND', 'Requesting background permissions');
         const hasBackgroundPermission = await requestBackgroundPermissions();
         
         if (hasBackgroundPermission) {
           console.log('RootLayout: Background permissions granted');
+          activityLogger.info('BACKGROUND', 'Background permissions granted');
         } else {
           console.log('RootLayout: Background permissions not granted');
+          activityLogger.warn('BACKGROUND', 'Background permissions not granted');
         }
 
         // Initialize widget data and schedule daily refresh
         if (Platform.OS === 'android') {
           console.log('RootLayout: Initializing Android widget');
+          activityLogger.info('WIDGET', 'Initializing Android widget');
           await updateWidgetData();
           scheduleDailyWidgetRefresh();
           console.log('RootLayout: Widget initialized and daily refresh scheduled');
+          activityLogger.info('WIDGET', 'Widget initialized and daily refresh scheduled');
 
           console.log('RootLayout: Setting up live widget notification channel');
+          activityLogger.info('WIDGET', 'Setting up live widget notification channel');
           await setupLiveWidgetChannel();
           await updateLiveWidget();
           console.log('RootLayout: Live widget initialized');
+          activityLogger.info('WIDGET', 'Live widget initialized');
         }
 
         // Register background mainframe for time tracking
         console.log('RootLayout: Registering background mainframe');
+        activityLogger.info('BACKGROUND', 'Registering background mainframe');
         await registerBackgroundMainframe();
+        activityLogger.info('BACKGROUND', 'Background mainframe registered');
       } catch (error) {
         console.error('RootLayout: Error initializing app:', error);
+        activityLogger.error('APP_LIFECYCLE', 'Error initializing app', { error: String(error) });
       } finally {
         setIsReady(true);
+        activityLogger.info('APP_LIFECYCLE', 'App init complete — isReady=true');
       }
     };
     
@@ -150,6 +170,7 @@ function RootLayoutContent() {
       lastRouteRef.current = currentRoute;
       setSecureItem(LAST_ROUTE_KEY, currentRoute);
       console.log('RootLayout: Saved current route:', currentRoute);
+      activityLogger.debug('NAVIGATION', 'Route saved', { route: currentRoute });
     }
   }, [segments]);
 
@@ -181,6 +202,7 @@ function RootLayoutContent() {
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       console.log('RootLayout: App state changed from', appStateRef.current, 'to', nextAppState);
+      activityLogger.info('APP_LIFECYCLE', 'App state changed', { from: appStateRef.current, to: nextAppState });
       
       // App going to background — reload iOS Day Progress widget timeline
       if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
@@ -272,6 +294,7 @@ function RootLayoutContent() {
           // If less than 1 hour, resume to saved route
           if (timeElapsed < LOCK_TIMEOUT) {
             console.log('RootLayout: Resuming to saved route:', savedRoute);
+            activityLogger.info('NAVIGATION', 'Resuming to saved route', { route: savedRoute });
             router.replace(`/${savedRoute}` as any);
             return;
           }
@@ -279,6 +302,7 @@ function RootLayoutContent() {
         
         // Otherwise go to home
         console.log('RootLayout: Going to home screen');
+        activityLogger.info('NAVIGATION', 'Navigating to home screen after auth');
         router.replace('/(tabs)');
       }
     };
@@ -292,6 +316,7 @@ function RootLayoutContent() {
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       console.log('RootLayout: Back button pressed, count:', backPressCount + 1);
+      activityLogger.debug('APP_LIFECYCLE', 'Android back button pressed', { count: backPressCount + 1 });
       
       // Check if we're on a screen that can go back
       const canGoBack = segments.length > 1 || (segments[0] !== '(tabs)' && segments[0] !== 'index');
@@ -413,6 +438,7 @@ function RootLayoutContent() {
           headerBackTitle: 'Back',
         }}
       />
+      <Stack.Screen name="activity-logs" options={{ headerShown: false }} />
     </Stack>
   );
 }
