@@ -14,6 +14,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   StatusBar,
+  unstable_batchedUpdates,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -267,9 +268,11 @@ export default function AddJobModal() {
       return;
     }
 
-    setSaving(true);
-    setShowSaveNotification(true);
-    setSaveNotificationType('loading');
+    unstable_batchedUpdates(() => {
+      setSaving(true);
+      setShowSaveNotification(true);
+      setSaveNotificationType('loading');
+    });
 
     try {
       const jobData = {
@@ -306,8 +309,8 @@ export default function AddJobModal() {
         setSaveNotificationType('success');
         toastManager.success('Job updated successfully!');
         safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        console.log('AddJobModal: Closing modal after successful update');
-        router.back();
+        console.log('AddJobModal: Closing modal after successful update (800ms delay)');
+        setTimeout(() => router.back(), 800);
       } else {
         // Create new job
         console.log('AddJobModal: Saving new job:', jobData);
@@ -337,8 +340,8 @@ export default function AddJobModal() {
         safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
         console.log('AddJobModal: Job saved - all stats will update live');
-        console.log('AddJobModal: Closing modal after successful save');
-        router.back();
+        console.log('AddJobModal: Closing modal after successful save (800ms delay)');
+        setTimeout(() => router.back(), 800);
       }
     } catch (error) {
       console.error('AddJobModal: Error saving job:', error);

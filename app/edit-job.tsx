@@ -205,7 +205,8 @@ export default function EditJobScreen() {
       });
       console.log('EditJobScreen: Job saved, updating widget data');
       await updateWidgetData();
-      router.back();
+      console.log('EditJobScreen: Closing screen after successful save (800ms delay)');
+      setTimeout(() => router.back(), 800);
     } catch (e) {
       console.error('EditJobScreen: Error saving job:', e);
       Alert.alert('Error', 'Failed to save job. Please try again.');
