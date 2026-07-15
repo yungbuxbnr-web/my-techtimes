@@ -43,7 +43,7 @@ export default function PinLoginScreen() {
       hasAutoTriggeredRef.current = true;
       const timer = setTimeout(() => {
         handleBiometricAuth();
-      }, 800);
+      }, 1200);
       return () => clearTimeout(timer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

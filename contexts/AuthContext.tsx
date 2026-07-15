@@ -76,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lockOnResumeRef = useRef(lockOnResume);
   const lastBackgroundTimeRef = useRef<number | null>(null);
   const appStateRef = useRef<AppStateStatus>('active');
+  const biometricsEnabledRef = useRef(false);
+  const biometricsAvailableRef = useRef(false);
   
   // Update refs when state changes
   useEffect(() => {
@@ -85,6 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     lockOnResumeRef.current = lockOnResume;
   }, [lockOnResume]);
+
+  useEffect(() => {
+    biometricsEnabledRef.current = biometricsEnabled;
+  }, [biometricsEnabled]);
+
+  useEffect(() => {
+    biometricsAvailableRef.current = biometricsAvailable;
+  }, [biometricsAvailable]);
 
   const checkBiometricsAvailability = useCallback(async () => {
     try {
@@ -172,8 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializeAuth = useCallback(async () => {
     console.log('AuthContext: Initializing authentication');
     try {
-      await checkBiometricsAvailability();
       await loadSettings();
+      await checkBiometricsAvailability();
       await checkSetupStatus();
     } catch (error) {
       console.error('AuthContext: Error initializing auth:', error);
@@ -363,8 +373,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const authenticateWithBiometrics = useCallback(async (): Promise<boolean> => {
     try {
+      const currentBiometricsAvailable = biometricsAvailableRef.current;
+      const currentBiometricsEnabled = biometricsEnabledRef.current;
       console.log('AuthContext: Attempting biometric authentication');
-      activityLogger.info('AUTH', 'Attempting biometric authentication', { biometricsAvailable, biometricsEnabled });
+      activityLogger.info('AUTH', 'Attempting biometric authentication', { biometricsAvailable: currentBiometricsAvailable, biometricsEnabled: currentBiometricsEnabled });
       
       // Check if biometrics are available on native platforms
       if (Platform.OS === 'web') {
@@ -373,7 +385,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
       
-      if (!biometricsAvailable) {
+      if (!currentBiometricsAvailable) {
         // Log but don't bail out — availability check may have been transient on Android.
         // Let the OS attempt auth and fail naturally if truly unavailable.
         console.warn('AuthContext: biometricsAvailable is false, attempting auth anyway (may be transient)');
@@ -381,7 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Check if biometrics are enabled in settings
-      if (!biometricsEnabled) {
+      if (!currentBiometricsEnabled) {
         console.log('AuthContext: Biometrics not enabled in settings');
         activityLogger.info('AUTH', 'Biometric auth skipped — not enabled in settings');
         return false;
@@ -412,7 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       activityLogger.error('AUTH', 'Biometric authentication error', { error: String(error) });
       return false;
     }
-  }, [biometricsAvailable, biometricsEnabled]);
+  }, []);
 
   return (
     <AuthContext.Provider
