@@ -88,23 +88,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkBiometricsAvailability = useCallback(async () => {
     try {
       console.log('AuthContext: Checking biometrics availability');
-      
+
       // Biometrics only available on native platforms
       if (Platform.OS === 'web') {
         console.log('AuthContext: Biometrics not available on web');
         setBiometricsAvailable(false);
         return;
       }
-      
-      const compatible = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      const available = compatible && enrolled;
+
+      const checkOnce = async (): Promise<boolean> => {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        return compatible && enrolled;
+      };
+
+      let available = await checkOnce();
+
+      // If not available, check if user previously had biometrics enabled.
+      // If so, retry up to 3 times (handles transient Android startup failures).
+      if (!available) {
+        const storedBiometrics = await getSecureItem(BIOMETRICS_KEY);
+        if (storedBiometrics === 'true') {
+          console.log('AuthContext: Biometrics not available on first check but previously enabled — retrying up to 3 times');
+          for (let i = 0; i < 3; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            available = await checkOnce();
+            console.log('AuthContext: Biometrics retry', i + 1, '— available:', available);
+            if (available) break;
+          }
+        }
+      }
+
       setBiometricsAvailable(available);
       console.log('AuthContext: Biometrics available:', available);
-      // Note: we intentionally do NOT auto-clear the stored biometrics preference
-      // when available=false, because the hardware check can return false transiently
-      // during startup. The UI already hides the biometric button when biometricsAvailable
-      // is false, so the stored preference is safe to keep.
     } catch (error) {
       console.error('AuthContext: Error checking biometrics:', error);
       setBiometricsAvailable(false);
@@ -342,10 +358,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       if (!biometricsAvailable) {
-        console.error('AuthContext: Biometrics not available on device');
-        return false;
+        // Log but don't bail out — availability check may have been transient on Android.
+        // Let the OS attempt auth and fail naturally if truly unavailable.
+        console.warn('AuthContext: biometricsAvailable is false, attempting auth anyway (may be transient)');
       }
-      
+
       // Check if biometrics are enabled in settings
       if (!biometricsEnabled) {
         console.log('AuthContext: Biometrics not enabled in settings');

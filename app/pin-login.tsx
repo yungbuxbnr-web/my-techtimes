@@ -36,9 +36,10 @@ export default function PinLoginScreen() {
   }, []);
 
   useEffect(() => {
-    // Auto-trigger biometric auth when biometrics are enabled and available
-    // Only trigger once per mount to avoid repeated prompts
-    if (biometricsEnabled && biometricsAvailable && !hasAutoTriggered) {
+    // Auto-trigger biometric auth when biometrics are enabled.
+    // Do not gate on biometricsAvailable — it may still be resolving on Android cold start.
+    // Only trigger once per mount to avoid repeated prompts.
+    if (biometricsEnabled && !hasAutoTriggered) {
       console.log('PinLogin: Auto-triggering biometric authentication');
       setHasAutoTriggered(true);
       
@@ -48,7 +49,7 @@ export default function PinLoginScreen() {
       }, 300);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [biometricsEnabled, biometricsAvailable, hasAutoTriggered]);
+  }, [biometricsEnabled, hasAutoTriggered]);
 
   const loadTechnicianName = async () => {
     try {
@@ -112,14 +113,11 @@ export default function PinLoginScreen() {
       }
       
       if (!biometricsAvailable) {
-        console.log('PinLogin: Biometrics not available on device');
-        Alert.alert(
-          'Not Available', 
-          'Biometric authentication is not available on this device. Please ensure you have enrolled fingerprint or face recognition in your device settings.'
-        );
-        return;
+        // Try anyway — availability check may have been transient on Android.
+        // authenticateWithBiometrics will handle the failure gracefully.
+        console.log('PinLogin: biometricsAvailable is false, attempting auth anyway');
       }
-      
+
       if (!biometricsEnabled) {
         console.log('PinLogin: Biometrics not enabled in settings');
         Alert.alert('Not Enabled', 'Biometric authentication is not enabled. Enable it in Settings.');
@@ -230,7 +228,7 @@ export default function PinLoginScreen() {
           </>
         )}
 
-        {biometricsEnabled && biometricsAvailable && (
+        {biometricsEnabled && (
           <TouchableOpacity
             style={styles.biometricButton}
             onPress={handleBiometricAuth}

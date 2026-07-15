@@ -586,14 +586,22 @@ export async function importFromJson(
     // cannot read directly. Copy to a temp file first.
     let resolvedUri = fileUri;
     if (Platform.OS === 'android' && fileUri.startsWith('content://')) {
-      const tmpPath = (FileSystem.cacheDirectory ?? '') + `import_tmp_${Date.now()}.json`;
+      const tmpPath = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '') + `import_tmp_${Date.now()}.json`;
       try {
         await FileSystem.copyAsync({ from: fileUri, to: tmpPath });
         resolvedUri = tmpPath;
-        console.log('ExportUtils: Copied content:// URI to temp file for reading:', tmpPath);
-      } catch (copyErr) {
+        console.log('ExportUtils: Copied content:// URI to temp file:', tmpPath);
+      } catch (copyErr: any) {
         console.error('ExportUtils: Failed to copy content:// URI:', copyErr);
-        throw new Error('Could not access the selected file. Please try again.');
+        // Try reading directly as last resort
+        try {
+          const testRead = await FileSystem.readAsStringAsync(fileUri);
+          // If direct read works, use original URI
+          resolvedUri = fileUri;
+          console.log('ExportUtils: Direct read of content:// URI succeeded (length:', testRead.length, ')');
+        } catch {
+          throw new Error('Could not read the selected file. Please try exporting the backup again and re-importing.');
+        }
       }
     }
 
