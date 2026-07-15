@@ -46,9 +46,6 @@ async function getSecureItem(key: string): Promise<string | null> {
 }
 
 function RootLayoutContent() {
-  // Install global error handlers FIRST — before any hooks
-  activityLogger.installGlobalHandlers();
-
   const router = useRouter();
   const segments = useSegments();
   const { isAuthenticated, logout } = useAuth();
@@ -57,6 +54,12 @@ function RootLayoutContent() {
   const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const lastRouteRef = useRef<string | null>(null);
+  const isHandlingAppStateRef = useRef(false);
+
+  // Install global error handlers exactly once after mount
+  useEffect(() => {
+    activityLogger.installGlobalHandlers();
+  }, []);
 
   // Reset badge count on initial mount
   useEffect(() => {
@@ -201,72 +204,82 @@ function RootLayoutContent() {
   // Handle app state changes with time-based navigation
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      console.log('RootLayout: App state changed from', appStateRef.current, 'to', nextAppState);
-      activityLogger.info('APP_LIFECYCLE', 'App state changed', { from: appStateRef.current, to: nextAppState });
-      
-      // App going to background — reload iOS Day Progress widget timeline
-      if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
-        console.log('RootLayout: App going to background — reloading Day Progress widget');
-        updateDayProgressWidget().catch(err =>
-          console.error('RootLayout: updateDayProgressWidget failed:', err)
-        );
+      if (isHandlingAppStateRef.current) {
+        appStateRef.current = nextAppState;
+        return;
       }
+      isHandlingAppStateRef.current = true;
 
-      // App coming back to foreground from background
-      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('RootLayout: App resumed from background — resetting badge count');
-        Notifications.setBadgeCountAsync(0).catch(err =>
-          console.error('RootLayout: Failed to reset badge count on foreground:', err)
-        );
-
-        console.log('RootLayout: App resumed from background — running foreground mainframe sync');
-        // Run foreground sync immediately to refresh calculations
-        runMainframeSync().catch(err =>
-          console.error('RootLayout: Foreground mainframe sync failed:', err)
-        );
-
-        // Sync latest data to widget shared container
-        console.log('RootLayout: App foregrounded — syncing widget data');
-        syncWidgetDataFromStorage().catch(err =>
-          console.error('RootLayout: syncWidgetDataFromStorage failed:', err)
-        );
-
-        if (Platform.OS === 'android') {
-          console.log('RootLayout: App foregrounded — updating live widget');
-          updateLiveWidget().catch(err =>
-            console.error('RootLayout: updateLiveWidget failed:', err)
+      try {
+        console.log('RootLayout: App state changed from', appStateRef.current, 'to', nextAppState);
+        activityLogger.info('APP_LIFECYCLE', 'App state changed', { from: appStateRef.current, to: nextAppState });
+        
+        // App going to background — reload iOS Day Progress widget timeline
+        if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
+          console.log('RootLayout: App going to background — reloading Day Progress widget');
+          updateDayProgressWidget().catch(err =>
+            console.error('RootLayout: updateDayProgressWidget failed:', err)
           );
         }
 
-        // Safety-net: re-register work-schedule notifications if cleared (e.g. after OS reboot)
-        console.log('RootLayout: App foregrounded — ensuring work-schedule notifications are scheduled');
-        ensureWorkScheduleNotificationsScheduled().catch(err =>
-          console.error('RootLayout: ensureWorkScheduleNotificationsScheduled failed on foreground:', err)
-        );
+        // App coming back to foreground from background
+        if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+          console.log('RootLayout: App resumed from background — resetting badge count');
+          Notifications.setBadgeCountAsync(0).catch(err =>
+            console.error('RootLayout: Failed to reset badge count on foreground:', err)
+          );
 
-        // Get the time when app went to background
-        const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
-        const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
-        
-        if (lastBackgroundTime) {
-          const now = Date.now();
-          const timeElapsed = now - lastBackgroundTime;
-          const minutesElapsed = Math.floor(timeElapsed / 60000);
-          
-          console.log('RootLayout: Time elapsed since background:', minutesElapsed, 'minutes');
-          
-          // If more than 1 hour, return to home screen after login
-          if (timeElapsed >= LOCK_TIMEOUT) {
-            console.log('RootLayout: More than 1 hour elapsed, will return to home after login');
-            // Store a valid fallback route so the router always has a valid target
-            await setSecureItem(LAST_ROUTE_KEY, '(tabs)');
-            lastRouteRef.current = null;
+          console.log('RootLayout: App resumed from background — running foreground mainframe sync');
+          // Run foreground sync immediately to refresh calculations
+          runMainframeSync().catch(err =>
+            console.error('RootLayout: Foreground mainframe sync failed:', err)
+          );
+
+          // Sync latest data to widget shared container
+          console.log('RootLayout: App foregrounded — syncing widget data');
+          syncWidgetDataFromStorage().catch(err =>
+            console.error('RootLayout: syncWidgetDataFromStorage failed:', err)
+          );
+
+          if (Platform.OS === 'android') {
+            console.log('RootLayout: App foregrounded — updating live widget');
+            updateLiveWidget().catch(err =>
+              console.error('RootLayout: updateLiveWidget failed:', err)
+            );
           }
-          // Otherwise, the saved route will be used to resume
+
+          // Safety-net: re-register work-schedule notifications if cleared (e.g. after OS reboot)
+          console.log('RootLayout: App foregrounded — ensuring work-schedule notifications are scheduled');
+          ensureWorkScheduleNotificationsScheduled().catch(err =>
+            console.error('RootLayout: ensureWorkScheduleNotificationsScheduled failed on foreground:', err)
+          );
+
+          // Get the time when app went to background
+          const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
+          const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
+          
+          if (lastBackgroundTime) {
+            const now = Date.now();
+            const timeElapsed = now - lastBackgroundTime;
+            const minutesElapsed = Math.floor(timeElapsed / 60000);
+            
+            console.log('RootLayout: Time elapsed since background:', minutesElapsed, 'minutes');
+            
+            // If more than 1 hour, return to home screen after login
+            if (timeElapsed >= LOCK_TIMEOUT) {
+              console.log('RootLayout: More than 1 hour elapsed, will return to home after login');
+              // Store a valid fallback route so the router always has a valid target
+              await setSecureItem(LAST_ROUTE_KEY, '(tabs)');
+              lastRouteRef.current = null;
+            }
+            // Otherwise, the saved route will be used to resume
+          }
         }
+        
+        appStateRef.current = nextAppState;
+      } finally {
+        isHandlingAppStateRef.current = false;
       }
-      
-      appStateRef.current = nextAppState;
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);

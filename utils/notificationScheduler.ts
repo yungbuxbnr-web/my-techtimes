@@ -610,7 +610,6 @@ export async function scheduleAllNotifications(): Promise<void> {
     });
   } catch (error) {
     console.error('NotificationScheduler: Error scheduling notifications:', error);
-    throw error;
   }
 }
 

@@ -41,6 +41,7 @@ let logs: LogEntry[] = [];
 let isInitialized = false;
 let isInitializing = false;
 let pendingEntries: LogEntry[] = [];
+let initResolvers: Array<() => void> = [];
 let globalHandlersInstalled = false;
 
 // Original console methods (captured before any wrapping)
@@ -77,16 +78,10 @@ async function persistToStorage(): Promise<void> {
 async function ensureInitialized(): Promise<void> {
   if (isInitialized) return;
   if (isInitializing) {
-    // Wait for initialization to complete
-    await new Promise<void>(resolve => {
-      const check = setInterval(() => {
-        if (isInitialized) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 50);
+    // Wait for initialization via callback — no polling
+    return new Promise<void>(resolve => {
+      initResolvers.push(resolve);
     });
-    return;
   }
 
   isInitializing = true;
@@ -102,6 +97,9 @@ async function ensureInitialized(): Promise<void> {
       trimIfNeeded();
       persistToStorage();
     }
+    // Resolve all waiters
+    const resolvers = initResolvers.splice(0);
+    for (const resolve of resolvers) resolve();
   }
 }
 

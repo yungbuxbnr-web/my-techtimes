@@ -20,7 +20,15 @@ const DAILY_PROGRESS_KEY = 'daily_progress';
 
 // ─── Core sync logic (shared between background task and foreground sync) ────
 
+let isSyncing = false;
+
 export async function runMainframeSync(): Promise<void> {
+  if (isSyncing) {
+    console.log('Mainframe: Sync already in progress, skipping');
+    return;
+  }
+  isSyncing = true;
+
   console.log('Mainframe: Running sync at', new Date().toISOString());
 
   try {
@@ -161,6 +169,8 @@ export async function runMainframeSync(): Promise<void> {
     console.log('Mainframe: Sync complete — elapsed:', elapsedHours.toFixed(2), 'h /', dailyHours.toFixed(2), 'h (', progressPercent.toFixed(1), '%)');
   } catch (error) {
     console.error('Mainframe: Error during sync:', error);
+  } finally {
+    isSyncing = false;
   }
 }
 

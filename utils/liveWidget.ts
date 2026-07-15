@@ -115,7 +115,7 @@ export async function updateLiveWidget(): Promise<void> {
         channelId: LIVE_WIDGET_CHANNEL,
         autoDismiss: false,
       } as any,
-      trigger: null,
+      trigger: { seconds: 1 } as any,
     });
 
     console.log('LiveWidget: Notification posted successfully');

@@ -113,14 +113,11 @@ function generateId(): string {
 
 async function getItem<T>(key: string, defaultValue: T): Promise<T> {
   try {
-    console.log('OfflineStorage: Getting item from key:', key);
     const value = await AsyncStorage.getItem(key);
     if (value === null) {
-      console.log('OfflineStorage: No value found, returning default');
       return defaultValue;
     }
     const parsed = JSON.parse(value);
-    console.log('OfflineStorage: Retrieved and parsed value');
     return parsed;
   } catch (error) {
     console.error('OfflineStorage: Error getting item:', key, error);
@@ -130,10 +127,8 @@ async function getItem<T>(key: string, defaultValue: T): Promise<T> {
 
 async function setItem<T>(key: string, value: T): Promise<void> {
   try {
-    console.log('OfflineStorage: Setting item for key:', key);
     const jsonValue = JSON.stringify(value);
     await AsyncStorage.setItem(key, jsonValue);
-    console.log('OfflineStorage: Item saved successfully');
   } catch (error) {
     console.error('OfflineStorage: Error setting item:', key, error);
     throw error;
@@ -144,12 +139,10 @@ async function setItem<T>(key: string, value: T): Promise<void> {
 export const offlineStorage = {
   // Jobs
   async getAllJobs(): Promise<Job[]> {
-    console.log('OfflineStorage: Getting all jobs');
     return await getItem<Job[]>(KEYS.JOBS, []);
   },
 
   async getJobsForMonth(month: string): Promise<Job[]> {
-    console.log('OfflineStorage: Getting jobs for month:', month);
     const allJobs = await this.getAllJobs();
     return allJobs.filter(job => {
       const jobMonth = job.createdAt.substring(0, 7); // YYYY-MM
@@ -158,14 +151,12 @@ export const offlineStorage = {
   },
 
   async getTodayJobs(): Promise<Job[]> {
-    console.log('OfflineStorage: Getting today jobs');
     const allJobs = await this.getAllJobs();
     const today = new Date().toISOString().split('T')[0];
     return allJobs.filter(job => job.createdAt.startsWith(today));
   },
 
   async getWeekJobs(): Promise<Job[]> {
-    console.log('OfflineStorage: Getting week jobs');
     const allJobs = await this.getAllJobs();
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -176,14 +167,12 @@ export const offlineStorage = {
   },
 
   async getMonthJobs(): Promise<Job[]> {
-    console.log('OfflineStorage: Getting month jobs');
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     return await this.getJobsForMonth(month);
   },
 
   async getRecentJobs(limit: number = 10): Promise<Job[]> {
-    console.log('OfflineStorage: Getting recent jobs, limit:', limit);
     const allJobs = await this.getAllJobs();
     return allJobs
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -191,12 +180,10 @@ export const offlineStorage = {
   },
 
   async saveJobs(jobs: Job[]): Promise<void> {
-    console.log('OfflineStorage: Saving', jobs.length, 'jobs');
     await setItem(KEYS.JOBS, jobs);
   },
 
   async createJob(job: Omit<Job, 'id' | 'updatedAt'>): Promise<Job> {
-    console.log('OfflineStorage: Creating job');
     const allJobs = await this.getAllJobs();
     const newJob: Job = {
       ...job,
@@ -206,12 +193,10 @@ export const offlineStorage = {
     };
     allJobs.push(newJob);
     await setItem(KEYS.JOBS, allJobs);
-    console.log('OfflineStorage: Job created with id:', newJob.id);
     return newJob;
   },
 
   async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
-    console.log('OfflineStorage: Updating job:', id);
     const allJobs = await this.getAllJobs();
     const index = allJobs.findIndex(job => job.id === id);
     if (index === -1) {
@@ -223,19 +208,16 @@ export const offlineStorage = {
       updatedAt: new Date().toISOString(),
     };
     await setItem(KEYS.JOBS, allJobs);
-    console.log('OfflineStorage: Job updated');
     return allJobs[index];
   },
 
   async deleteJob(id: string): Promise<{ success: boolean }> {
-    console.log('OfflineStorage: Deleting job:', id);
     const allJobs = await this.getAllJobs();
     const filtered = allJobs.filter(job => job.id !== id);
     if (filtered.length === allJobs.length) {
       throw new Error('Job not found');
     }
     await setItem(KEYS.JOBS, filtered);
-    console.log('OfflineStorage: Job deleted, cleaning up images for job:', id);
     try {
       await deleteAllJobImages(id);
     } catch (error) {
@@ -246,7 +228,6 @@ export const offlineStorage = {
 
   // Schedule
   async getSchedule(): Promise<Schedule> {
-    console.log('OfflineStorage: Getting schedule');
     return await getItem<Schedule>(KEYS.SCHEDULE, {
       dailyWorkingHours: 8.5,
       saturdayWorking: false,
@@ -263,42 +244,33 @@ export const offlineStorage = {
   },
 
   async updateSchedule(schedule: Partial<Schedule>): Promise<Schedule> {
-    console.log('OfflineStorage: Updating schedule');
     const current = await this.getSchedule();
     const updated = { ...current, ...schedule };
     await setItem(KEYS.SCHEDULE, updated);
-    console.log('OfflineStorage: Schedule updated');
     return updated;
   },
 
   async saveSchedule(schedule: Schedule & { _updatedAt?: string }): Promise<void> {
-    console.log('OfflineStorage: Saving full schedule');
     await setItem(KEYS.SCHEDULE, schedule);
-    console.log('OfflineStorage: Schedule saved');
   },
 
   // Profile
   async getTechnicianProfile(): Promise<TechnicianProfile> {
-    console.log('OfflineStorage: Getting technician profile');
     return await getItem<TechnicianProfile>(KEYS.PROFILE, { name: 'Technician' });
   },
 
   async updateTechnicianProfile(profile: TechnicianProfile): Promise<TechnicianProfile> {
-    console.log('OfflineStorage: Updating technician profile');
     await setItem(KEYS.PROFILE, profile);
-    console.log('OfflineStorage: Profile updated');
     return profile;
   },
 
   // Absences
   async getAbsences(month: string): Promise<Absence[]> {
-    console.log('OfflineStorage: Getting absences for month:', month);
     const allAbsences = await getItem<Absence[]>(KEYS.ABSENCES, []);
     return allAbsences.filter(absence => absence.month === month);
   },
 
   async createAbsence(absence: Omit<Absence, 'id' | 'createdAt'>): Promise<Absence> {
-    console.log('OfflineStorage: Creating absence');
     const allAbsences = await getItem<Absence[]>(KEYS.ABSENCES, []);
     const newAbsence: Absence = {
       ...absence,
@@ -307,30 +279,25 @@ export const offlineStorage = {
     };
     allAbsences.push(newAbsence);
     await setItem(KEYS.ABSENCES, allAbsences);
-    console.log('OfflineStorage: Absence created with id:', newAbsence.id);
     return newAbsence;
   },
 
   async deleteAbsence(id: string): Promise<{ success: boolean }> {
-    console.log('OfflineStorage: Deleting absence:', id);
     const allAbsences = await getItem<Absence[]>(KEYS.ABSENCES, []);
     const filtered = allAbsences.filter(absence => absence.id !== id);
     if (filtered.length === allAbsences.length) {
       throw new Error('Absence not found');
     }
     await setItem(KEYS.ABSENCES, filtered);
-    console.log('OfflineStorage: Absence deleted');
     return { success: true };
   },
 
   async getAllAbsences(): Promise<Absence[]> {
-    console.log('OfflineStorage: Getting all absences');
     return await getItem<Absence[]>(KEYS.ABSENCES, []);
   },
 
   // Settings
   async getSettings(): Promise<Settings> {
-    console.log('OfflineStorage: Getting settings');
     return await getItem<Settings>(KEYS.SETTINGS, { 
       monthlyTarget: 180,
       streaksEnabled: true,
@@ -339,17 +306,14 @@ export const offlineStorage = {
   },
 
   async updateSettings(settings: Partial<Settings>): Promise<Settings> {
-    console.log('OfflineStorage: Updating settings');
     const current = await this.getSettings();
     const updated = { ...current, ...settings };
     await setItem(KEYS.SETTINGS, updated);
-    console.log('OfflineStorage: Settings updated');
     return updated;
   },
 
   // Notification Settings
   async getNotificationSettings(): Promise<NotificationSettings> {
-    console.log('OfflineStorage: Getting notification settings');
     return await getItem<NotificationSettings>(KEYS.NOTIFICATION_SETTINGS, {
       dailyReminder: true,
       dailyReminderTime: '08:00',
@@ -371,17 +335,14 @@ export const offlineStorage = {
   },
 
   async updateNotificationSettings(settings: Partial<NotificationSettings>): Promise<NotificationSettings> {
-    console.log('OfflineStorage: Updating notification settings');
     const current = await this.getNotificationSettings();
     const updated = { ...current, ...settings };
     await setItem(KEYS.NOTIFICATION_SETTINGS, updated);
-    console.log('OfflineStorage: Notification settings updated');
     return updated;
   },
 
   // Export all data for backup
   async exportAllData(): Promise<string> {
-    console.log('OfflineStorage: Exporting all data');
     const jobs = await this.getAllJobs();
     const schedule = await this.getSchedule();
     const profile = await this.getTechnicianProfile();
@@ -405,7 +366,6 @@ export const offlineStorage = {
 
   // Import data from backup
   async importAllData(backupJson: string): Promise<void> {
-    console.log('OfflineStorage: Importing all data');
     let backup: any;
     try {
       backup = JSON.parse(backupJson);
@@ -421,12 +381,10 @@ export const offlineStorage = {
     if (backup.absences && Array.isArray(backup.absences)) await setItem(KEYS.ABSENCES, backup.absences);
     if (backup.settings && typeof backup.settings === 'object') await setItem(KEYS.SETTINGS, backup.settings);
     if (backup.notificationSettings && typeof backup.notificationSettings === 'object') await setItem(KEYS.NOTIFICATION_SETTINGS, backup.notificationSettings);
-    console.log('OfflineStorage: All data imported successfully');
   },
 
   // Clear all data (for testing or reset)
   async clearAllData(): Promise<void> {
-    console.log('OfflineStorage: Clearing all data');
     await AsyncStorage.multiRemove([
       KEYS.JOBS,
       KEYS.SCHEDULE,
@@ -435,6 +393,5 @@ export const offlineStorage = {
       KEYS.SETTINGS,
       KEYS.NOTIFICATION_SETTINGS,
     ]);
-    console.log('OfflineStorage: All data cleared');
   },
 };

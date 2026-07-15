@@ -11,8 +11,9 @@ import Animated, {
   runOnJS,
   Easing,
   withRepeat,
+  cancelAnimation,
 } from 'react-native-reanimated';
-import { Svg, Path, Circle, Rect, Line, Polygon, G } from 'react-native-svg';
+import { Svg, Path, Circle, Rect, Line } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -48,6 +49,11 @@ function AnimatedGear({ delay = 0, size = 80, x = 0, y = 0 }: { delay?: number; 
         false
       )
     );
+
+    return () => {
+      cancelAnimation(rotation);
+      cancelAnimation(scale);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -277,6 +283,11 @@ function AnimatedPiston({ delay = 0 }: { delay?: number }) {
         false
       )
     );
+
+    return () => {
+      cancelAnimation(translateY);
+      cancelAnimation(scale);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

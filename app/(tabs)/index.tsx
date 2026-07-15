@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ export default function DashboardScreen() {
   const { theme } = useThemeContext();
   const layout = useResponsiveLayout();
   const [refreshing, setRefreshing] = useState(false);
+  const isLoadingRef = useRef(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [technicianName, setTechnicianName] = useState('Buckston Rugge');
   const [workSchedule, setWorkSchedule] = useState<any>(null);
@@ -48,6 +49,8 @@ export default function DashboardScreen() {
   const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
 
   const loadDashboardData = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     try {
       console.log('DashboardScreen: Fetching stats from API');
       const currentMonth = getCurrentMonth();
@@ -93,6 +96,8 @@ export default function DashboardScreen() {
       console.log('DashboardScreen: Stats loaded successfully');
     } catch (error) {
       console.error('DashboardScreen: Error loading dashboard data:', error);
+    } finally {
+      isLoadingRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
