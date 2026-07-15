@@ -19,6 +19,9 @@ const LAST_ROUTE_KEY = 'last_route';
 const LAST_BACKGROUND_TIME_KEY = 'last_background_time';
 const LOCK_TIMEOUT = 60 * 60 * 1000; // 1 hour
 
+// Module-level debounce timer for app state changes
+let appStateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 // Helper functions for cross-platform storage
 async function setSecureItem(key: string, value: string) {
   try {
@@ -54,7 +57,6 @@ function RootLayoutContent() {
   const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const lastRouteRef = useRef<string | null>(null);
-  const isHandlingAppStateRef = useRef(false);
 
   // Install global error handlers exactly once after mount
   useEffect(() => {
@@ -64,7 +66,6 @@ function RootLayoutContent() {
   // Reset badge count on initial mount
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    console.log('RootLayout: Resetting badge count on mount');
     Notifications.setBadgeCountAsync(0).catch(err =>
       console.error('RootLayout: Failed to reset badge count on mount:', err)
     );
@@ -73,7 +74,7 @@ function RootLayoutContent() {
   // Reset badge count when a notification is tapped; handle ADD_JOB action
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('RootLayout: Notification tapped — resetting badge count', response.notification.request.identifier);
+      console.log('RootLayout: Notification tapped', response.notification.request.identifier);
       Notifications.setBadgeCountAsync(0).catch(err =>
         console.error('RootLayout: Failed to reset badge count on notification tap:', err)
       );
@@ -81,7 +82,7 @@ function RootLayoutContent() {
       // Handle ADD_JOB notification action button
       const actionId = response.actionIdentifier;
       if (actionId === 'ADD_JOB') {
-        console.log('RootLayout: ADD_JOB notification action tapped — navigating to add-job-modal');
+        console.log('RootLayout: ADD_JOB action tapped');
         router.push('/add-job-modal');
       }
     });
@@ -91,66 +92,52 @@ function RootLayoutContent() {
   // Clear badge when notification arrives in foreground
   useEffect(() => {
     const receivedSub = Notifications.addNotificationReceivedListener(() => {
-      console.log('RootLayout: Notification received in foreground — clearing badge');
       Notifications.setBadgeCountAsync(0).catch(() => {});
     });
     return () => receivedSub.remove();
   }, []);
 
   useEffect(() => {
-    console.log('RootLayout: App initializing');
     activityLogger.info('APP_LIFECYCLE', 'App initializing');
     
     // Initialize notifications and background permissions
     const initApp = async () => {
       try {
-        console.log('RootLayout: Requesting notification permissions');
         activityLogger.info('NOTIFICATIONS', 'Requesting notification permissions');
         const hasNotificationPermission = await requestNotificationPermissions();
         
         if (hasNotificationPermission) {
-          console.log('RootLayout: Scheduling all notifications');
           activityLogger.info('NOTIFICATIONS', 'Scheduling all notifications');
           await scheduleAllNotifications();
-          console.log('RootLayout: Notifications scheduled successfully');
           activityLogger.info('NOTIFICATIONS', 'Notifications scheduled successfully');
         } else {
-          console.log('RootLayout: Notification permissions not granted');
           activityLogger.warn('NOTIFICATIONS', 'Notification permissions not granted');
         }
 
         // Request background permissions for live clock and work schedule
-        console.log('RootLayout: Requesting background permissions');
         activityLogger.info('BACKGROUND', 'Requesting background permissions');
         const hasBackgroundPermission = await requestBackgroundPermissions();
         
         if (hasBackgroundPermission) {
-          console.log('RootLayout: Background permissions granted');
           activityLogger.info('BACKGROUND', 'Background permissions granted');
         } else {
-          console.log('RootLayout: Background permissions not granted');
           activityLogger.warn('BACKGROUND', 'Background permissions not granted');
         }
 
         // Initialize widget data and schedule daily refresh
         if (Platform.OS === 'android') {
-          console.log('RootLayout: Initializing Android widget');
           activityLogger.info('WIDGET', 'Initializing Android widget');
           await updateWidgetData();
           scheduleDailyWidgetRefresh();
-          console.log('RootLayout: Widget initialized and daily refresh scheduled');
           activityLogger.info('WIDGET', 'Widget initialized and daily refresh scheduled');
 
-          console.log('RootLayout: Setting up live widget notification channel');
           activityLogger.info('WIDGET', 'Setting up live widget notification channel');
           await setupLiveWidgetChannel();
           await updateLiveWidget();
-          console.log('RootLayout: Live widget initialized');
           activityLogger.info('WIDGET', 'Live widget initialized');
         }
 
         // Register background mainframe for time tracking
-        console.log('RootLayout: Registering background mainframe');
         activityLogger.info('BACKGROUND', 'Registering background mainframe');
         await registerBackgroundMainframe();
         activityLogger.info('BACKGROUND', 'Background mainframe registered');
@@ -172,7 +159,6 @@ function RootLayoutContent() {
     if (currentRoute && currentRoute !== 'pin-login' && currentRoute !== 'setup' && currentRoute !== 'index') {
       lastRouteRef.current = currentRoute;
       setSecureItem(LAST_ROUTE_KEY, currentRoute);
-      console.log('RootLayout: Saved current route:', currentRoute);
       activityLogger.debug('NAVIGATION', 'Route saved', { route: currentRoute });
     }
   }, [segments]);
@@ -182,7 +168,6 @@ function RootLayoutContent() {
     const handleUrl = (url: string) => {
       console.log('RootLayout: Deep link received:', url);
       if (url === 'techtimes://add-job' || url === 'techtimes://add-job/') {
-        console.log('RootLayout: Deep link — navigating to add-job-modal');
         router.push('/add-job-modal');
       }
       // techtimes:// bare — just foreground, no navigation needed
@@ -191,7 +176,6 @@ function RootLayoutContent() {
     // Handle URL that launched the app
     Linking.getInitialURL().then(url => {
       if (url) {
-        console.log('RootLayout: Initial URL:', url);
         handleUrl(url);
       }
     }).catch(err => console.error('RootLayout: getInitialURL error:', err));
@@ -201,91 +185,60 @@ function RootLayoutContent() {
     return () => subscription.remove();
   }, [router]);
 
-  // Handle app state changes with time-based navigation
+  // Handle app state changes with debounce to prevent Samsung One UI rapid-fire events
   useEffect(() => {
-    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (isHandlingAppStateRef.current) {
-        appStateRef.current = nextAppState;
-        return;
-      }
-      isHandlingAppStateRef.current = true;
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      // Always update the ref immediately so we track the latest state
+      const prevState = appStateRef.current;
+      appStateRef.current = nextAppState;
 
-      try {
-        console.log('RootLayout: App state changed from', appStateRef.current, 'to', nextAppState);
-        activityLogger.info('APP_LIFECYCLE', 'App state changed', { from: appStateRef.current, to: nextAppState });
-        
-        // App going to background — reload iOS Day Progress widget timeline
-        if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
-          console.log('RootLayout: App going to background — reloading Day Progress widget');
-          updateDayProgressWidget().catch(err =>
-            console.error('RootLayout: updateDayProgressWidget failed:', err)
-          );
-        }
+      // Debounce: only act after state has been stable for 400ms
+      if (appStateDebounceTimer) clearTimeout(appStateDebounceTimer);
+      appStateDebounceTimer = setTimeout(async () => {
+        try {
+          activityLogger.info('APP_LIFECYCLE', 'App state changed', { from: prevState, to: nextAppState });
 
-        // App coming back to foreground from background
-        if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-          console.log('RootLayout: App resumed from background — resetting badge count');
-          Notifications.setBadgeCountAsync(0).catch(err =>
-            console.error('RootLayout: Failed to reset badge count on foreground:', err)
-          );
-
-          console.log('RootLayout: App resumed from background — running foreground mainframe sync');
-          // Run foreground sync immediately to refresh calculations
-          runMainframeSync().catch(err =>
-            console.error('RootLayout: Foreground mainframe sync failed:', err)
-          );
-
-          // Sync latest data to widget shared container
-          console.log('RootLayout: App foregrounded — syncing widget data');
-          syncWidgetDataFromStorage().catch(err =>
-            console.error('RootLayout: syncWidgetDataFromStorage failed:', err)
-          );
-
-          if (Platform.OS === 'android') {
-            console.log('RootLayout: App foregrounded — updating live widget');
-            updateLiveWidget().catch(err =>
-              console.error('RootLayout: updateLiveWidget failed:', err)
-            );
+          if (nextAppState.match(/inactive|background/) && prevState === 'active') {
+            updateDayProgressWidget().catch(() => {});
           }
 
-          // Safety-net: re-register work-schedule notifications if cleared (e.g. after OS reboot)
-          console.log('RootLayout: App foregrounded — ensuring work-schedule notifications are scheduled');
-          ensureWorkScheduleNotificationsScheduled().catch(err =>
-            console.error('RootLayout: ensureWorkScheduleNotificationsScheduled failed on foreground:', err)
-          );
-
-          // Get the time when app went to background
-          const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
-          const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
-          
-          if (lastBackgroundTime) {
-            const now = Date.now();
-            const timeElapsed = now - lastBackgroundTime;
-            const minutesElapsed = Math.floor(timeElapsed / 60000);
-            
-            console.log('RootLayout: Time elapsed since background:', minutesElapsed, 'minutes');
-            
-            // If more than 1 hour, return to home screen after login
-            if (timeElapsed >= LOCK_TIMEOUT) {
-              console.log('RootLayout: More than 1 hour elapsed, will return to home after login');
-              // Store a valid fallback route so the router always has a valid target
-              await setSecureItem(LAST_ROUTE_KEY, '(tabs)');
-              lastRouteRef.current = null;
+          if (prevState.match(/inactive|background/) && nextAppState === 'active') {
+            Notifications.setBadgeCountAsync(0).catch(() => {});
+            runMainframeSync().catch(() => {});
+            syncWidgetDataFromStorage().catch(() => {});
+            if (Platform.OS === 'android') {
+              updateLiveWidget().catch(() => {});
             }
-            // Otherwise, the saved route will be used to resume
+            ensureWorkScheduleNotificationsScheduled().catch(() => {});
+
+            const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
+            const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
+            if (lastBackgroundTime) {
+              const timeElapsed = Date.now() - lastBackgroundTime;
+              if (timeElapsed >= LOCK_TIMEOUT) {
+                await setSecureItem(LAST_ROUTE_KEY, '(tabs)');
+                lastRouteRef.current = null;
+              }
+            }
           }
+
+          if (nextAppState.match(/inactive|background/)) {
+            await setSecureItem(LAST_BACKGROUND_TIME_KEY, Date.now().toString());
+          }
+        } catch (err) {
+          // swallow
         }
-        
-        appStateRef.current = nextAppState;
-      } finally {
-        isHandlingAppStateRef.current = false;
-      }
+      }, 400);
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     
     return () => {
       subscription.remove();
+      if (appStateDebounceTimer) {
+        clearTimeout(appStateDebounceTimer);
+        appStateDebounceTimer = null;
+      }
     };
   }, []);
 
@@ -306,7 +259,6 @@ function RootLayoutContent() {
           
           // If less than 1 hour, resume to saved route
           if (timeElapsed < LOCK_TIMEOUT) {
-            console.log('RootLayout: Resuming to saved route:', savedRoute);
             activityLogger.info('NAVIGATION', 'Resuming to saved route', { route: savedRoute });
             router.replace(`/${savedRoute}` as any);
             return;
@@ -314,7 +266,6 @@ function RootLayoutContent() {
         }
         
         // Otherwise go to home
-        console.log('RootLayout: Going to home screen');
         activityLogger.info('NAVIGATION', 'Navigating to home screen after auth');
         router.replace('/(tabs)');
       }
@@ -328,7 +279,6 @@ function RootLayoutContent() {
     if (Platform.OS !== 'android') return;
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      console.log('RootLayout: Back button pressed, count:', backPressCount + 1);
       activityLogger.debug('APP_LIFECYCLE', 'Android back button pressed', { count: backPressCount + 1 });
       
       // Check if we're on a screen that can go back
@@ -336,7 +286,6 @@ function RootLayoutContent() {
       
       if (canGoBack && backPressCount === 0) {
         // First press - go back
-        console.log('RootLayout: First press - going back');
         router.back();
         return true;
       }
@@ -344,7 +293,6 @@ function RootLayoutContent() {
       // On root screen or second press - handle exit
       if (backPressCount === 0) {
         // First press on root - show warning
-        console.log('RootLayout: First press on root - showing exit warning');
         Alert.alert(
           'Exit App',
           'Press back again to exit',
@@ -356,14 +304,12 @@ function RootLayoutContent() {
         // Reset counter after 2 seconds
         if (backPressTimerRef.current) clearTimeout(backPressTimerRef.current);
         backPressTimerRef.current = setTimeout(() => {
-          console.log('RootLayout: Resetting back press counter');
           setBackPressCount(0);
         }, 2000);
         
         return true;
       } else {
         // Second press - show minimize/exit dialog
-        console.log('RootLayout: Second press - showing minimize/exit dialog');
         Alert.alert(
           'Exit TechTimes',
           'What would you like to do?',
@@ -372,15 +318,12 @@ function RootLayoutContent() {
               text: 'Cancel',
               style: 'cancel',
               onPress: () => {
-                console.log('RootLayout: User cancelled exit');
                 setBackPressCount(0);
               },
             },
             {
               text: 'Minimize',
               onPress: () => {
-                console.log('RootLayout: User chose to minimize app');
-                // Move app to background - it will return to dashboard when reopened
                 BackHandler.exitApp();
               },
             },
@@ -388,8 +331,6 @@ function RootLayoutContent() {
               text: 'Exit',
               style: 'destructive',
               onPress: () => {
-                console.log('RootLayout: User chose to exit app completely');
-                // Completely shut down the app
                 BackHandler.exitApp();
               },
             },

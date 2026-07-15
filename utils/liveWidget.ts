@@ -8,6 +8,9 @@ const LIVE_WIDGET_CHANNEL = 'live-widget';
 const LIVE_WIDGET_ID = 'techtimes-live-widget';
 const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
+// Throttle: skip update if called within 30 seconds of the last successful update
+let lastWidgetUpdate = 0;
+
 export async function setupLiveWidgetChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   // Guard against re-creating the channel on every launch — calling
@@ -15,10 +18,8 @@ export async function setupLiveWidgetChannel(): Promise<void> {
   // condition that corrupts the channel configuration.
   const existing = await Notifications.getNotificationChannelAsync(LIVE_WIDGET_CHANNEL);
   if (existing) {
-    console.log('LiveWidget: Channel already exists, skipping creation');
     return;
   }
-  console.log('LiveWidget: Setting up live-widget notification channel');
   await Notifications.setNotificationChannelAsync(LIVE_WIDGET_CHANNEL, {
     name: 'Live Widget',
     importance: Notifications.AndroidImportance.LOW,
@@ -29,7 +30,6 @@ export async function setupLiveWidgetChannel(): Promise<void> {
     bypassDnd: false,
     showBadge: false,
   });
-  console.log('LiveWidget: Channel created successfully');
 }
 
 function parseTime(timeStr: string): { hour: number; minute: number } {
@@ -40,24 +40,26 @@ function parseTime(timeStr: string): { hour: number; minute: number } {
 export async function updateLiveWidget(): Promise<void> {
   if (Platform.OS !== 'android') return;
 
+  // Throttle: skip if called within 30 seconds of the last successful update
+  const now = Date.now();
+  if (now - lastWidgetUpdate < 30_000) return;
+
   try {
     // Respect the live_widget_enabled preference
     const prefVal = await AsyncStorage.getItem(LIVE_WIDGET_PREF_KEY);
     const isEnabled = prefVal === null ? true : prefVal === 'true';
     if (!isEnabled) {
-      console.log('LiveWidget: Live widget is disabled — dismissing instead of updating');
       await dismissLiveWidget();
       return;
     }
 
-    console.log('LiveWidget: Fetching schedule and jobs for widget update');
     const [schedule, jobs] = await Promise.all([
       offlineStorage.getSchedule(),
       offlineStorage.getAllJobs(),
     ]);
 
-    const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const nowDate = new Date();
+    const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 
     const { hour: startH, minute: startM } = parseTime(schedule?.startTime || '07:00');
     const { hour: endH, minute: endM } = parseTime(schedule?.endTime || '18:00');
@@ -90,7 +92,7 @@ export async function updateLiveWidget(): Promise<void> {
     }
 
     // Jobs today
-    const today = now.toISOString().split('T')[0];
+    const today = nowDate.toISOString().split('T')[0];
     const todayJobs = (jobs || []).filter((j: any) => {
       const d = j.date || j.createdAt || '';
       return d.startsWith(today);
@@ -102,8 +104,9 @@ export async function updateLiveWidget(): Promise<void> {
     const bodyLine2 = `${todayJobs} jobs today · Tap to open`;
     const body = `${bodyLine1}\n${bodyLine2}`;
 
-    console.log('LiveWidget: Posting notification —', title, '|', bodyLine1, '|', bodyLine2);
-
+    // Use scheduleNotificationAsync with trigger: null to fire immediately.
+    // Avoids Samsung One UI bug where trigger: { seconds: 1 } on an ongoing
+    // notification throws an empty error {}.
     await Notifications.scheduleNotificationAsync({
       identifier: LIVE_WIDGET_ID,
       content: {
@@ -115,10 +118,11 @@ export async function updateLiveWidget(): Promise<void> {
         channelId: LIVE_WIDGET_CHANNEL,
         autoDismiss: false,
       } as any,
-      trigger: { seconds: 1 } as any,
+      trigger: null,
     });
 
-    console.log('LiveWidget: Notification posted successfully');
+    // Mark successful update time
+    lastWidgetUpdate = now;
   } catch (err) {
     console.error('LiveWidget: updateLiveWidget error:', err);
   }
@@ -126,15 +130,12 @@ export async function updateLiveWidget(): Promise<void> {
 
 export async function dismissLiveWidget(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  console.log('LiveWidget: Dismissing live widget notification');
   try {
     await Notifications.dismissNotificationAsync(LIVE_WIDGET_ID);
-    console.log('LiveWidget: Notification dismissed by identifier');
   } catch (err) {
     console.error('LiveWidget: dismissNotificationAsync failed, falling back to dismissAll:', err);
     try {
       await Notifications.dismissAllNotificationsAsync();
-      console.log('LiveWidget: All notifications dismissed as fallback');
     } catch (fallbackErr) {
       console.error('LiveWidget: dismissAllNotificationsAsync also failed:', fallbackErr);
     }

@@ -613,6 +613,9 @@ export async function scheduleAllNotifications(): Promise<void> {
   }
 }
 
+// Cooldown: only run ensureWorkScheduleNotificationsScheduled once per 5 minutes
+let lastEnsureCheck = 0;
+
 /**
  * Safety-net: ensure work-schedule notifications are registered with the OS.
  * Called on app mount, foreground resume, and every background sync.
@@ -621,6 +624,9 @@ export async function scheduleAllNotifications(): Promise<void> {
  */
 export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> {
   if (Platform.OS === 'web') return;
+  const now = Date.now();
+  if (now - lastEnsureCheck < 5 * 60 * 1000) return; // 5-minute cooldown
+  lastEnsureCheck = now;
   console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — checking OS-scheduled notifications');
 
   try {
