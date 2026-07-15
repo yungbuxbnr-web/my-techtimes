@@ -406,15 +406,21 @@ export const offlineStorage = {
   // Import data from backup
   async importAllData(backupJson: string): Promise<void> {
     console.log('OfflineStorage: Importing all data');
-    const backup = JSON.parse(backupJson);
-    
-    if (backup.jobs) await setItem(KEYS.JOBS, backup.jobs);
-    if (backup.schedule) await setItem(KEYS.SCHEDULE, backup.schedule);
-    if (backup.profile) await setItem(KEYS.PROFILE, backup.profile);
-    if (backup.absences) await setItem(KEYS.ABSENCES, backup.absences);
-    if (backup.settings) await setItem(KEYS.SETTINGS, backup.settings);
-    if (backup.notificationSettings) await setItem(KEYS.NOTIFICATION_SETTINGS, backup.notificationSettings);
-    
+    let backup: any;
+    try {
+      backup = JSON.parse(backupJson);
+    } catch (e) {
+      throw new Error('Invalid backup file: could not parse JSON');
+    }
+    if (!backup || typeof backup !== 'object') {
+      throw new Error('Invalid backup file: not a valid object');
+    }
+    if (backup.jobs && Array.isArray(backup.jobs)) await setItem(KEYS.JOBS, backup.jobs);
+    if (backup.schedule && typeof backup.schedule === 'object') await setItem(KEYS.SCHEDULE, backup.schedule);
+    if (backup.profile && typeof backup.profile === 'object') await setItem(KEYS.PROFILE, backup.profile);
+    if (backup.absences && Array.isArray(backup.absences)) await setItem(KEYS.ABSENCES, backup.absences);
+    if (backup.settings && typeof backup.settings === 'object') await setItem(KEYS.SETTINGS, backup.settings);
+    if (backup.notificationSettings && typeof backup.notificationSettings === 'object') await setItem(KEYS.NOTIFICATION_SETTINGS, backup.notificationSettings);
     console.log('OfflineStorage: All data imported successfully');
   },
 

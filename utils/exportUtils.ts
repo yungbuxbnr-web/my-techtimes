@@ -2,6 +2,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { Job } from './api';
 import { awToMinutes, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from './jobCalculations';
 import { offlineStorage, Schedule } from './offlineStorage';
@@ -554,7 +555,10 @@ export async function exportToJson(jobs: Job[]): Promise<string> {
 
   const jsonString = JSON.stringify(exportData, null, 2);
   const fileName = `techtimes_backup_${new Date().toISOString().split('T')[0]}.json`;
-  const docDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '';
+  const docDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+  if (!docDir) {
+    throw new Error('Storage not available. Please free up device storage and try again.');
+  }
   const fileUri = docDir + fileName;
 
   await FileSystem.writeAsStringAsync(fileUri, jsonString);
@@ -578,7 +582,27 @@ export async function importFromJson(
   console.log('ExportUtils: importFromJson called — fileUri:', fileUri);
 
   try {
-    const jsonString = await FileSystem.readAsStringAsync(fileUri);
+    // On Android, DocumentPicker returns content:// URIs which expo-file-system/legacy
+    // cannot read directly. Copy to a temp file first.
+    let resolvedUri = fileUri;
+    if (Platform.OS === 'android' && fileUri.startsWith('content://')) {
+      const tmpPath = (FileSystem.cacheDirectory ?? '') + `import_tmp_${Date.now()}.json`;
+      try {
+        await FileSystem.copyAsync({ from: fileUri, to: tmpPath });
+        resolvedUri = tmpPath;
+        console.log('ExportUtils: Copied content:// URI to temp file for reading:', tmpPath);
+      } catch (copyErr) {
+        console.error('ExportUtils: Failed to copy content:// URI:', copyErr);
+        throw new Error('Could not access the selected file. Please try again.');
+      }
+    }
+
+    const jsonString = await FileSystem.readAsStringAsync(resolvedUri);
+
+    // Clean up temp file after reading
+    if (resolvedUri !== fileUri) {
+      try { await FileSystem.deleteAsync(resolvedUri, { idempotent: true }); } catch {}
+    }
     console.log('ExportUtils: Read JSON file, length:', jsonString.length);
 
     let importData;
@@ -681,7 +705,7 @@ export async function importFromJson(
 
         console.log('ExportUtils: Prepared job', i + 1, '/', total, '—', jobToImport.wipNumber, jobToImport.vehicleReg, 'aw:', jobToImport.aw);
 
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 10));
       } catch (error) {
         results.skipped++;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

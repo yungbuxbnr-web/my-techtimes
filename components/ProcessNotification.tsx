@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -90,7 +90,9 @@ export function ProcessNotification({
       console.log('ProcessNotification: Showing notification -', title);
       
       // Haptic feedback on show
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (Platform.OS !== 'web') {
+        try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+      }
 
       // Animate in
       scale.value = withSpring(1, {
@@ -111,10 +113,12 @@ export function ProcessNotification({
   }, [visible, title]);
 
   useEffect(() => {
-    if (type === 'success') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else if (type === 'error') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    if (Platform.OS !== 'web') {
+      if (type === 'success') {
+        try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+      } else if (type === 'error') {
+        try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); } catch {}
+      }
     }
   }, [type]);
 

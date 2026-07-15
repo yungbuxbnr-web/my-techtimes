@@ -478,7 +478,9 @@ export default function SettingsScreen() {
     try {
       console.log('SettingsScreen: Opening document picker');
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
+        type: Platform.OS === 'android'
+          ? ['application/json', 'text/plain', 'application/octet-stream', '*/*']
+          : 'application/json',
         copyToCacheDirectory: true,
       });
       
@@ -497,7 +499,7 @@ export default function SettingsScreen() {
       }
       
       const fileUri = result.assets[0].uri;
-      const fileName = result.assets[0].name;
+      const fileName = result.assets[0].name ?? '';
       console.log('SettingsScreen: Selected file:', fileName, 'URI:', fileUri);
       
       if (!fileUri) {
@@ -505,20 +507,30 @@ export default function SettingsScreen() {
         Alert.alert('Error', 'Invalid file selected. Please try again.');
         return;
       }
-      
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(fileUri);
-        console.log('SettingsScreen: File info:', fileInfo);
-        
-        if (!fileInfo.exists) {
-          console.error('SettingsScreen: File does not exist at URI:', fileUri);
-          Alert.alert('Error', 'Selected file could not be accessed. Please try again.');
+
+      // Validate file extension as a safety net when broad MIME types are used
+      if (fileName && !fileName.toLowerCase().endsWith('.json')) {
+        console.warn('SettingsScreen: Selected file does not have .json extension:', fileName);
+        Alert.alert('Invalid File', 'Please select a .json backup file exported from TechTimes.');
+        return;
+      }
+
+      // Only stat file:// URIs — content:// URIs on Android cannot be stat'd with
+      // expo-file-system/legacy and will return exists:false even for valid files.
+      if (!fileUri.startsWith('content://')) {
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(fileUri);
+          console.log('SettingsScreen: File info:', fileInfo);
+          if (!fileInfo.exists) {
+            console.error('SettingsScreen: File does not exist at URI:', fileUri);
+            Alert.alert('Error', 'Selected file could not be accessed. Please try again.');
+            return;
+          }
+        } catch (fileCheckError) {
+          console.error('SettingsScreen: Error checking file:', fileCheckError);
+          Alert.alert('Error', 'Could not access the selected file. Please try again.');
           return;
         }
-      } catch (fileCheckError) {
-        console.error('SettingsScreen: Error checking file:', fileCheckError);
-        Alert.alert('Error', 'Could not access the selected file. Please try again.');
-        return;
       }
       
       setIsImporting(true);
@@ -596,7 +608,7 @@ export default function SettingsScreen() {
           
           console.log('SettingsScreen: Job created successfully:', i + 1, '/', importResults.jobs.length);
           
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await new Promise(resolve => setTimeout(resolve, 10));
           
         } catch (createError) {
           console.error('SettingsScreen: Error creating job:', createError);
@@ -754,6 +766,7 @@ export default function SettingsScreen() {
     : 'Preparing import...';
 
   return (
+  <>
     <AppBackground>
       <ScrollView
         style={styles.container}
@@ -1868,17 +1881,18 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
-      {isImporting && (
-        <ProcessNotification
-          visible={isImporting}
-          title={progressTitle}
-          message={progressMessage}
-          progress={importProgress.current}
-          total={importProgress.total}
-          type="loading"
-        />
-      )}
     </AppBackground>
+    {isImporting && (
+      <ProcessNotification
+        visible={isImporting}
+        title={progressTitle}
+        message={progressMessage}
+        progress={importProgress.current}
+        total={importProgress.total}
+        type="loading"
+      />
+    )}
+  </>
   );
 }
 
