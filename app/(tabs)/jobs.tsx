@@ -537,13 +537,7 @@ export default function JobRecordsScreen() {
             )}
 
             <FlatList
-              data={[...jobs].sort((a, b) => {
-                const timeA = a.createdAt ? new Date(a.createdAt).getTime() : Number(a.id.split('-')[0]);
-                const timeB = b.createdAt ? new Date(b.createdAt).getTime() : Number(b.id.split('-')[0]);
-                const diff = timeB - timeA;
-                if (!isNaN(diff) && diff !== 0) return diff;
-                return Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]);
-              })}
+              data={jobs}
               renderItem={renderJob}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}

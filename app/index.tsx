@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,7 +9,6 @@ export default function Index() {
   const { isAuthenticated, setupComplete, loading } = useAuth();
   const [splashDone, setSplashDone] = useState(false);
   const [authReady, setAuthReady] = useState(false);
-  const redirectedRef = useRef(false);
 
   useEffect(() => {
     if (!loading) {

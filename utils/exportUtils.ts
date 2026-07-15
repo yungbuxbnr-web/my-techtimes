@@ -713,7 +713,9 @@ export async function importFromJson(
 
         console.log('ExportUtils: Prepared job', i + 1, '/', total, '—', jobToImport.wipNumber, jobToImport.vehicleReg, 'aw:', jobToImport.aw);
 
-        await new Promise(resolve => setTimeout(resolve, 10));
+        if (i % 20 === 0 && i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
       } catch (error) {
         results.skipped++;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

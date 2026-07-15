@@ -46,7 +46,6 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import CircularProgress from '@/components/CircularProgress';
 
 export default function SettingsScreen() {
-  console.log('SettingsScreen: Rendering settings screen');
   const { theme, isDarkMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
   const { 
     logout, 
@@ -639,7 +638,11 @@ export default function SettingsScreen() {
           }
         }
       } finally {
-        if (isMountedRef.current) setIsImporting(false);
+        if (isMountedRef.current) {
+          setIsImporting(false);
+          setImportProgress({ current: 0, total: 0, job: null });
+          setImportPhase('parsing');
+        }
       }
 
       console.log('SettingsScreen: Import complete - Success:', successCount, 'Failed:', failCount);

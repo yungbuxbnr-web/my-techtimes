@@ -166,7 +166,7 @@ export async function runMainframeSync(): Promise<void> {
       }
     }
 
-    console.log('Mainframe: Sync complete — elapsed:', elapsedHours.toFixed(2), 'h /', dailyHours.toFixed(2), 'h (', progressPercent.toFixed(1), '%)');
+    console.log('Mainframe: Sync complete — elapsed:', elapsedHours.toFixed(2), 'h /', (dailyHours ?? 0).toFixed(2), 'h (', progressPercent.toFixed(1), '%)');
   } catch (error) {
     console.error('Mainframe: Error during sync:', error);
   } finally {

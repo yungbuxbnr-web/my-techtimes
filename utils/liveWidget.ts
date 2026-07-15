@@ -62,7 +62,7 @@ export async function updateLiveWidget(): Promise<void> {
     const { hour: startH, minute: startM } = parseTime(schedule?.startTime || '07:00');
     const { hour: endH, minute: endM } = parseTime(schedule?.endTime || '18:00');
     const { hour: lunchStartH, minute: lunchStartM } = parseTime(schedule?.lunchStartTime || '12:00');
-    const { hour: lunchEndH, minute: lunchEndM } = parseTime(schedule?.lunchEndTime || '13:00');
+    const { hour: lunchEndH, minute: lunchEndM } = parseTime(schedule?.lunchEndTime || '12:30');
 
     const startMins = startH * 60 + startM;
     const endMins = endH * 60 + endM;

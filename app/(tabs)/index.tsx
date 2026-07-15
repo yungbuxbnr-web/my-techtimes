@@ -91,7 +91,7 @@ export default function DashboardScreen() {
       setStreaksEnabled(settings.streaksEnabled !== false);
       setStreakData(streaks);
       
-      await loadCalendarData(schedule);
+      await loadCalendarData(schedule, selectedMonth);
       
       console.log('DashboardScreen: Stats loaded successfully');
     } catch (error) {
@@ -102,10 +102,10 @@ export default function DashboardScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
 
-  const loadCalendarData = async (schedule: any) => {
+  const loadCalendarData = async (schedule: any, calendarMonth: Date = selectedMonth) => {
     try {
-      const year = selectedMonth.getFullYear();
-      const month = selectedMonth.getMonth();
+      const year = calendarMonth.getFullYear();
+      const month = calendarMonth.getMonth();
       const firstDay = new Date(year, month, 1);
       const lastDay = new Date(year, month + 1, 0);
       
@@ -417,6 +417,7 @@ export default function DashboardScreen() {
       
       console.log('DashboardScreen: Marked day as', type);
       setShowDayModal(false);
+      isLoadingRef.current = false; // force refresh even if a load was in progress
       await loadDashboardData();
     } catch (error) {
       console.error('DashboardScreen: Error marking day:', error);
@@ -1445,7 +1446,6 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: '100%',
     borderRadius: 12,
-    transition: 'width 0.3s ease',
   },
   lunchZone: {
     position: 'absolute',

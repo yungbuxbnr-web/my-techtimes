@@ -199,7 +199,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Handle app state changes with time-based locking
   useEffect(() => {
+    const isHandlingRef = { current: false };
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (isHandlingRef.current) { appStateRef.current = nextAppState; return; }
+      isHandlingRef.current = true;
+      try {
       const currentAppState = appStateRef.current;
       
       // App going to background - record the time
@@ -255,6 +259,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       appStateRef.current = nextAppState;
+      } finally {
+        isHandlingRef.current = false;
+      }
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);

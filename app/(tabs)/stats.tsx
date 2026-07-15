@@ -17,7 +17,7 @@ import { router } from 'expo-router';
 import { api } from '@/utils/api';
 import { formatTime, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from '@/utils/jobCalculations';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { updateDayProgressWidget } from '@/utils/widgetManager';
 import CircularProgress from '@/components/CircularProgress';
 
@@ -760,7 +760,22 @@ export default function StatsScreen() {
                 style={[styles.yearDateButton, { backgroundColor: theme.background }]}
                 onPress={() => {
                   console.log('StatsScreen: User tapped year start date picker');
-                  setShowYearDatePicker(true);
+                  if (Platform.OS === 'android') {
+                    DateTimePickerAndroid.open({
+                      value: yearStartDate,
+                      mode: 'date',
+                      onChange: (_event, date) => {
+                        if (date) {
+                          console.log('StatsScreen: User selected year start date (Android):', date.toLocaleDateString());
+                          setYearStartDate(date);
+                          saveYearStartDate(date);
+                          loadYearlyStats(date);
+                        }
+                      },
+                    });
+                  } else {
+                    setShowYearDatePicker(true);
+                  }
                 }}
               >
                 <IconSymbol
@@ -826,8 +841,8 @@ export default function StatsScreen() {
             )}
           </View>
 
-          {/* Year Start Date Picker Modal */}
-          {showYearDatePicker && (
+          {/* Year Start Date Picker Modal — iOS only (Android uses imperative API) */}
+          {Platform.OS === 'ios' && showYearDatePicker && (
             <Modal
               visible={showYearDatePicker}
               transparent
@@ -853,13 +868,10 @@ export default function StatsScreen() {
                   <DateTimePicker
                     value={yearStartDate}
                     mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(event, date) => {
-                      if (Platform.OS === 'android') {
-                        setShowYearDatePicker(false);
-                      }
+                    display="spinner"
+                    onChange={(_event, date) => {
                       if (date) {
-                        console.log('StatsScreen: User selected year start date:', date.toLocaleDateString());
+                        console.log('StatsScreen: User selected year start date (iOS):', date.toLocaleDateString());
                         setYearStartDate(date);
                         saveYearStartDate(date);
                         loadYearlyStats(date);
@@ -867,14 +879,12 @@ export default function StatsScreen() {
                     }}
                     style={styles.datePicker}
                   />
-                  {Platform.OS === 'ios' && (
-                    <TouchableOpacity
-                      style={[styles.yearPickerDone, { backgroundColor: theme.primary }]}
-                      onPress={() => setShowYearDatePicker(false)}
-                    >
-                      <Text style={styles.yearPickerDoneText}>Done</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.yearPickerDone, { backgroundColor: theme.primary }]}
+                    onPress={() => setShowYearDatePicker(false)}
+                  >
+                    <Text style={styles.yearPickerDoneText}>Done</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </Modal>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -56,8 +56,6 @@ interface JobSuggestion {
   usageCount: number;
 }
 
-// Android status bar height for KeyboardAvoidingView offset
-const ANDROID_STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 // Approximate header height on Android
 const ANDROID_HEADER_HEIGHT = 56;
 
@@ -585,8 +583,12 @@ export default function AddJobModal() {
 
   // KeyboardAvoidingView: use 'height' on Android (not 'padding' which can cause double-offset)
   const kavBehavior = Platform.OS === 'android' ? 'height' : 'padding';
+  const androidStatusBarHeight = useMemo(
+    () => Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0,
+    []
+  );
   const kavOffset = Platform.OS === 'android'
-    ? ANDROID_STATUS_BAR_HEIGHT + ANDROID_HEADER_HEIGHT
+    ? androidStatusBarHeight + ANDROID_HEADER_HEIGHT
     : 90;
 
   return (
