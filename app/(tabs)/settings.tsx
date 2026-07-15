@@ -489,7 +489,7 @@ export default function SettingsScreen() {
         type: Platform.OS === 'android'
           ? ['application/json', 'text/plain', 'application/octet-stream', '*/*']
           : 'application/json',
-        copyToCacheDirectory: true,
+        copyToCacheDirectory: false,
       });
 
       console.log('SettingsScreen: DocumentPicker result:', JSON.stringify(result, null, 2));

@@ -23,7 +23,7 @@ import { awToMinutes, formatTime, formatDecimalHours, validateWipNumber, validat
 import { api, OCRRegResult, OCRJobCardResult, Job } from '@/utils/api';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { toastManager } from '@/utils/toastManager';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import * as Haptics from 'expo-haptics';
@@ -501,8 +501,20 @@ export default function AddJobModal() {
         setJobDateTime(newDateTime);
         console.log('AddJobModal: Android date updated to:', newDateTime.toLocaleDateString());
         safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        // Chain to time picker on Android
-        setShowTimePicker(true);
+        // Chain to time picker on Android using imperative API
+        DateTimePickerAndroid.open({
+          value: newDateTime,
+          mode: 'time',
+          is24Hour: true,
+          onChange: (evt: any, selectedTime?: Date) => {
+            if (evt.type === 'set' && selectedTime) {
+              const finalDateTime = new Date(newDateTime);
+              finalDateTime.setHours(selectedTime.getHours(), selectedTime.getMinutes());
+              setJobDateTime(finalDateTime);
+              safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+          },
+        });
       }
       return;
     }
@@ -531,8 +543,7 @@ export default function AddJobModal() {
       setShowTimePicker(false);
       if (event.type === 'set' && selectedDate) {
         const newDateTime = new Date(jobDateTime);
-        newDateTime.setHours(selectedDate.getHours());
-        newDateTime.setMinutes(selectedDate.getMinutes());
+        newDateTime.setHours(selectedDate.getHours(), selectedDate.getMinutes());
         setJobDateTime(newDateTime);
         console.log('AddJobModal: Android time updated to:', newDateTime.toLocaleTimeString());
         safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -547,8 +558,7 @@ export default function AddJobModal() {
     }
     if (selectedDate) {
       const newDateTime = new Date(jobDateTime);
-      newDateTime.setHours(selectedDate.getHours());
-      newDateTime.setMinutes(selectedDate.getMinutes());
+      newDateTime.setHours(selectedDate.getHours(), selectedDate.getMinutes());
       setJobDateTime(newDateTime);
       console.log('AddJobModal: iOS time updated to:', newDateTime.toLocaleTimeString());
       safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -936,7 +946,16 @@ export default function AddJobModal() {
                   onPress={() => {
                     console.log('AddJobModal: User tapped date picker button');
                     safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowDatePicker(true);
+                    if (Platform.OS === 'android') {
+                      DateTimePickerAndroid.open({
+                        value: jobDateTime,
+                        mode: 'date',
+                        maximumDate: new Date(),
+                        onChange: handleDateChange,
+                      });
+                    } else {
+                      setShowDatePicker(true);
+                    }
                   }}
                 >
                   <IconSymbol
@@ -957,7 +976,16 @@ export default function AddJobModal() {
                   onPress={() => {
                     console.log('AddJobModal: User tapped time picker button');
                     safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowTimePicker(true);
+                    if (Platform.OS === 'android') {
+                      DateTimePickerAndroid.open({
+                        value: jobDateTime,
+                        mode: 'time',
+                        is24Hour: true,
+                        onChange: handleTimeChange,
+                      });
+                    } else {
+                      setShowTimePicker(true);
+                    }
                   }}
                 >
                   <IconSymbol
@@ -1151,21 +1179,21 @@ export default function AddJobModal() {
         </View>
       </Modal>
 
-      {showDatePicker && (
+      {Platform.OS !== 'android' && showDatePicker && (
         <DateTimePicker
           value={jobDateTime}
           mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="spinner"
           onChange={handleDateChange}
           maximumDate={new Date()}
         />
       )}
 
-      {showTimePicker && (
+      {Platform.OS !== 'android' && showTimePicker && (
         <DateTimePicker
           value={jobDateTime}
           mode="time"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="spinner"
           onChange={handleTimeChange}
           is24Hour={true}
         />

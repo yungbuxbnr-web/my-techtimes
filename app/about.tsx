@@ -465,9 +465,13 @@ export default function AboutScreen() {
       console.log('AboutScreen: PDF generated at', uri);
 
       const fileName = `TechTimes_Guide_v1.0.9_${now.toISOString().split('T')[0]}.pdf`;
-      const destUri = FileSystem.documentDirectory + fileName;
-      await FileSystem.moveAsync({ from: uri, to: destUri });
-      console.log('AboutScreen: PDF moved to', destUri);
+      const cacheDir = FileSystem.cacheDirectory ?? '';
+      const destUri = cacheDir + fileName;
+      if (uri !== destUri) {
+        await FileSystem.copyAsync({ from: uri, to: destUri });
+        try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
+      }
+      console.log('AboutScreen: PDF copied to', destUri);
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {

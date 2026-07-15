@@ -15,7 +15,7 @@ import {
 import { Image as ExpoImage } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
@@ -101,8 +101,21 @@ export default function EditJobScreen() {
         const newDate = new Date(selectedDate);
         newDate.setHours(jobDate.getHours(), jobDate.getMinutes());
         setJobDate(newDate);
-        console.log('EditJobScreen: Android date selected, chaining to time picker');
-        setShowTimePicker(true);
+        console.log('EditJobScreen: Android date selected, chaining to time picker imperatively');
+        // Chain to time picker using imperative API
+        DateTimePickerAndroid.open({
+          value: newDate,
+          mode: 'time',
+          is24Hour: true,
+          onChange: (evt: any, selectedTime?: Date) => {
+            if (evt.type === 'set' && selectedTime) {
+              const finalDate = new Date(newDate);
+              finalDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
+              setJobDate(finalDate);
+              console.log('EditJobScreen: Android time selected:', selectedTime.getHours(), selectedTime.getMinutes());
+            }
+          },
+        });
       }
     } else {
       if (selectedDate) setJobDate(selectedDate);
@@ -323,7 +336,16 @@ export default function EditJobScreen() {
             style={[styles.dateTimeButton, { backgroundColor: theme.card, borderColor: theme.border }]}
             onPress={() => {
               console.log('EditJobScreen: User tapped date picker');
-              setShowDatePicker(true);
+              if (Platform.OS === 'android') {
+                DateTimePickerAndroid.open({
+                  value: jobDate,
+                  mode: 'date',
+                  maximumDate: new Date(),
+                  onChange: handleDateChange,
+                });
+              } else {
+                setShowDatePicker(true);
+              }
             }}
           >
             <IconSymbol
@@ -338,7 +360,16 @@ export default function EditJobScreen() {
             style={[styles.dateTimeButton, { backgroundColor: theme.card, borderColor: theme.border }]}
             onPress={() => {
               console.log('EditJobScreen: User tapped time picker');
-              setShowTimePicker(true);
+              if (Platform.OS === 'android') {
+                DateTimePickerAndroid.open({
+                  value: jobDate,
+                  mode: 'time',
+                  is24Hour: true,
+                  onChange: handleTimeChange,
+                });
+              } else {
+                setShowTimePicker(true);
+              }
             }}
           >
             <IconSymbol
@@ -458,25 +489,7 @@ export default function EditJobScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Android native date/time dialogs — must be outside ScrollView */}
-      {showDatePicker && Platform.OS === 'android' && (
-        <DateTimePicker
-          value={jobDate}
-          mode="date"
-          display="default"
-          onChange={handleDateChange}
-          maximumDate={new Date()}
-        />
-      )}
-      {showTimePicker && Platform.OS === 'android' && (
-        <DateTimePicker
-          value={jobDate}
-          mode="time"
-          display="default"
-          is24Hour={true}
-          onChange={handleTimeChange}
-        />
-      )}
+
     </KeyboardAvoidingView>
   );
 }

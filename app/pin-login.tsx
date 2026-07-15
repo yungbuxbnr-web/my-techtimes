@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,27 +29,25 @@ export default function PinLoginScreen() {
   
   const [pin, setPin] = useState('');
   const [technicianName, setTechnicianName] = useState('');
-  const [hasAutoTriggered, setHasAutoTriggered] = useState(false);
+  const hasAutoTriggeredRef = useRef(false);
 
   useEffect(() => {
     loadTechnicianName();
   }, []);
 
   useEffect(() => {
-    // Auto-trigger biometric auth when biometrics are enabled.
-    // Do not gate on biometricsAvailable — it may still be resolving on Android cold start.
-    // Only trigger once per mount to avoid repeated prompts.
-    if (biometricsEnabled && !hasAutoTriggered) {
-      console.log('PinLogin: Auto-triggering biometric authentication');
-      setHasAutoTriggered(true);
-      
-      // Small delay to ensure UI is ready
-      setTimeout(() => {
+    // Wait for biometricsEnabled to be true AND give AuthContext time to finish
+    // its biometrics availability check (up to 1.5s for retries) before triggering.
+    // Use a longer delay (800ms) so the availability check has time to complete.
+    if (biometricsEnabled && !hasAutoTriggeredRef.current) {
+      hasAutoTriggeredRef.current = true;
+      const timer = setTimeout(() => {
         handleBiometricAuth();
-      }, 300);
+      }, 800);
+      return () => clearTimeout(timer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [biometricsEnabled, hasAutoTriggered]);
+  }, [biometricsEnabled]);
 
   const loadTechnicianName = async () => {
     try {
