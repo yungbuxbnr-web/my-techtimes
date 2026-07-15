@@ -122,6 +122,7 @@ export default function ActivityLogsScreen() {
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | LogCategory>('ALL');
   const [searchText, setSearchText] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stats = activityLogger.getStats();
@@ -183,13 +184,17 @@ export default function ActivityLogsScreen() {
   }, [loadLogs]);
 
   const handleExport = useCallback(async () => {
+    if (exporting) return;
     console.log('ActivityLogs: Export logs button pressed');
+    setExporting(true);
     try {
       await activityLogger.exportLogs();
     } catch {
       Alert.alert('Export Failed', 'Could not export logs.');
+    } finally {
+      setExporting(false);
     }
-  }, []);
+  }, [exporting]);
 
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({
@@ -222,7 +227,10 @@ export default function ActivityLogsScreen() {
         >
           <Text style={styles.headerBtnText}>{'‹ Back'}</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Activity Logs</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.headerTitle}>Activity Logs</Text>
+          <Text style={styles.loggingActive}>● Logging Active</Text>
+        </View>
         <TouchableOpacity
           onPress={handleExport}
           style={styles.headerBtn}
@@ -256,6 +264,18 @@ export default function ActivityLogsScreen() {
           <Text style={styles.statLabel}>All Logs</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Export button */}
+      <TouchableOpacity
+        style={[styles.exportBtn, exporting && { opacity: 0.6 }]}
+        onPress={handleExport}
+        disabled={exporting}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.exportBtnText}>
+          {exporting ? '⏳ Exporting...' : '📤  Export Logs (.txt)'}
+        </Text>
+      </TouchableOpacity>
 
       {/* Level filter pills */}
       <ScrollView
@@ -393,6 +413,26 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#ffffff',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  loggingActive: {
+    color: '#4caf50',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  exportBtn: {
+    backgroundColor: '#00bcd4',
+    marginHorizontal: 12,
+    marginVertical: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: 'bold',
   },
   statsBar: {
