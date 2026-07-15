@@ -121,6 +121,14 @@ export default function DashboardScreen() {
         jobsByDay.get(day)!.push(job);
       });
       
+      // Calculate daily hours from schedule times (not stale dailyWorkingHours field)
+      const calculatedDailyHours = calcDailyHoursFromSchedule(
+        schedule.startTime || '07:00',
+        schedule.endTime || '18:00',
+        schedule.lunchStartTime || '12:00',
+        schedule.lunchEndTime || '12:30'
+      );
+
       // Generate calendar days
       const days: any[] = [];
       const currentDay = new Date(firstDay);
@@ -140,7 +148,7 @@ export default function DashboardScreen() {
           (a.absenceType === 'overtime' || a.absenceType === 'compensation')
         );
         
-        const availableHours = isWorkingDay ? schedule.dailyWorkingHours : 0;
+        const availableHours = isWorkingDay ? calculatedDailyHours : 0;
         const totalAw = dayJobs.reduce((sum, job) => sum + job.aw, 0);
         const soldHours = (totalAw * 5) / 60;
         const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
@@ -421,7 +429,9 @@ export default function DashboardScreen() {
     );
   }
 
-  const targetProgress = (monthlyStats.soldHours / monthlyStats.targetHours) * 100;
+  const targetProgress = monthlyStats.targetHours > 0
+    ? Math.min(100, (monthlyStats.soldHours / monthlyStats.targetHours) * 100)
+    : 0;
   const efficiencyColor = getEfficiencyColor(monthlyStats.efficiency);
   const efficiencyLabel = getEfficiencyLabel(monthlyStats.efficiency);
   

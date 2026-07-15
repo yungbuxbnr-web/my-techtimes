@@ -22,6 +22,22 @@ import { formatTime, awToMinutes } from '@/utils/jobCalculations';
 import * as Haptics from 'expo-haptics';
 import { updateWidgetData } from '@/utils/widgetManager';
 
+// Safe Haptics wrapper — no-ops on web/unsupported platforms
+const safeHaptics = {
+  impactAsync: async (style: Haptics.ImpactFeedbackStyle) => {
+    if (Platform.OS === 'web') return;
+    try { await Haptics.impactAsync(style); } catch {}
+  },
+  notificationAsync: async (type: Haptics.NotificationFeedbackType) => {
+    if (Platform.OS === 'web') return;
+    try { await Haptics.notificationAsync(type); } catch {}
+  },
+  selectionAsync: async () => {
+    if (Platform.OS === 'web') return;
+    try { await Haptics.selectionAsync(); } catch {}
+  },
+};
+
 export default function SmartJobEntryScreen() {
   const { theme, isDarkMode, overlayStrength } = useThemeContext();
   const router = useRouter();
@@ -76,7 +92,7 @@ export default function SmartJobEntryScreen() {
     }
 
     setSaving(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       console.log('SmartJobEntry: Saving job from processed input');
@@ -91,7 +107,7 @@ export default function SmartJobEntryScreen() {
       await updateWidgetData();
       
       toastManager.success('Job saved successfully!');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       // Reset form
       setNaturalInput('');
@@ -102,7 +118,7 @@ export default function SmartJobEntryScreen() {
     } catch (error) {
       console.error('SmartJobEntry: Error saving job:', error);
       toastManager.error('Failed to save job');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSaving(false);
     }
@@ -135,7 +151,7 @@ ${analysis.suggestions.join('\n\n')}
     `.trim();
 
     Alert.alert('AI Analysis', analysisMessage, [{ text: 'OK' }]);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const confidenceColor = processedData

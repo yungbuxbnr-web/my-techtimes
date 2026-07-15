@@ -211,8 +211,17 @@ export default function StatsScreen() {
       const totalAw = jobs.reduce((sum, job) => sum + job.aw, 0);
       const totalMinutes = totalAw * 5;
       const totalHours = totalMinutes / 60;
-      // Week target = working days × daily hours
-      const weekWorkingDays = (sched.workingDays || [1, 2, 3, 4, 5]).length;
+      // Count actual working days that fall within the selected week (Sun–Sat)
+      const weekWorkingDays = (() => {
+        let count = 0;
+        const wdArr = sched.workingDays || [1, 2, 3, 4, 5];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(weekStart);
+          d.setDate(weekStart.getDate() + i);
+          if (wdArr.includes(d.getDay())) count++;
+        }
+        return count;
+      })();
       const weekDailyHrs = calcDailyHoursFromSchedule(
         sched.startTime || '07:00',
         sched.endTime || '18:00',
@@ -391,33 +400,38 @@ export default function StatsScreen() {
   // Calculate available hours timer (cumulative from start time)
   const calculateAvailableHours = (): string => {
     if (!schedule) return '0.00';
-    
+
     const now = currentTime;
     const [startHour, startMin] = (schedule.startTime || '08:00').split(':').map(Number);
     const [endHour, endMin] = (schedule.endTime || '17:00').split(':').map(Number);
-    const lunchStart = (schedule.lunchStartTime || '12:00').split(':').map(Number);
-    const lunchEnd = (schedule.lunchEndTime || '12:30').split(':').map(Number);
-    const lunchMinutes = (lunchEnd[0] * 60 + lunchEnd[1]) - (lunchStart[0] * 60 + lunchStart[1]);
-    
+    const lunchStartParts = (schedule.lunchStartTime || '12:00').split(':').map(Number);
+    const lunchEndParts = (schedule.lunchEndTime || '12:30').split(':').map(Number);
+    const lunchMinutes = (lunchEndParts[0] * 60 + lunchEndParts[1]) - (lunchStartParts[0] * 60 + lunchStartParts[1]);
+
     const startOfDay = new Date(now);
     startOfDay.setHours(startHour, startMin, 0, 0);
-    
     const endOfDay = new Date(now);
     endOfDay.setHours(endHour, endMin, 0, 0);
-    
-    // If before start time, return 0
+    const lunchStartTime = new Date(now);
+    lunchStartTime.setHours(lunchStartParts[0], lunchStartParts[1], 0, 0);
+    const lunchEndTime = new Date(now);
+    lunchEndTime.setHours(lunchEndParts[0], lunchEndParts[1], 0, 0);
+
     if (now < startOfDay) return '0.00';
-    
-    // If after end time, return full day hours
-    if (now > endOfDay) {
-      const totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin) - lunchMinutes;
-      return (totalMinutes / 60).toFixed(2);
+
+    const effectiveNow = now > endOfDay ? endOfDay : now;
+    const elapsedMs = effectiveNow.getTime() - startOfDay.getTime();
+    let elapsedMinutes = elapsedMs / 60000;
+
+    // Only subtract lunch if we're past lunch end
+    if (now >= lunchEndTime) {
+      elapsedMinutes -= lunchMinutes;
+    } else if (now >= lunchStartTime) {
+      // During lunch — subtract only the elapsed lunch time so far
+      elapsedMinutes -= (now.getTime() - lunchStartTime.getTime()) / 60000;
     }
-    
-    // Calculate elapsed minutes from start time
-    const elapsedMinutes = (now.getTime() - startOfDay.getTime()) / 60000;
-    const availableMinutes = Math.max(0, elapsedMinutes - lunchMinutes);
-    
+
+    const availableMinutes = Math.max(0, elapsedMinutes);
     return (availableMinutes / 60).toFixed(2);
   };
 

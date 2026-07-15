@@ -32,15 +32,15 @@ import { updateWidgetData } from '@/utils/widgetManager';
 const safeHaptics = {
   impactAsync: async (style: Haptics.ImpactFeedbackStyle) => {
     if (Platform.OS === 'web') return;
-    try { await safeHaptics.impactAsync(style); } catch {}
+    try { await Haptics.impactAsync(style); } catch {}
   },
   notificationAsync: async (type: Haptics.NotificationFeedbackType) => {
     if (Platform.OS === 'web') return;
-    try { await safeHaptics.notificationAsync(type); } catch {}
+    try { await Haptics.notificationAsync(type); } catch {}
   },
   selectionAsync: async () => {
     if (Platform.OS === 'web') return;
-    try { await safeHaptics.selectionAsync(); } catch {}
+    try { await Haptics.selectionAsync(); } catch {}
   },
 };
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';

@@ -181,11 +181,13 @@ export default function WorkCalendarScreen() {
           await api.deleteAbsence(dayInfo.absenceId);
         }
         
+        const todayStr = new Date().toISOString().split('T')[0];
+        const deductionType = dayInfo.dateString > todayStr ? 'target' : 'available';
         await api.createAbsence({
           month: monthStr,
           absenceDate: dayInfo.dateString,
           daysCount: 1,
-          deductionType: 'available',
+          deductionType,
           absenceType: newAbsenceType,
           note: `${newAbsenceType.charAt(0).toUpperCase() + newAbsenceType.slice(1)} day`,
         });

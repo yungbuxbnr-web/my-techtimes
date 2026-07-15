@@ -130,7 +130,7 @@ export default function DailyRings({
         </Svg>
 
         {/* Centre label absolutely positioned over SVG */}
-        <View style={styles.centreLabel}>
+        <View style={styles.centreLabel} pointerEvents="none">
           <Text style={[styles.centreLabelValue, { color: theme.primary }]}>
             {dailyHoursDisplay}
           </Text>
@@ -176,7 +176,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    pointerEvents: 'none',
   },
   centreLabelValue: {
     fontSize: 18,

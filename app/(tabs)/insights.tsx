@@ -194,7 +194,16 @@ export default function InsightsScreen() {
         sched.lunchStartTime || '12:00',
         sched.lunchEndTime || '12:30'
       );
-      setMonthlyTarget(settings.monthlyTarget || 180);
+      const { countWorkingDaysInMonth } = await import('@/utils/jobCalculations');
+      const now = new Date();
+      const wDays = countWorkingDaysInMonth(
+        now.getFullYear(), now.getMonth() + 1,
+        sched.workingDays || [1, 2, 3, 4, 5],
+        undefined,
+        sched
+      );
+      const calculatedMonthlyTarget = wDays * dailyHrs;
+      setMonthlyTarget(calculatedMonthlyTarget);
       setWeeklyTarget((settings.weeklyStreakTarget || 5) * dailyHrs);
       setDailyTarget(dailyHrs);
       
