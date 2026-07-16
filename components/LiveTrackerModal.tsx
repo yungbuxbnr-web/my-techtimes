@@ -197,21 +197,21 @@ export default function LiveTrackerModal({
 
             <View style={styles.ringRow}>
               <LiveTrackerRing
-                size={240}
-                soldHours={soldHours}
-                targetHours={targetHours}
-                shiftProgress={shiftProgress}
-                expectedSoldHours={expectedSoldHours}
-                paceDifference={paceDifference}
-                isNonWorkingDay={isNonWorkingDay}
-                isFullAbsence={isFullAbsence}
-                isBeforeShift={isBeforeShift}
-                isAfterShift={isAfterShift}
+                dailyHours={targetHours}
+                timeElapsedProgress={Math.min(100, Math.max(0, shiftProgress * 100))}
+                timeElapsedLabel={formatMinutes(elapsedMinutes)}
+                soldHoursProgress={targetHours > 0 ? Math.min(100, (soldHours / targetHours) * 100) : 0}
+                soldHoursLabel={soldHours.toFixed(1) + 'h / ' + targetHours.toFixed(1) + 'h'}
+                soldColor={getPaceColor(paceDifference, theme)}
                 theme={theme}
                 onPress={() => {
                   console.log('[LiveTrackerModal] Inner ring tapped — closing modal');
                   onClose();
                 }}
+                shiftProgress={shiftProgress}
+                paceDifference={paceDifference}
+                isNonWorkingDay={isNonWorkingDay}
+                isFullAbsence={isFullAbsence}
               />
             </View>
 

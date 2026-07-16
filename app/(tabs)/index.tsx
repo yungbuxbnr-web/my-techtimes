@@ -767,21 +767,21 @@ export default function DashboardScreen() {
                 <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
                   <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Tracker</Text>
                   <LiveTrackerRing
-                    size={220}
-                    soldHours={soldHoursToday}
-                    targetHours={todayScheduledHours}
-                    shiftProgress={shiftProgressDecimal}
-                    expectedSoldHours={expectedSoldHoursNow}
-                    paceDifference={paceDifference}
-                    isNonWorkingDay={isNonWorkingDayToday}
-                    isFullAbsence={isFullAbsenceToday}
-                    isBeforeShift={workdayProgress.beforeWork}
-                    isAfterShift={workdayProgress.afterWork}
+                    dailyHours={dailyHours}
+                    timeElapsedProgress={Math.min(100, Math.max(0, timeElapsed.progressPct || 0))}
+                    timeElapsedLabel={timeElapsed.label}
+                    soldHoursProgress={Math.min(100, Math.max(0, soldHoursProgress || 0))}
+                    soldHoursLabel={soldHoursLabel}
+                    soldColor={soldColor}
                     theme={theme}
                     onPress={() => {
                       console.log('[Dashboard] Live Tracker ring pressed (landscape) — opening modal');
                       setShowLiveTracker(true);
                     }}
+                    shiftProgress={shiftProgressDecimal}
+                    paceDifference={paceDifference}
+                    isNonWorkingDay={isNonWorkingDayToday}
+                    isFullAbsence={isFullAbsenceToday}
                   />
                 </View>
               )}
@@ -1045,21 +1045,21 @@ export default function DashboardScreen() {
               <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
                 <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Tracker</Text>
                 <LiveTrackerRing
-                  size={220}
-                  soldHours={soldHoursToday}
-                  targetHours={todayScheduledHours}
-                  shiftProgress={shiftProgressDecimal}
-                  expectedSoldHours={expectedSoldHoursNow}
-                  paceDifference={paceDifference}
-                  isNonWorkingDay={isNonWorkingDayToday}
-                  isFullAbsence={isFullAbsenceToday}
-                  isBeforeShift={workdayProgress.beforeWork}
-                  isAfterShift={workdayProgress.afterWork}
+                  dailyHours={dailyHours}
+                  timeElapsedProgress={Math.min(100, Math.max(0, timeElapsed.progressPct || 0))}
+                  timeElapsedLabel={timeElapsed.label}
+                  soldHoursProgress={Math.min(100, Math.max(0, soldHoursProgress || 0))}
+                  soldHoursLabel={soldHoursLabel}
+                  soldColor={soldColor}
                   theme={theme}
                   onPress={() => {
                     console.log('[Dashboard] Live Tracker ring pressed (portrait) — opening modal');
                     setShowLiveTracker(true);
                   }}
+                  shiftProgress={shiftProgressDecimal}
+                  paceDifference={paceDifference}
+                  isNonWorkingDay={isNonWorkingDayToday}
+                  isFullAbsence={isFullAbsenceToday}
                 />
               </View>
             )}
