@@ -187,7 +187,7 @@ function ChatBubble({
         {/* AI label */}
         <View style={styles.aiLabelRow}>
           <MaterialIcons name="auto-awesome" size={14} color={primaryColor} />
-          <Text style={[styles.aiLabel, { color: primaryColor }]}>Newly AI</Text>
+
         </View>
 
         <Text style={[styles.aiBubbleText, { color: textColor }]}>{message.content}</Text>
@@ -552,7 +552,7 @@ export default function AIAssistantScreen() {
 
           <View style={styles.headerTextBlock}>
             <Text style={styles.headerTitle}>AI Assistant</Text>
-            <Text style={styles.headerSubtitle}>Powered by Newly AI</Text>
+
           </View>
 
           <View style={styles.headerRight}>
@@ -678,7 +678,7 @@ const styles = StyleSheet.create({
   },
   headerTextBlock: { flex: 1 },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#fff' },
-  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   onlineIndicator: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   onlineDot: { width: 8, height: 8, borderRadius: 4 },
@@ -760,7 +760,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   aiLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-  aiLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+
   aiBubbleText: { fontSize: 14, lineHeight: 21 },
   bubbleTime: { fontSize: 11, marginTop: 6 },
   bubbleActions: {
