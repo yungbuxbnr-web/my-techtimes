@@ -57,6 +57,7 @@ function RootLayoutContent() {
   const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const lastRouteRef = useRef<string | null>(null);
+  const hasNavigatedRef = useRef(false);
 
   // Install global error handlers exactly once after mount
   useEffect(() => {
@@ -74,7 +75,6 @@ function RootLayoutContent() {
   // Reset badge count when a notification is tapped; handle ADD_JOB action
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('RootLayout: Notification tapped', response.notification.request.identifier);
       Notifications.setBadgeCountAsync(0).catch(err =>
         console.error('RootLayout: Failed to reset badge count on notification tap:', err)
       );
@@ -82,7 +82,6 @@ function RootLayoutContent() {
       // Handle ADD_JOB notification action button
       const actionId = response.actionIdentifier;
       if (actionId === 'ADD_JOB') {
-        console.log('RootLayout: ADD_JOB action tapped');
         router.push('/add-job-modal');
       }
     });
@@ -166,7 +165,6 @@ function RootLayoutContent() {
   // Handle deep links (e.g. from widget)
   useEffect(() => {
     const handleUrl = (url: string) => {
-      console.log('RootLayout: Deep link received:', url);
       if (url === 'techtimes://add-job' || url === 'techtimes://add-job/') {
         router.push('/add-job-modal');
       }
@@ -242,33 +240,42 @@ function RootLayoutContent() {
     };
   }, []);
 
+  // Reset navigation guard when user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasNavigatedRef.current = false;
+    }
+  }, [isAuthenticated]);
+
   // Handle navigation after authentication
   useEffect(() => {
     if (!isReady) return;
     if (!isAuthenticated) return;
+    if (hasNavigatedRef.current) return;
     
     const handleNavigation = async () => {
-      if (isAuthenticated) {
-        // Check if we should resume to a saved route
-        const savedRoute = await getSecureItem(LAST_ROUTE_KEY);
-        const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
-        const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
+      if (hasNavigatedRef.current) return;
+      hasNavigatedRef.current = true;
+
+      // Check if we should resume to a saved route
+      const savedRoute = await getSecureItem(LAST_ROUTE_KEY);
+      const lastBackgroundTimeStr = await getSecureItem(LAST_BACKGROUND_TIME_KEY);
+      const lastBackgroundTime = lastBackgroundTimeStr ? parseInt(lastBackgroundTimeStr, 10) : null;
+      
+      if (savedRoute && lastBackgroundTime) {
+        const timeElapsed = Date.now() - lastBackgroundTime;
         
-        if (savedRoute && lastBackgroundTime) {
-          const timeElapsed = Date.now() - lastBackgroundTime;
-          
-          // If less than 1 hour, resume to saved route
-          if (timeElapsed < LOCK_TIMEOUT) {
-            activityLogger.info('NAVIGATION', 'Resuming to saved route', { route: savedRoute });
-            router.replace(`/${savedRoute}` as any);
-            return;
-          }
+        // If less than 1 hour, resume to saved route
+        if (timeElapsed < LOCK_TIMEOUT) {
+          activityLogger.info('NAVIGATION', 'Resuming to saved route', { route: savedRoute });
+          router.replace(`/${savedRoute}` as any);
+          return;
         }
-        
-        // Otherwise go to home
-        activityLogger.info('NAVIGATION', 'Navigating to home screen after auth');
-        router.replace('/(tabs)');
       }
+      
+      // Otherwise go to home
+      activityLogger.info('NAVIGATION', 'Navigating to home screen after auth');
+      router.replace('/(tabs)');
     };
     
     handleNavigation();

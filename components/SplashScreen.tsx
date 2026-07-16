@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Dimensions } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -317,10 +317,16 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
   const subtitleOpacity = useSharedValue(0);
   const subtitleTranslateY = useSharedValue(20);
   const fadeOut = useSharedValue(1);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    console.log('SplashScreen: Starting mechanic-themed startup animation');
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
+  useEffect(() => {
     // Animate title in (after gears and tools appear)
     titleOpacity.value = withDelay(
       1800,
@@ -341,12 +347,14 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
       withSpring(0, { damping: 12 })
     );
 
+    const safeComplete = () => { if (isMountedRef.current) onComplete(); };
+
     // Fade out entire splash screen
     fadeOut.value = withDelay(
       3800,
       withTiming(0, { duration: 500 }, (finished) => {
         if (finished) {
-          runOnJS(onComplete)();
+          runOnJS(safeComplete)();
         }
       })
     );

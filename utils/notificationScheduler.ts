@@ -44,8 +44,6 @@ const VIBRATION_PATTERNS: Record<string, number[]> = {
 export async function setupAndroidNotificationChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
 
-  console.log('NotificationScheduler: Setting up Android notification channels');
-
   await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.DEFAULT, {
     name: 'Default',
     importance: Notifications.AndroidImportance.HIGH,
@@ -80,8 +78,6 @@ export async function setupAndroidNotificationChannels(): Promise<void> {
     lightColor: '#FF9800',
     description: 'Daily and weekly reminder notifications',
   });
-
-  console.log('NotificationScheduler: Android channels set up');
 }
 
 /**
@@ -97,12 +93,8 @@ function getChannelId(notificationSound: string, channelType: 'work' | 'reminder
  * Configure notification handler with sound and vibration
  */
 export async function configureNotificationHandler(settings: NotificationSettings): Promise<void> {
-  console.log('NotificationScheduler: Configuring notification handler');
-
   Notifications.setNotificationHandler({
-    handleNotification: async (notification) => {
-      console.log('NotificationScheduler: Handling notification:', notification.request.identifier);
-
+    handleNotification: async (_notification) => {
       // Trigger vibration if enabled (iOS only — Android handles vibration via channel config)
       if (settings.vibrationEnabled && Platform.OS === 'ios') {
         try {
@@ -133,6 +125,8 @@ export async function configureNotificationHandler(settings: NotificationSetting
 
       return {
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: settings.notificationSound !== 'none',
         shouldSetBadge: true,
         priority: Notifications.AndroidNotificationPriority.HIGH,
@@ -161,11 +155,8 @@ function getTodayDateString(): string {
  */
 async function scheduleWorkStartNotification(schedule: Schedule, settings: NotificationSettings): Promise<void> {
   if (!settings.workStartNotification || !schedule.startTime) {
-    console.log('NotificationScheduler: Work start notification disabled or no start time');
     return;
   }
-
-  console.log('NotificationScheduler: Scheduling work start notification');
 
   const { hour, minute } = parseTime(schedule.startTime);
   const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
@@ -194,8 +185,6 @@ async function scheduleWorkStartNotification(schedule: Schedule, settings: Notif
         minute,
       },
     });
-
-    console.log(`NotificationScheduler: Scheduled work start for weekday ${expoWeekday} at ${schedule.startTime}`);
   }
 }
 
@@ -204,11 +193,8 @@ async function scheduleWorkStartNotification(schedule: Schedule, settings: Notif
  */
 async function scheduleWorkEndNotification(schedule: Schedule, settings: NotificationSettings): Promise<void> {
   if (!settings.workEndNotification || !schedule.endTime) {
-    console.log('NotificationScheduler: Work end notification disabled or no end time');
     return;
   }
-
-  console.log('NotificationScheduler: Scheduling work end notification');
 
   const { hour, minute } = parseTime(schedule.endTime);
   const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
@@ -236,8 +222,6 @@ async function scheduleWorkEndNotification(schedule: Schedule, settings: Notific
         minute,
       },
     });
-
-    console.log(`NotificationScheduler: Scheduled work end for weekday ${expoWeekday} at ${schedule.endTime}`);
   }
 }
 
@@ -246,11 +230,8 @@ async function scheduleWorkEndNotification(schedule: Schedule, settings: Notific
  */
 async function scheduleLunchStartNotification(schedule: Schedule, settings: NotificationSettings): Promise<void> {
   if (!settings.lunchStartNotification || !schedule.lunchStartTime) {
-    console.log('NotificationScheduler: Lunch start notification disabled or no lunch start time');
     return;
   }
-
-  console.log('NotificationScheduler: Scheduling lunch start notification');
 
   const { hour, minute } = parseTime(schedule.lunchStartTime);
   const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
@@ -278,8 +259,6 @@ async function scheduleLunchStartNotification(schedule: Schedule, settings: Noti
         minute,
       },
     });
-
-    console.log(`NotificationScheduler: Scheduled lunch start for weekday ${expoWeekday} at ${schedule.lunchStartTime}`);
   }
 }
 
@@ -288,11 +267,8 @@ async function scheduleLunchStartNotification(schedule: Schedule, settings: Noti
  */
 async function scheduleLunchEndNotification(schedule: Schedule, settings: NotificationSettings): Promise<void> {
   if (!settings.lunchEndNotification || !schedule.lunchEndTime) {
-    console.log('NotificationScheduler: Lunch end notification disabled or no lunch end time');
     return;
   }
-
-  console.log('NotificationScheduler: Scheduling lunch end notification');
 
   const { hour, minute } = parseTime(schedule.lunchEndTime);
   const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
@@ -320,8 +296,6 @@ async function scheduleLunchEndNotification(schedule: Schedule, settings: Notifi
         minute,
       },
     });
-
-    console.log(`NotificationScheduler: Scheduled lunch end for weekday ${expoWeekday} at ${schedule.lunchEndTime}`);
   }
 }
 
@@ -330,11 +304,8 @@ async function scheduleLunchEndNotification(schedule: Schedule, settings: Notifi
  */
 async function scheduleDailyReminder(settings: NotificationSettings): Promise<void> {
   if (!settings.dailyReminder) {
-    console.log('NotificationScheduler: Daily reminder disabled');
     return;
   }
-
-  console.log('NotificationScheduler: Scheduling daily reminder');
 
   const { hour, minute } = parseTime(settings.dailyReminderTime);
   const channelId = getChannelId(settings.notificationSound, 'reminder');
@@ -357,8 +328,6 @@ async function scheduleDailyReminder(settings: NotificationSettings): Promise<vo
       minute,
     },
   });
-
-  console.log(`NotificationScheduler: Scheduled daily reminder at ${settings.dailyReminderTime}`);
 }
 
 /**
@@ -370,39 +339,51 @@ export async function maybeSendTargetReminderNotification(
 ): Promise<void> {
   if (Platform.OS === 'web') return;
   if (!settings.targetReminder) {
-    console.log('NotificationScheduler: Target reminder disabled, skipping');
     return;
   }
 
   if (progressPercent < 90) {
-    console.log(`NotificationScheduler: Target reminder — progress ${progressPercent.toFixed(1)}% < 90%, skipping`);
     return;
   }
 
   const today = getTodayDateString();
   const firedDate = await AsyncStorage.getItem(NOTIF_TARGET_FIRED_KEY);
   if (firedDate === today) {
-    console.log('NotificationScheduler: Target reminder already fired today, skipping');
     return;
   }
 
   const roundedProgress = Math.round(progressPercent);
-  console.log(`NotificationScheduler: Firing target reminder — progress ${roundedProgress}%`);
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Almost there! 🎯',
-      body: `You've completed ${roundedProgress}% of today's hours. Keep it up!`,
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-      badge: 1,
-      ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.WORK }),
-    },
-    trigger: { seconds: 1 },
-  });
+  // FIX 6: wrap in try/catch; if ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE, retry with trigger: null
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Almost there! 🎯',
+        body: `You've completed ${roundedProgress}% of today's hours. Keep it up!`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        badge: 1,
+        ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.WORK }),
+      },
+      trigger: { seconds: 1 } as any,
+    });
+  } catch {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Almost there! 🎯',
+          body: `You've completed ${roundedProgress}% of today's hours. Keep it up!`,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          badge: 1,
+          ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.WORK }),
+        },
+        trigger: null,
+      });
+    } catch { /* silently swallow */ }
+  }
 
   await AsyncStorage.setItem(NOTIF_TARGET_FIRED_KEY, today);
-  console.log('NotificationScheduler: Target reminder fired and guard date saved');
 }
 
 /**
@@ -414,40 +395,52 @@ export async function maybeSendEfficiencyAlertNotification(
 ): Promise<void> {
   if (Platform.OS === 'web') return;
   if (!settings.efficiencyAlert) {
-    console.log('NotificationScheduler: Efficiency alert disabled, skipping');
     return;
   }
 
   const threshold = Number(settings.lowEfficiencyThreshold);
   if (efficiencyPercent >= threshold) {
-    console.log(`NotificationScheduler: Efficiency alert — ${efficiencyPercent.toFixed(1)}% >= threshold ${threshold}%, skipping`);
     return;
   }
 
   const today = getTodayDateString();
   const firedDate = await AsyncStorage.getItem(NOTIF_EFFICIENCY_FIRED_KEY);
   if (firedDate === today) {
-    console.log('NotificationScheduler: Efficiency alert already fired today, skipping');
     return;
   }
 
   const roundedEfficiency = Math.round(efficiencyPercent);
-  console.log(`NotificationScheduler: Firing efficiency alert — efficiency ${roundedEfficiency}% < threshold ${threshold}%`);
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Efficiency check 📊',
-      body: `Your efficiency is at ${roundedEfficiency}%. Consider logging more jobs to stay on track.`,
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.DEFAULT,
-      badge: 1,
-      ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
-    },
-    trigger: { seconds: 1 },
-  });
+  // FIX 6: wrap in try/catch; if ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE, retry with trigger: null
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Efficiency check 📊',
+        body: `Your efficiency is at ${roundedEfficiency}%. Consider logging more jobs to stay on track.`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.DEFAULT,
+        badge: 1,
+        ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+      },
+      trigger: { seconds: 1 } as any,
+    });
+  } catch {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Efficiency check 📊',
+          body: `Your efficiency is at ${roundedEfficiency}%. Consider logging more jobs to stay on track.`,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.DEFAULT,
+          badge: 1,
+          ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+        },
+        trigger: null,
+      });
+    } catch { /* silently swallow */ }
+  }
 
   await AsyncStorage.setItem(NOTIF_EFFICIENCY_FIRED_KEY, today);
-  console.log('NotificationScheduler: Efficiency alert fired and guard date saved');
 }
 
 /**
@@ -460,18 +453,14 @@ export async function scheduleWeeklyReportNotification(settings: NotificationSet
   const existing = scheduled.filter(n => n.identifier.startsWith(NOTIFICATION_IDS.WEEKLY_REPORT));
   for (const notif of existing) {
     await Notifications.cancelScheduledNotificationAsync(notif.identifier);
-    console.log(`NotificationScheduler: Cancelled existing weekly report notification: ${notif.identifier}`);
   }
 
   if (!settings.weeklyReport) {
-    console.log('NotificationScheduler: Weekly report disabled, skipping schedule');
     return;
   }
 
   // expo-notifications weekday: 1=Sunday, 2=Monday, ..., 7=Saturday
   const expoWeekday = settings.weeklyReportDay === 0 ? 1 : settings.weeklyReportDay + 1;
-
-  console.log(`NotificationScheduler: Scheduling weekly report for expo weekday ${expoWeekday} at 18:00`);
 
   await Notifications.scheduleNotificationAsync({
     identifier: NOTIFICATION_IDS.WEEKLY_REPORT,
@@ -490,8 +479,6 @@ export async function scheduleWeeklyReportNotification(settings: NotificationSet
       minute: 0,
     },
   });
-
-  console.log('NotificationScheduler: Weekly report notification scheduled');
 }
 
 /**
@@ -502,17 +489,13 @@ export async function scheduleMonthlyReportNotification(settings: NotificationSe
   // Cancel any existing monthly-report notification
   try {
     await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.MONTHLY_REPORT);
-    console.log('NotificationScheduler: Cancelled existing monthly report notification');
   } catch {
     // No existing notification to cancel — that's fine
   }
 
   if (!settings.monthlyReport) {
-    console.log('NotificationScheduler: Monthly report disabled, skipping schedule');
     return;
   }
-
-  console.log('NotificationScheduler: Scheduling monthly report notification on day 28 at 17:00');
 
   await Notifications.scheduleNotificationAsync({
     identifier: NOTIFICATION_IDS.MONTHLY_REPORT,
@@ -532,8 +515,6 @@ export async function scheduleMonthlyReportNotification(settings: NotificationSe
       repeats: true,
     },
   });
-
-  console.log('NotificationScheduler: Monthly report notification scheduled');
 }
 
 /**
@@ -541,9 +522,7 @@ export async function scheduleMonthlyReportNotification(settings: NotificationSe
  */
 export async function cancelAllNotifications(): Promise<void> {
   if (Platform.OS === 'web') return;
-  console.log('NotificationScheduler: Cancelling all scheduled notifications');
   await Notifications.cancelAllScheduledNotificationsAsync();
-  console.log('NotificationScheduler: All notifications cancelled');
 }
 
 /**
@@ -552,11 +531,9 @@ export async function cancelAllNotifications(): Promise<void> {
  */
 export async function forceRescheduleAllNotifications(): Promise<number> {
   if (Platform.OS === 'web') return 0;
-  console.log('NotificationScheduler: forceRescheduleAllNotifications — cancelling all and rescheduling');
   await Notifications.cancelAllScheduledNotificationsAsync();
   await scheduleAllNotifications();
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  console.log('NotificationScheduler: forceRescheduleAllNotifications — done, count:', scheduled.length);
   return scheduled.length;
 }
 
@@ -565,7 +542,6 @@ export async function forceRescheduleAllNotifications(): Promise<number> {
  */
 export async function scheduleAllNotifications(): Promise<void> {
   if (Platform.OS === 'web') return;
-  console.log('NotificationScheduler: Scheduling all notifications');
 
   try {
     // Set up Android channels first
@@ -573,8 +549,7 @@ export async function scheduleAllNotifications(): Promise<void> {
 
     // On Android, ensure notification permissions are granted before scheduling
     if (Platform.OS === 'android') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      console.log('NotificationScheduler: Android notification permission status:', status);
+      await Notifications.requestPermissionsAsync();
     }
 
     // Cancel existing notifications first
@@ -599,15 +574,6 @@ export async function scheduleAllNotifications(): Promise<void> {
     // Schedule report notifications
     await scheduleWeeklyReportNotification(settings);
     await scheduleMonthlyReportNotification(settings);
-
-    console.log('NotificationScheduler: All notifications scheduled successfully');
-
-    // Log scheduled notifications for debugging
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    console.log('NotificationScheduler: Total scheduled notifications:', scheduled.length);
-    scheduled.forEach(notif => {
-      console.log(`  - ${notif.identifier}: ${notif.content.title}`);
-    });
   } catch (error) {
     console.error('NotificationScheduler: Error scheduling notifications:', error);
   }
@@ -627,7 +593,6 @@ export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> 
   const now = Date.now();
   if (now - lastEnsureCheck < 5 * 60 * 1000) return; // 5-minute cooldown
   lastEnsureCheck = now;
-  console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — checking OS-scheduled notifications');
 
   try {
     const [settings, schedule, scheduled] = await Promise.all([
@@ -637,7 +602,6 @@ export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> 
     ]);
 
     const ids = scheduled.map(n => n.identifier);
-    console.log('NotificationScheduler: Currently scheduled notification IDs:', ids);
 
     const hasWorkStart    = ids.some(id => id.startsWith('work-start-'));
     const hasWorkEnd      = ids.some(id => id.startsWith('work-end-'));
@@ -646,8 +610,6 @@ export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> 
     const hasDailyReminder  = ids.includes(NOTIFICATION_IDS.DAILY_REMINDER);
     const hasWeeklyReport   = ids.includes(NOTIFICATION_IDS.WEEKLY_REPORT);
     const hasMonthlyReport  = ids.includes(NOTIFICATION_IDS.MONTHLY_REPORT);
-
-    console.log('NotificationScheduler: work-start present:', hasWorkStart, '| work-end present:', hasWorkEnd, '| lunch-start present:', hasLunchStart, '| lunch-end present:', hasLunchEnd, '| daily-reminder present:', hasDailyReminder, '| weekly-report present:', hasWeeklyReport, '| monthly-report present:', hasMonthlyReport);
 
     const needsWorkStart    = settings.workStartNotification  && !hasWorkStart;
     const needsWorkEnd      = settings.workEndNotification    && !hasWorkEnd;
@@ -659,14 +621,7 @@ export async function ensureWorkScheduleNotificationsScheduled(): Promise<void> 
 
     if (needsWorkStart || needsWorkEnd || needsLunchStart || needsLunchEnd ||
         needsDailyReminder || needsWeeklyReport || needsMonthlyReport) {
-      console.log(
-        'NotificationScheduler: Missing notifications — re-scheduling all.',
-        { needsWorkStart, needsWorkEnd, needsLunchStart, needsLunchEnd, needsDailyReminder, needsWeeklyReport, needsMonthlyReport }
-      );
       await scheduleAllNotifications();
-      console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — re-schedule complete');
-    } else {
-      console.log('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — all required notifications already present, no action needed');
     }
   } catch (error) {
     console.error('NotificationScheduler: ensureWorkScheduleNotificationsScheduled — error:', error);
@@ -685,7 +640,6 @@ export async function getScheduledNotifications(): Promise<Notifications.Notific
  */
 export async function sendTestNotification(settings: NotificationSettings): Promise<void> {
   if (Platform.OS === 'web') return;
-  console.log('NotificationScheduler: Sending test notification');
 
   await setupAndroidNotificationChannels();
   await configureNotificationHandler(settings);
@@ -703,8 +657,6 @@ export async function sendTestNotification(settings: NotificationSettings): Prom
       badge: 1,
       ...(Platform.OS === 'android' && { channelId }),
     },
-    trigger: { seconds: 1 }, // Fire immediately (trigger: null can throw on some Samsung firmware)
+    trigger: { seconds: 1 } as any, // Fire immediately (trigger: null can throw on some Samsung firmware)
   });
-
-  console.log('NotificationScheduler: Test notification sent');
 }

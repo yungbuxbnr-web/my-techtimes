@@ -22,6 +22,9 @@ import DailyRings from '@/components/DailyRings';
 import AppBackground from '@/components/AppBackground';
 import { useResponsiveLayout, getPadding, getFontSize, getSpacing, getCardPadding } from '@/utils/responsive';
 
+// Module-level minimum interval guard (10 seconds between loads)
+let lastDashboardLoad = 0;
+
 export default function DashboardScreen() {
   const { theme } = useThemeContext();
   const layout = useResponsiveLayout();
@@ -38,6 +41,9 @@ export default function DashboardScreen() {
   
   // Calendar data
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  // FIX 8: ref so loadDashboardData can always read the latest selectedMonth without being in its deps
+  const selectedMonthRef = useRef(selectedMonth);
+  useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
   const [calendarDays, setCalendarDays] = useState<any[]>([]);
   const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [dailyHours, setDailyHours] = useState(8.5);
@@ -49,10 +55,12 @@ export default function DashboardScreen() {
   const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
 
   const loadDashboardData = useCallback(async () => {
+    // FIX 9: enforce 10-second minimum between loads
+    const now = Date.now();
+    if (now - lastDashboardLoad < 10_000) return;
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
     try {
-      console.log('DashboardScreen: Fetching stats from API');
       const currentMonth = getCurrentMonth();
       
       // Load today's absences FIRST before other data
@@ -60,7 +68,6 @@ export default function DashboardScreen() {
       const monthAbsences = await api.getAbsences(currentMonth);
       const todayAbsencesList = monthAbsences.filter(a => a.absenceDate === todayStr);
       setTodayAbsences(todayAbsencesList);
-      console.log('DashboardScreen: Today absences loaded FIRST:', todayAbsencesList.length, 'absences');
       
       const [monthly, today, week, profile, schedule, settings, streaks] = await Promise.all([
         api.getMonthlyStats(currentMonth),
@@ -91,16 +98,18 @@ export default function DashboardScreen() {
       setStreaksEnabled(settings.streaksEnabled !== false);
       setStreakData(streaks);
       
-      await loadCalendarData(schedule, selectedMonth);
-      
-      console.log('DashboardScreen: Stats loaded successfully');
+      // FIX 8: use ref so this callback doesn't need selectedMonth in its deps
+      await loadCalendarData(schedule, selectedMonthRef.current);
+
+      // FIX 9: record successful load time
+      lastDashboardLoad = Date.now();
     } catch (error) {
       console.error('DashboardScreen: Error loading dashboard data:', error);
     } finally {
       isLoadingRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonth]);
+  }, []);
 
   const loadCalendarData = async (schedule: any, calendarMonth: Date = selectedMonth) => {
     try {
@@ -182,7 +191,6 @@ export default function DashboardScreen() {
   };
 
   useEffect(() => {
-    console.log('DashboardScreen: Initial load of dashboard data');
     loadDashboardData();
     
     // Update timer every second
@@ -192,7 +200,6 @@ export default function DashboardScreen() {
     
     // Auto-refresh stats every 30 seconds for live updates
     const statsRefresh = setInterval(() => {
-      console.log('DashboardScreen: Auto-refreshing stats for live updates');
       loadDashboardData();
     }, 30000);
     
@@ -206,7 +213,6 @@ export default function DashboardScreen() {
   // Reload data immediately when screen comes into focus (e.g., after closing add-job-modal)
   useFocusEffect(
     useCallback(() => {
-      console.log('DashboardScreen: Screen focused - reloading data for immediate update after job save');
       loadDashboardData();
     }, [loadDashboardData])
   );
@@ -217,8 +223,9 @@ export default function DashboardScreen() {
   };
 
   const onRefresh = useCallback(async () => {
-    console.log('DashboardScreen: User refreshing dashboard');
     setRefreshing(true);
+    // Reset the minimum-interval guard so a manual pull-to-refresh always fires
+    lastDashboardLoad = 0;
     await loadDashboardData();
     setRefreshing(false);
   }, [loadDashboardData]);
@@ -272,7 +279,6 @@ export default function DashboardScreen() {
     const hasAbsence = todayAbsences.some(a => a.absenceDate === todayStr);
     
     if (hasAbsence) {
-      console.log('DashboardScreen: Today is marked as absent - not counting as work day');
       return { progress: 0, isWorkDay: false, beforeWork: false, afterWork: false, isLunch: false, isAbsent: true };
     }
 
@@ -395,7 +401,6 @@ export default function DashboardScreen() {
   };
 
   const handleDayPress = (dayInfo: any) => {
-    console.log('DashboardScreen: User tapped day:', dayInfo.dateString);
     setSelectedDay(dayInfo);
     setShowDayModal(true);
   };
@@ -415,7 +420,6 @@ export default function DashboardScreen() {
         note: `${type === 'overtime' ? 'Overtime' : 'Compensation'} day`,
       });
       
-      console.log('DashboardScreen: Marked day as', type);
       setShowDayModal(false);
       isLoadingRef.current = false; // force refresh even if a load was in progress
       await loadDashboardData();
@@ -498,7 +502,6 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={[styles.streaksCard, { backgroundColor: theme.card, padding: cardPadding }]}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Streaks card');
                     router.push('/streaks');
                   }}
                 >
@@ -560,7 +563,6 @@ export default function DashboardScreen() {
                     value={`${targetProgress.toFixed(1)}%`}
                     subtitle={`${monthlyStats.soldHours.toFixed(1)}h / ${monthlyStats.targetHours.toFixed(1)}h`}
                     onPress={() => {
-                      console.log('DashboardScreen: User tapped Target ring');
                       router.push(`/target-details?month=${getCurrentMonth()}`);
                     }}
                   />
@@ -579,7 +581,6 @@ export default function DashboardScreen() {
                     value={`${monthlyStats.efficiency.toFixed(0)}%`}
                     subtitle={efficiencyLabel}
                     onPress={() => {
-                      console.log('DashboardScreen: User tapped Efficiency ring');
                       router.push(`/efficiency-details?month=${getCurrentMonth()}`);
                     }}
                   />
@@ -758,7 +759,6 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Total AWs tile');
                     router.push(`/total-aws-details?month=${getCurrentMonth()}`);
                   }}
                 >
@@ -768,7 +768,6 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Time Logged tile');
                     router.push(`/time-logged-details?month=${getCurrentMonth()}`);
                   }}
                 >
@@ -780,7 +779,6 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Jobs Done tile');
                     router.push(`/jobs-done-details?month=${getCurrentMonth()}`);
                   }}
                 >
@@ -790,7 +788,6 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Hours Remaining tile');
                     router.push(`/hours-remaining-details?month=${getCurrentMonth()}`);
                   }}
                 >
@@ -820,7 +817,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.streaksCard, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Streaks card');
                   router.push('/streaks');
                 }}
               >
@@ -1013,7 +1009,6 @@ export default function DashboardScreen() {
                   value={`${targetProgress.toFixed(1)}%`}
                   subtitle={`${monthlyStats.soldHours.toFixed(1)}h / ${monthlyStats.targetHours.toFixed(1)}h`}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Target ring');
                     router.push(`/target-details?month=${getCurrentMonth()}`);
                   }}
                 />
@@ -1032,7 +1027,6 @@ export default function DashboardScreen() {
                   value={`${monthlyStats.efficiency.toFixed(0)}%`}
                   subtitle={efficiencyLabel}
                   onPress={() => {
-                    console.log('DashboardScreen: User tapped Efficiency ring');
                     router.push(`/efficiency-details?month=${getCurrentMonth()}`);
                   }}
                 />
@@ -1049,7 +1043,6 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[styles.calendarButton, { backgroundColor: theme.card, padding: cardPadding }]}
               onPress={() => {
-                console.log('DashboardScreen: User tapped Calendar button - navigating to Performance Calendar');
                 router.push('/calendar');
               }}
             >
@@ -1094,7 +1087,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Total AWs tile');
                   router.push(`/total-aws-details?month=${getCurrentMonth()}`);
                 }}
               >
@@ -1105,7 +1097,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Time Logged tile');
                   router.push(`/time-logged-details?month=${getCurrentMonth()}`);
                 }}
               >
@@ -1118,7 +1109,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Jobs Done tile');
                   router.push(`/jobs-done-details?month=${getCurrentMonth()}`);
                 }}
               >
@@ -1129,7 +1119,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.statTile, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Hours Remaining tile');
                   router.push(`/hours-remaining-details?month=${getCurrentMonth()}`);
                 }}
               >
@@ -1145,7 +1134,6 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[styles.periodCard, { backgroundColor: theme.card, padding: cardPadding }]}
               onPress={() => {
-                console.log('DashboardScreen: User tapped Today card');
                 router.push('/today-details');
               }}
             >
@@ -1162,7 +1150,6 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[styles.periodCard, { backgroundColor: theme.card, padding: cardPadding }]}
               onPress={() => {
-                console.log('DashboardScreen: User tapped This Week card');
                 router.push('/week-details');
               }}
             >
@@ -1179,7 +1166,6 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[styles.addButton, { backgroundColor: theme.primary, padding: cardPadding }]}
               onPress={() => {
-                console.log('DashboardScreen: User tapped Add New Job button - opening modal');
                 router.push('/add-job-modal');
               }}
             >
@@ -1197,7 +1183,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.bottomButton, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Job Records button');
                   router.push('/(tabs)/jobs');
                 }}
               >
@@ -1206,7 +1191,6 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.bottomButton, { backgroundColor: theme.card, padding: cardPadding }]}
                 onPress={() => {
-                  console.log('DashboardScreen: User tapped Statistics button');
                   router.push('/(tabs)/stats');
                 }}
               >

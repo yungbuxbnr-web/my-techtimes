@@ -104,12 +104,12 @@ export async function updateLiveWidget(): Promise<void> {
     const bodyLine2 = `${todayJobs} jobs today · Tap to open`;
     const body = `${bodyLine1}\n${bodyLine2}`;
 
-    // Use scheduleNotificationAsync with trigger: null to fire immediately.
-    // Avoids Samsung One UI bug where trigger: { seconds: 1 } on an ongoing
-    // notification throws an empty error {}.
-    await Notifications.scheduleNotificationAsync({
-      identifier: LIVE_WIDGET_ID,
-      content: {
+    // Use presentNotificationAsync to fire immediately without scheduling.
+    // Avoids Samsung One UI bug where scheduleNotificationAsync (even with trigger: null)
+    // throws an empty error {} on some firmware versions.
+    try {
+      await (Notifications as any).presentNotificationAsync({
+        identifier: LIVE_WIDGET_ID,
         title,
         body,
         priority: Notifications.AndroidNotificationPriority.LOW,
@@ -117,9 +117,25 @@ export async function updateLiveWidget(): Promise<void> {
         data: { type: 'live-widget' },
         channelId: LIVE_WIDGET_CHANNEL,
         autoDismiss: false,
-      } as any,
-      trigger: null,
-    });
+      });
+    } catch {
+      // Fallback: scheduleNotificationAsync with trigger: null
+      try {
+        await Notifications.scheduleNotificationAsync({
+          identifier: LIVE_WIDGET_ID,
+          content: {
+            title,
+            body,
+            priority: Notifications.AndroidNotificationPriority.LOW,
+            ongoing: true,
+            data: { type: 'live-widget' },
+            channelId: LIVE_WIDGET_CHANNEL,
+            autoDismiss: false,
+          } as any,
+          trigger: null,
+        });
+      } catch { /* silently swallow */ }
+    }
 
     // Mark successful update time
     lastWidgetUpdate = now;
