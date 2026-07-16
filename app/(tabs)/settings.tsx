@@ -32,8 +32,10 @@ import {
   Platform,
   Modal,
   NativeModules,
+  Linking,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGoogleSync } from '@/contexts/GoogleSyncContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
 import { router } from 'expo-router';
@@ -58,6 +60,23 @@ export default function SettingsScreen() {
     setLockOnResume: setAuthLockOnResume,
     changePin,
   } = useAuth();
+
+  const {
+    googleUser,
+    isSignedIn: isGoogleSignedIn,
+    isSyncEnabled,
+    isAvailable: isGoogleSyncAvailable,
+    isConfigured: isGoogleConfigured,
+    isSyncing,
+    lastSyncTime,
+    pendingChanges,
+    isOnline,
+    syncError,
+    signIn: googleSignIn,
+    signOut: googleSignOut,
+    enableSync,
+    syncNow,
+  } = useGoogleSync();
   
   const [technicianName, setTechnicianName] = useState('');
   const [monthlyTarget, setMonthlyTarget] = useState('180');
@@ -1069,6 +1088,162 @@ export default function SettingsScreen() {
               color={theme.textSecondary}
             />
           </TouchableOpacity>
+        </View>
+
+        {/* ── Google Account & Sync ─────────────────────────────────────────── */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Google Account & Sync</Text>
+
+          {!isGoogleConfigured ? (
+            /* Firebase not configured */
+            <View>
+              <View style={[styles.syncInfoCard, { backgroundColor: theme.background }]}>
+                <AntDesign name="google" size={28} color="#4285F4" style={{ marginBottom: 8 }} />
+                <Text style={[styles.syncInfoTitle, { color: theme.text }]}>Google Sync — Coming Soon</Text>
+                <Text style={[styles.syncInfoDesc, { color: theme.textSecondary }]}>
+                  Sync your jobs, absences and settings across all your devices using your Google account.
+                </Text>
+                <Text style={[styles.syncInfoDesc, { color: theme.textSecondary, marginTop: 8 }]}>
+                  To enable: create a Firebase project at console.firebase.google.com and add your config to utils/googleSync.ts
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: '#4285F4' }]}
+                onPress={() => {
+                  console.log('SettingsScreen: Learn More about Google Sync pressed');
+                  Linking.openURL('https://console.firebase.google.com');
+                }}
+              >
+                <AntDesign name="google" size={18} color="#ffffff" />
+                <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Open Firebase Console</Text>
+              </TouchableOpacity>
+            </View>
+          ) : !isGoogleSignedIn ? (
+            /* Configured but not signed in */
+            <View>
+              <Text style={[styles.settingHint, { color: theme.textSecondary, marginBottom: 16 }]}>
+                Sync your jobs, absences and settings across devices
+              </Text>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: '#4285F4' }]}
+                onPress={() => {
+                  console.log('SettingsScreen: Sign in with Google pressed');
+                  googleSignIn().catch((err: any) => {
+                    Alert.alert('Sign-in Failed', err?.message || 'Could not sign in with Google');
+                  });
+                }}
+              >
+                <AntDesign name="google" size={18} color="#ffffff" />
+                <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Sign in with Google</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* Signed in */
+            <View>
+              {/* Account info */}
+              <View style={[styles.syncAccountRow, { backgroundColor: theme.background }]}>
+                <AntDesign name="google" size={24} color="#4285F4" />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  {googleUser?.displayName ? (
+                    <Text style={[styles.settingLabel, { color: theme.text }]}>{googleUser.displayName}</Text>
+                  ) : null}
+                  <Text style={[styles.settingHint, { color: theme.textSecondary }]}>{googleUser?.email}</Text>
+                </View>
+                <View style={[styles.onlineDot, { backgroundColor: isOnline ? '#4CAF50' : '#f44336' }]} />
+              </View>
+
+              {/* Last sync */}
+              <View style={styles.settingRow}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Last Synced</Text>
+                <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                  {lastSyncTime
+                    ? new Date(lastSyncTime).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                    : 'Never'}
+                </Text>
+              </View>
+
+              {/* Pending changes */}
+              {pendingChanges > 0 && (
+                <View style={styles.settingRow}>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>Pending Changes</Text>
+                  <View style={[styles.pendingBadge, { backgroundColor: '#FF9800' }]}>
+                    <Text style={styles.pendingBadgeText}>{pendingChanges}</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Auto-sync toggle */}
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>Auto Sync</Text>
+                  <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                    Sync every 5 minutes when online
+                  </Text>
+                </View>
+                <Switch
+                  value={isSyncEnabled}
+                  onValueChange={(val) => {
+                    console.log('SettingsScreen: Auto sync toggled', val);
+                    enableSync(val);
+                  }}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                />
+              </View>
+
+              {/* Sync error */}
+              {syncError ? (
+                <View style={[styles.syncErrorCard, { backgroundColor: 'rgba(244,67,54,0.1)', borderColor: '#f44336' }]}>
+                  <Text style={[styles.syncErrorText, { color: '#f44336' }]}>{syncError}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      console.log('SettingsScreen: Retry sync pressed');
+                      syncNow();
+                    }}
+                  >
+                    <Text style={[styles.syncRetryText, { color: theme.primary }]}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {/* Sync Now */}
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: (!isOnline || isSyncing) ? theme.border : theme.primary }]}
+                onPress={() => {
+                  console.log('SettingsScreen: Sync Now pressed');
+                  syncNow();
+                }}
+                disabled={!isOnline || isSyncing}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.triangle.2.circlepath"
+                  android_material_icon_name="sync"
+                  size={18}
+                  color="#ffffff"
+                />
+                <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>
+                  {isSyncing ? 'Syncing…' : 'Sync Now'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Sign Out */}
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: theme.background }]}
+                onPress={() => {
+                  console.log('SettingsScreen: Google Sign Out pressed');
+                  Alert.alert(
+                    'Sign Out',
+                    'Sign out of Google? Your local data will not be deleted.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Sign Out', style: 'destructive', onPress: () => googleSignOut() },
+                    ]
+                  );
+                }}
+              >
+                <Text style={[styles.actionButtonText, { color: theme.error || '#f44336' }]}>Sign Out of Google</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
@@ -2322,5 +2497,64 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '600',
+  },
+  syncInfoCard: {
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  syncInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  syncInfoDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  syncAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  onlineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  pendingBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  pendingBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  syncErrorCard: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  syncErrorText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  syncRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 8,
   },
 });

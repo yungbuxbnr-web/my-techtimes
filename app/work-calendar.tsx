@@ -186,7 +186,13 @@ export default function WorkCalendarScreen() {
         await api.createAbsence({
           month: monthStr,
           absenceDate: dayInfo.dateString,
+          duration: 'full_day',
+          absenceHours: dailyHours,
+          scheduledHoursSnapshot: dailyHours,
+          dayFraction: 1,
           daysCount: 1,
+          isHalfDay: false,
+          customHours: dailyHours,
           deductionType,
           absenceType: newAbsenceType,
           note: `${newAbsenceType.charAt(0).toUpperCase() + newAbsenceType.slice(1)} day`,

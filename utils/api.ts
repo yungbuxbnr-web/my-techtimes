@@ -421,9 +421,14 @@ export const api = {
       if (seenDates.has(absence.absenceDate)) return;
       seenDates.add(absence.absenceDate);
 
-      // Resolve hours for this absence — use dailyHours (from schedule times) not stale dailyWorkingHours
       let hours = 0;
-      if (absence.customHours !== undefined && absence.customHours > 0) {
+
+      // New format: use stored absenceHours directly
+      if (absence.absenceHours !== undefined && absence.absenceHours > 0) {
+        hours = Number(absence.absenceHours);
+      }
+      // Legacy format fallback
+      else if (absence.customHours !== undefined && absence.customHours > 0) {
         hours = Number(absence.customHours);
       } else if (absence.isHalfDay) {
         hours = dailyHours / 2;
@@ -439,7 +444,7 @@ export const api = {
         hours,
         type: absence.absenceType || 'absence',
         month: absence.month,
-        deductionType: absence.deductionType, // BUG 2 FIX: pass deductionType through
+        deductionType: absence.deductionType,
       });
     });
 
@@ -530,10 +535,15 @@ export const api = {
     return await offlineStorage.getAbsences(month);
   },
 
-  async createAbsence(absence: { 
-    month: string; 
+  async createAbsence(absence: {
+    month: string;
     absenceDate: string;
-    daysCount?: number; 
+    duration: 'full_day' | 'half_day' | 'custom_hours';
+    absenceHours: number;
+    scheduledHoursSnapshot: number;
+    dayFraction: number;
+    halfDayPeriod?: 'morning' | 'afternoon';
+    daysCount?: number;
     isHalfDay?: boolean;
     customHours?: number;
     deductionType: 'target' | 'available';

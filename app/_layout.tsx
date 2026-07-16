@@ -5,6 +5,7 @@ import { BackHandler, Alert, Platform, AppState, AppStateStatus, Linking } from 
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/components/ToastProvider';
+import { GoogleSyncProvider } from '@/contexts/GoogleSyncContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { scheduleAllNotifications, ensureWorkScheduleNotificationsScheduled } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, requestBackgroundPermissions } from '@/utils/permissions';
@@ -407,13 +408,15 @@ function RootLayoutContent() {
 export default function RootLayout() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <ToastProvider>
-            <RootLayoutContent />
-          </ToastProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <GoogleSyncProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <RootLayoutContent />
+            </ToastProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </GoogleSyncProvider>
     </ErrorBoundary>
   );
 }

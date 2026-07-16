@@ -9,30 +9,44 @@ import {
   Alert,
   Platform,
   Modal,
+  TextInput,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Absence } from '@/utils/api';
-import { calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
+import {
+  getScheduledHoursForDate,
+  calculateAbsenceHours,
+  calculateDayFraction,
+  AbsenceDuration,
+  HalfDayPeriod,
+} from '@/utils/absenceCalculations';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function AbsenceLoggerScreen() {
-  console.log('AbsenceLoggerScreen: Rendering absence logger');
   const { theme } = useThemeContext();
-  const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [absenceType, setAbsenceType] = useState<'holiday' | 'sickness' | 'training'>('holiday');
-  const [isHalfDay, setIsHalfDay] = useState(false);
+  const [duration, setDuration] = useState<AbsenceDuration>('full_day');
+  const [halfDayPeriod, setHalfDayPeriod] = useState<HalfDayPeriod>('morning');
+  const [customHoursInput, setCustomHoursInput] = useState('');
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [schedule, setSchedule] = useState<any>(null);
-  const [successModal, setSuccessModal] = useState<{ visible: boolean; date: string; hours: number; type: string }>({
+  const [successModal, setSuccessModal] = useState<{
+    visible: boolean;
+    date: string;
+    hours: number;
+    dayFraction: number;
+    type: string;
+  }>({
     visible: false,
     date: '',
     hours: 0,
+    dayFraction: 0,
     type: 'holiday',
   });
 
@@ -56,42 +70,19 @@ export default function AbsenceLoggerScreen() {
     }
   };
 
-  const getHoursForDate = (date: Date): number => {
-    if (!schedule) return 0;
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 6 && schedule.saturdayStartTime && schedule.saturdayEndTime) {
-      const lunchEndTime = schedule.saturdayLunchBreakMinutes
-        ? (() => {
-            const h = Math.floor(schedule.saturdayLunchBreakMinutes / 60);
-            const m = schedule.saturdayLunchBreakMinutes % 60;
-            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-          })()
-        : '12:00';
-      return calcDailyHoursFromSchedule(
-        schedule.saturdayStartTime,
-        schedule.saturdayEndTime,
-        '12:00',
-        lunchEndTime
-      );
-    }
-    return calcDailyHoursFromSchedule(
-      schedule.startTime || '07:00',
-      schedule.endTime || '18:00',
-      schedule.lunchStartTime || '12:00',
-      schedule.lunchEndTime || '12:30'
-    );
-  };
+  const scheduledHours = schedule ? getScheduledHoursForDate(selectedDate, schedule) : 0;
 
-  const isAbsenceFuture = (absenceDate: string): boolean => {
-    return absenceDate > todayStr;
-  };
+  const customHoursValue = parseFloat(customHoursInput) || 0;
+  const absenceHours = calculateAbsenceHours(duration, scheduledHours, customHoursValue);
+  const dayFraction = calculateDayFraction(absenceHours, scheduledHours);
 
-  const isAbsenceToday = (absenceDate: string): boolean => {
-    return absenceDate === todayStr;
-  };
+  const fullDayHoursDisplay = scheduledHours > 0 ? scheduledHours.toFixed(2) + 'h' : '—';
+  const halfDayHoursDisplay = scheduledHours > 0 ? (scheduledHours / 2).toFixed(2) + 'h' : '—';
+
+  const isAbsenceFuture = (absenceDate: string): boolean => absenceDate > todayStr;
 
   const handleLogAbsence = async () => {
-    console.log('AbsenceLoggerScreen: Log absence button pressed');
+    console.log('AbsenceLoggerScreen: Log absence button pressed', { duration, absenceType, selectedDate: selectedDate.toISOString().split('T')[0] });
 
     if (!schedule) {
       Alert.alert('Error', 'Schedule not loaded');
@@ -107,37 +98,54 @@ export default function AbsenceLoggerScreen() {
       return;
     }
 
-    const dailyHours = getHoursForDate(selectedDate);
-    const hours = isHalfDay ? dailyHours / 2 : dailyHours;
+    if (scheduledHours <= 0) {
+      Alert.alert('Error', 'No scheduled hours found for this date');
+      return;
+    }
+
+    if (duration === 'custom_hours') {
+      if (customHoursValue <= 0) {
+        Alert.alert('Error', 'Please enter a valid number of hours');
+        return;
+      }
+      if (customHoursValue > scheduledHours) {
+        Alert.alert('Error', `Custom hours cannot exceed scheduled hours (${scheduledHours.toFixed(2)}h)`);
+        return;
+      }
+    }
+
+    const finalAbsenceHours = calculateAbsenceHours(duration, scheduledHours, customHoursValue);
+    const finalDayFraction = calculateDayFraction(finalAbsenceHours, scheduledHours);
+    const isFuture = dateStr > todayStr;
+    const deductionType = isFuture ? 'target' : 'available';
 
     const absenceTypeName = absenceType.charAt(0).toUpperCase() + absenceType.slice(1);
-    const durationName = isHalfDay ? 'Half Day' : 'Full Day';
-    const isFuture = dateStr > todayStr;
-
-    const deductionNote = isFuture
-      ? `Scheduled for ${selectedDate.toLocaleDateString('en-GB')} — will be deducted when the date arrives`
-      : `Deducted immediately from available hours`;
-
-    const deductionType = isFuture ? 'target' : 'available';
+    const durationLabel = duration === 'full_day' ? 'Full Day' : duration === 'half_day' ? 'Half Day' : `Custom ${finalAbsenceHours.toFixed(2)}h`;
 
     try {
       await api.createAbsence({
         month: monthStr,
         absenceDate: dateStr,
+        duration,
+        absenceHours: finalAbsenceHours,
+        scheduledHoursSnapshot: scheduledHours,
+        dayFraction: finalDayFraction,
+        halfDayPeriod: duration === 'half_day' ? halfDayPeriod : undefined,
         daysCount: 1,
-        isHalfDay,
-        customHours: hours,
+        isHalfDay: duration === 'half_day',
+        customHours: finalAbsenceHours,
         deductionType,
         absenceType,
-        note: `${absenceTypeName} - ${durationName}`,
+        note: `${absenceTypeName} - ${durationLabel}`,
       });
 
-      console.log('AbsenceLoggerScreen: Absence logged successfully —', isFuture ? 'FUTURE (pending)' : 'PAST/TODAY (active)');
+      console.log('AbsenceLoggerScreen: Absence logged successfully', { isFuture, finalAbsenceHours, finalDayFraction });
+
       const day = String(selectedDate.getDate()).padStart(2, '0');
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const year = selectedDate.getFullYear();
       const formattedDate = `${day}/${month}/${year}`;
-      setSuccessModal({ visible: true, date: formattedDate, hours, type: absenceType });
+      setSuccessModal({ visible: true, date: formattedDate, hours: finalAbsenceHours, dayFraction: finalDayFraction, type: absenceType });
     } catch (error) {
       console.error('AbsenceLoggerScreen: Error logging absence:', error);
       Alert.alert('Error', 'Failed to log absence');
@@ -145,7 +153,7 @@ export default function AbsenceLoggerScreen() {
   };
 
   const handleDeleteAbsence = async (absence: Absence) => {
-    console.log('AbsenceLoggerScreen: Delete absence button pressed for id:', absence.id);
+    console.log('AbsenceLoggerScreen: Delete absence button pressed', { id: absence.id, date: absence.absenceDate });
 
     Alert.alert(
       'Delete Absence',
@@ -158,7 +166,7 @@ export default function AbsenceLoggerScreen() {
           onPress: async () => {
             try {
               await api.deleteAbsence(absence.id);
-              console.log('AbsenceLoggerScreen: Absence deleted — day restored as working day');
+              console.log('AbsenceLoggerScreen: Absence deleted successfully', { id: absence.id });
               loadData();
             } catch (error) {
               console.error('AbsenceLoggerScreen: Error deleting absence:', error);
@@ -194,19 +202,34 @@ export default function AbsenceLoggerScreen() {
   const activeAbsences = sortedAbsences.filter(a => a.absenceDate <= todayStr);
   const futureAbsences = sortedAbsences.filter(a => a.absenceDate > todayStr);
 
-  // Summary totals
-  const totalAbsenceHours = uniqueAbsences.reduce((sum, a) => sum + (Number(a.customHours) || 0), 0);
-  const pastAbsenceHours = activeAbsences.reduce((sum, a) => sum + (Number(a.customHours) || 0), 0);
-  const futureAbsenceHours = futureAbsences.reduce((sum, a) => sum + (Number(a.customHours) || 0), 0);
-
-  console.log('AbsenceLoggerScreen: Displaying', activeAbsences.length, 'active,', futureAbsences.length, 'future absences');
-  console.log('AbsenceLoggerScreen: Summary — total:', totalAbsenceHours.toFixed(2), 'h, past:', pastAbsenceHours.toFixed(2), 'h, future:', futureAbsenceHours.toFixed(2), 'h');
+  // Summary totals using new absenceHours field with legacy fallback
+  const totalDayFraction = uniqueAbsences.reduce((sum, a) => {
+    if (a.dayFraction !== undefined) return sum + a.dayFraction;
+    const h = a.absenceHours ?? a.customHours ?? 0;
+    const s = a.scheduledHoursSnapshot ?? scheduledHours;
+    return sum + calculateDayFraction(h, s > 0 ? s : h);
+  }, 0);
+  const totalAbsenceHours = uniqueAbsences.reduce((sum, a) => sum + (a.absenceHours ?? Number(a.customHours) ?? 0), 0);
+  const pastAbsenceHours = activeAbsences.reduce((sum, a) => sum + (a.absenceHours ?? Number(a.customHours) ?? 0), 0);
+  const futureAbsenceHours = futureAbsences.reduce((sum, a) => sum + (a.absenceHours ?? Number(a.customHours) ?? 0), 0);
+  const pastDayFraction = activeAbsences.reduce((sum, a) => {
+    if (a.dayFraction !== undefined) return sum + a.dayFraction;
+    const h = a.absenceHours ?? a.customHours ?? 0;
+    const s = a.scheduledHoursSnapshot ?? scheduledHours;
+    return sum + calculateDayFraction(h, s > 0 ? s : h);
+  }, 0);
+  const futureDayFraction = futureAbsences.reduce((sum, a) => {
+    if (a.dayFraction !== undefined) return sum + a.dayFraction;
+    const h = a.absenceHours ?? a.customHours ?? 0;
+    const s = a.scheduledHoursSnapshot ?? scheduledHours;
+    return sum + calculateDayFraction(h, s > 0 ? s : h);
+  }, 0);
 
   const selectedDateStr = selectedDate.toISOString().split('T')[0];
   const selectedIsFuture = selectedDateStr > todayStr;
-  const hoursDisplay = schedule
-    ? (isHalfDay ? getHoursForDate(selectedDate) / 2 : getHoursForDate(selectedDate)).toFixed(2)
-    : '0';
+
+  const absenceHoursDisplay = absenceHours > 0 ? absenceHours.toFixed(2) + 'h' : '0h';
+  const dayFractionDisplay = dayFraction > 0 ? dayFraction.toFixed(2) + ' day' : '0 day';
 
   return (
     <AppBackground>
@@ -237,6 +260,7 @@ export default function AbsenceLoggerScreen() {
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Log New Absence</Text>
 
+          {/* Date Picker */}
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Select Date</Text>
             <TouchableOpacity
@@ -268,6 +292,7 @@ export default function AbsenceLoggerScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Absence Type */}
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Absence Type</Text>
             <View style={styles.typeButtons}>
@@ -280,7 +305,7 @@ export default function AbsenceLoggerScreen() {
                     absenceType === type && { backgroundColor: getAbsenceColor(type) },
                   ]}
                   onPress={() => {
-                    console.log('AbsenceLoggerScreen: Setting absence type to', type);
+                    console.log('AbsenceLoggerScreen: Absence type selected', type);
                     setAbsenceType(type);
                   }}
                 >
@@ -297,6 +322,7 @@ export default function AbsenceLoggerScreen() {
             </View>
           </View>
 
+          {/* Duration */}
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Duration</Text>
             <View style={styles.durationButtons}>
@@ -304,46 +330,128 @@ export default function AbsenceLoggerScreen() {
                 style={[
                   styles.durationButton,
                   { borderColor: theme.primary },
-                  !isHalfDay && { backgroundColor: theme.primary },
+                  duration === 'full_day' && { backgroundColor: theme.primary },
                 ]}
                 onPress={() => {
-                  console.log('AbsenceLoggerScreen: Setting full day');
-                  setIsHalfDay(false);
+                  console.log('AbsenceLoggerScreen: Duration selected: full_day');
+                  setDuration('full_day');
                 }}
               >
-                <Text style={[styles.durationButtonText, { color: !isHalfDay ? '#ffffff' : theme.primary }]}>
+                <Text style={[styles.durationButtonText, { color: duration === 'full_day' ? '#ffffff' : theme.primary }]}>
                   Full Day
                 </Text>
-                {schedule && (
-                  <Text style={[styles.durationHours, { color: !isHalfDay ? '#ffffff' : theme.textSecondary }]}>
-                    {getHoursForDate(selectedDate).toFixed(2)}h
-                  </Text>
-                )}
+                <Text style={[styles.durationHours, { color: duration === 'full_day' ? '#ffffff' : theme.textSecondary }]}>
+                  {fullDayHoursDisplay}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
                   styles.durationButton,
                   { borderColor: theme.primary },
-                  isHalfDay && { backgroundColor: theme.primary },
+                  duration === 'half_day' && { backgroundColor: theme.primary },
                 ]}
                 onPress={() => {
-                  console.log('AbsenceLoggerScreen: Setting half day');
-                  setIsHalfDay(true);
+                  console.log('AbsenceLoggerScreen: Duration selected: half_day');
+                  setDuration('half_day');
                 }}
               >
-                <Text style={[styles.durationButtonText, { color: isHalfDay ? '#ffffff' : theme.primary }]}>
+                <Text style={[styles.durationButtonText, { color: duration === 'half_day' ? '#ffffff' : theme.primary }]}>
                   Half Day
                 </Text>
-                {schedule && (
-                  <Text style={[styles.durationHours, { color: isHalfDay ? '#ffffff' : theme.textSecondary }]}>
-                    {(getHoursForDate(selectedDate) / 2).toFixed(2)}h
-                  </Text>
-                )}
+                <Text style={[styles.durationHours, { color: duration === 'half_day' ? '#ffffff' : theme.textSecondary }]}>
+                  {halfDayHoursDisplay}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.durationButton,
+                  { borderColor: theme.primary },
+                  duration === 'custom_hours' && { backgroundColor: theme.primary },
+                ]}
+                onPress={() => {
+                  console.log('AbsenceLoggerScreen: Duration selected: custom_hours');
+                  setDuration('custom_hours');
+                }}
+              >
+                <Text style={[styles.durationButtonText, { color: duration === 'custom_hours' ? '#ffffff' : theme.primary }]}>
+                  Custom
+                </Text>
+                <Text style={[styles.durationHours, { color: duration === 'custom_hours' ? '#ffffff' : theme.textSecondary }]}>
+                  enter hours
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
 
+          {/* Half Day Period Selector */}
+          {duration === 'half_day' && (
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Half Day Period</Text>
+              <View style={styles.periodButtons}>
+                {(['morning', 'afternoon'] as const).map((period) => (
+                  <TouchableOpacity
+                    key={period}
+                    style={[
+                      styles.periodButton,
+                      { borderColor: theme.primary },
+                      halfDayPeriod === period && { backgroundColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      console.log('AbsenceLoggerScreen: Half day period selected', period);
+                      setHalfDayPeriod(period);
+                    }}
+                  >
+                    <Text style={[styles.periodButtonText, { color: halfDayPeriod === period ? '#ffffff' : theme.primary }]}>
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Custom Hours Input */}
+          {duration === 'custom_hours' && (
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>
+                Custom Hours (max {scheduledHours.toFixed(2)}h)
+              </Text>
+              <TextInput
+                style={[styles.customHoursInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={customHoursInput}
+                onChangeText={(text) => {
+                  console.log('AbsenceLoggerScreen: Custom hours input changed', text);
+                  setCustomHoursInput(text);
+                }}
+                placeholder={`0 – ${scheduledHours.toFixed(2)}`}
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          )}
+
+          {/* Live Preview */}
+          {scheduledHours > 0 && (
+            <View style={[styles.previewCard, { backgroundColor: theme.background, borderColor: theme.primary }]}>
+              <Text style={[styles.previewTitle, { color: theme.text }]}>Preview</Text>
+              <View style={styles.previewRow}>
+                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Hours absent:</Text>
+                <Text style={[styles.previewValue, { color: theme.primary }]}>{absenceHoursDisplay}</Text>
+              </View>
+              <View style={styles.previewRow}>
+                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Day fraction:</Text>
+                <Text style={[styles.previewValue, { color: theme.primary }]}>{dayFractionDisplay}</Text>
+              </View>
+              <View style={styles.previewRow}>
+                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Scheduled hours:</Text>
+                <Text style={[styles.previewValue, { color: theme.textSecondary }]}>{scheduledHours.toFixed(2)}h</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Deduction Info */}
           <View style={[styles.deductionInfo, { backgroundColor: selectedIsFuture ? 'rgba(255,152,0,0.1)' : theme.background, borderWidth: selectedIsFuture ? 1 : 0, borderColor: '#FF9800' }]}>
             {selectedIsFuture ? (
               <>
@@ -357,7 +465,7 @@ export default function AbsenceLoggerScreen() {
                   ✓ Will be deducted when {selectedDate.toLocaleDateString('en-GB')} arrives
                 </Text>
                 <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-                  ✓ {hoursDisplay}h will be deducted from monthly target on that date
+                  ✓ {absenceHoursDisplay} will be deducted from monthly target on that date
                 </Text>
                 <Text style={[styles.deductionNote, { color: '#FF9800' }]}>
                   No immediate impact on current available hours
@@ -375,7 +483,7 @@ export default function AbsenceLoggerScreen() {
                   ✓ Exclude it from available hours calculation
                 </Text>
                 <Text style={[styles.deductionItem, { color: theme.textSecondary }]}>
-                  ✓ Deduct {hoursDisplay}h from monthly target immediately
+                  ✓ Deduct {absenceHoursDisplay} from monthly target immediately
                 </Text>
                 <Text style={[styles.deductionNote, { color: theme.textSecondary }]}>
                   The workday progress bar will show "Absent" for this day
@@ -395,7 +503,7 @@ export default function AbsenceLoggerScreen() {
               color="#ffffff"
             />
             <Text style={styles.logButtonText}>
-              {selectedIsFuture ? 'Schedule Absence' : 'Log 1 Day Absence'}
+              {selectedIsFuture ? 'Schedule Absence' : 'Log Absence'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -406,20 +514,21 @@ export default function AbsenceLoggerScreen() {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>This Month Summary</Text>
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryValue, { color: theme.text }]}>{totalAbsenceHours.toFixed(2)}h</Text>
-                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Absent</Text>
+                <Text style={[styles.summaryValue, { color: theme.text }]}>{totalDayFraction.toFixed(2)}</Text>
+                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Days</Text>
+                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{totalAbsenceHours.toFixed(2)}h</Text>
               </View>
               <View style={[styles.summaryDivider, { backgroundColor: theme.textSecondary }]} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryValue, { color: theme.primary }]}>{pastAbsenceHours.toFixed(2)}h</Text>
+                <Text style={[styles.summaryValue, { color: theme.primary }]}>{pastDayFraction.toFixed(2)}</Text>
                 <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Deducted</Text>
-                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{activeAbsences.length} day{activeAbsences.length !== 1 ? 's' : ''}</Text>
+                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{pastAbsenceHours.toFixed(2)}h</Text>
               </View>
               <View style={[styles.summaryDivider, { backgroundColor: theme.textSecondary }]} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryValue, { color: '#FF9800' }]}>{futureAbsenceHours.toFixed(2)}h</Text>
+                <Text style={[styles.summaryValue, { color: '#FF9800' }]}>{futureDayFraction.toFixed(2)}</Text>
                 <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Scheduled</Text>
-                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{futureAbsences.length} day{futureAbsences.length !== 1 ? 's' : ''}</Text>
+                <Text style={[styles.summarySubLabel, { color: theme.textSecondary }]}>{futureAbsenceHours.toFixed(2)}h</Text>
               </View>
             </View>
           </View>
@@ -445,6 +554,7 @@ export default function AbsenceLoggerScreen() {
                 onDelete={handleDeleteAbsence}
                 getAbsenceColor={getAbsenceColor}
                 theme={theme}
+                fallbackScheduledHours={scheduledHours}
               />
             ))}
           </View>
@@ -477,6 +587,7 @@ export default function AbsenceLoggerScreen() {
                 onDelete={handleDeleteAbsence}
                 getAbsenceColor={getAbsenceColor}
                 theme={theme}
+                fallbackScheduledHours={scheduledHours}
               />
             ))
           )}
@@ -493,7 +604,7 @@ export default function AbsenceLoggerScreen() {
           onChange={(event, date) => {
             setShowDatePicker(false);
             if (date) {
-              console.log('AbsenceLoggerScreen: Date selected:', date.toISOString().split('T')[0]);
+              console.log('AbsenceLoggerScreen: Date selected', date.toISOString().split('T')[0]);
               setSelectedDate(date);
             }
           }}
@@ -534,7 +645,9 @@ export default function AbsenceLoggerScreen() {
               <Text style={styles.modalBulletText}>
                 {'Have '}
                 {Number(successModal.hours).toFixed(2)}
-                {'h deducted from monthly target'}
+                {'h ('}
+                {Number(successModal.dayFraction).toFixed(2)}
+                {' day) deducted from monthly target'}
               </Text>
             </View>
 
@@ -545,7 +658,7 @@ export default function AbsenceLoggerScreen() {
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 onPress={() => {
-                  console.log('AbsenceLoggerScreen: Success modal OK pressed');
+                  console.log('AbsenceLoggerScreen: Success modal dismissed');
                   setSuccessModal(prev => ({ ...prev, visible: false }));
                   loadData();
                 }}
@@ -566,14 +679,36 @@ interface AbsenceRowProps {
   onDelete: (absence: Absence) => void;
   getAbsenceColor: (type: string) => string;
   theme: any;
+  fallbackScheduledHours: number;
 }
 
-function AbsenceRow({ absence, isFuture, onDelete, getAbsenceColor, theme }: AbsenceRowProps) {
+function AbsenceRow({ absence, isFuture, onDelete, getAbsenceColor, theme, fallbackScheduledHours }: AbsenceRowProps) {
   const absenceTypeDisplay = absence.absenceType
     ? absence.absenceType.charAt(0).toUpperCase() + absence.absenceType.slice(1)
     : 'Absence';
-  const durationDisplay = absence.isHalfDay ? 'Half Day' : 'Full Day';
-  const hoursDisplay = absence.customHours !== undefined ? Number(absence.customHours).toFixed(2) : '—';
+
+  // Determine duration label
+  let durationDisplay: string;
+  if (absence.duration === 'full_day') {
+    durationDisplay = 'Full Day';
+  } else if (absence.duration === 'half_day') {
+    const period = absence.halfDayPeriod ? ` (${absence.halfDayPeriod.charAt(0).toUpperCase() + absence.halfDayPeriod.slice(1)})` : '';
+    durationDisplay = `Half Day${period}`;
+  } else if (absence.duration === 'custom_hours') {
+    durationDisplay = `Custom`;
+  } else if (absence.isHalfDay) {
+    durationDisplay = 'Half Day';
+  } else {
+    durationDisplay = 'Full Day';
+  }
+
+  const hoursVal = absence.absenceHours ?? absence.customHours ?? 0;
+  const hoursDisplay = hoursVal > 0 ? Number(hoursVal).toFixed(2) + 'h' : '—';
+
+  const scheduledH = absence.scheduledHoursSnapshot ?? fallbackScheduledHours;
+  const fraction = absence.dayFraction ?? calculateDayFraction(hoursVal, scheduledH > 0 ? scheduledH : hoursVal);
+  const fractionDisplay = fraction > 0 ? fraction.toFixed(2) + ' day' : '—';
+
   const dateDisplay = new Date(absence.absenceDate).toLocaleDateString('en-GB', {
     weekday: 'short',
     day: 'numeric',
@@ -602,9 +737,11 @@ function AbsenceRow({ absence, isFuture, onDelete, getAbsenceColor, theme }: Abs
         <Text style={[styles.absenceDuration, { color: theme.textSecondary }]}>
           {durationDisplay}
         </Text>
-        <Text style={[styles.absenceDuration, { color: theme.textSecondary }]}>
-          {hoursDisplay}h
-        </Text>
+        <View style={styles.absenceMetaRow}>
+          <Text style={[styles.absenceMeta, { color: theme.textSecondary }]}>{hoursDisplay}</Text>
+          <Text style={[styles.absenceMetaSep, { color: theme.textSecondary }]}> · </Text>
+          <Text style={[styles.absenceMeta, { color: theme.textSecondary }]}>{fractionDisplay}</Text>
+        </View>
         <Text style={[styles.absenceDeduction, { color: isFuture ? '#FF9800' : theme.textSecondary }]}>
           {isFuture ? 'Pending — deducted when date arrives' : 'Day not counted as work day'}
         </Text>
@@ -728,22 +865,70 @@ const styles = StyleSheet.create({
   },
   durationButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   durationButton: {
     flex: 1,
-    padding: 16,
+    padding: 14,
     borderRadius: 8,
     borderWidth: 2,
     alignItems: 'center',
   },
   durationButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,
   },
   durationHours: {
-    fontSize: 12,
+    fontSize: 11,
+  },
+  periodButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  periodButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+  },
+  periodButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  customHoursInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  previewCard: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 16,
+  },
+  previewTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  previewLabel: {
+    fontSize: 13,
+  },
+  previewValue: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   deductionInfo: {
     padding: 16,
@@ -829,6 +1014,18 @@ const styles = StyleSheet.create({
   absenceDuration: {
     fontSize: 12,
     marginBottom: 2,
+  },
+  absenceMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  absenceMeta: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  absenceMetaSep: {
+    fontSize: 12,
   },
   absenceDeduction: {
     fontSize: 11,

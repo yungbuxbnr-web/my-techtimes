@@ -55,13 +55,22 @@ export interface Absence {
   id: string;
   month: string;
   absenceDate: string;
+  // New canonical fields
+  duration: 'full_day' | 'half_day' | 'custom_hours';
+  absenceHours: number;           // actual hours absent
+  scheduledHoursSnapshot: number; // scheduled hours for that date at time of logging
+  dayFraction: number;            // 0.0–1.0 fraction of the day absent
+  halfDayPeriod?: 'morning' | 'afternoon';
+  // Legacy fields — kept for backward compatibility
   daysCount?: number;
   isHalfDay?: boolean;
   customHours?: number;
+  // Other fields
   deductionType: 'target' | 'available';
-  absenceType?: 'holiday' | 'sickness' | 'training' | 'overtime' | 'compensation';
+  absenceType?: 'holiday' | 'sickness' | 'training' | 'overtime' | 'compensation' | 'absence';
   note?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Settings {
@@ -276,10 +285,27 @@ export const offlineStorage = {
       ...absence,
       id: generateId(),
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     allAbsences.push(newAbsence);
     await setItem(KEYS.ABSENCES, allAbsences);
     return newAbsence;
+  },
+
+  async migrateAbsences(schedule: Schedule): Promise<void> {
+    const allAbsences = await getItem<any[]>(KEYS.ABSENCES, []);
+    const { migrateLegacyAbsence } = await import('./absenceCalculations');
+    let changed = false;
+    const migrated = allAbsences.map(a => {
+      if (a.duration && a.absenceHours !== undefined && a.dayFraction !== undefined) {
+        return a; // already migrated
+      }
+      changed = true;
+      return migrateLegacyAbsence(a, schedule);
+    });
+    if (changed) {
+      await setItem(KEYS.ABSENCES, migrated);
+    }
   },
 
   async deleteAbsence(id: string): Promise<{ success: boolean }> {

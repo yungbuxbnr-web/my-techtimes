@@ -410,11 +410,24 @@ export default function DashboardScreen() {
     
     try {
       const monthStr = `${selectedDay.date.getFullYear()}-${String(selectedDay.date.getMonth() + 1).padStart(2, '0')}`;
+      const sched = workSchedule || await api.getSchedule();
+      const scheduledHours = calcDailyHoursFromSchedule(
+        sched.startTime || '07:00',
+        sched.endTime || '18:00',
+        sched.lunchStartTime || '12:00',
+        sched.lunchEndTime || '12:30'
+      );
       
       await api.createAbsence({
         month: monthStr,
         absenceDate: selectedDay.dateString,
+        duration: 'full_day',
+        absenceHours: scheduledHours,
+        scheduledHoursSnapshot: scheduledHours,
+        dayFraction: 1,
         daysCount: 1,
+        isHalfDay: false,
+        customHours: scheduledHours,
         deductionType: 'available',
         absenceType: type,
         note: `${type === 'overtime' ? 'Overtime' : 'Compensation'} day`,
