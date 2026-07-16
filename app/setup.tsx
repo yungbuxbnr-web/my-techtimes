@@ -18,6 +18,7 @@ import { api } from '@/utils/api';
 import AppBackground from '@/components/AppBackground';
 import { SetupCompleteScreen } from '@/components/SetupCompleteScreen';
 import { activityLogger } from '@/utils/activityLogger';
+import { requestAllPermissions } from '@/utils/permissions';
 
 const PIN_KEY = 'user_pin';
 const SETUP_COMPLETE_KEY = 'setup_complete';
@@ -25,10 +26,8 @@ const SETUP_COMPLETE_KEY = 'setup_complete';
 // Helper functions for cross-platform storage
 async function setSecureItem(key: string, value: string) {
   if (Platform.OS === 'web') {
-    // Use localStorage for web
     localStorage.setItem(key, value);
   } else {
-    // Use SecureStore for native
     await SecureStore.setItemAsync(key, value);
   }
 }
@@ -44,17 +43,17 @@ async function getSecureItem(key: string): Promise<string | null> {
 export default function SetupScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
-  
-  const [step, setStep] = useState<'name' | 'pin' | 'confirm' | 'complete'>('name');
+
+  const [step, setStep] = useState<'name' | 'pin' | 'confirm' | 'permissions' | 'complete'>('name');
   const [technicianName, setTechnicianName] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [loading, setLoading] = useState(false);
-
-  console.log('Setup: Current step:', step);
+  const [permissionsGranted, setPermissionsGranted] = useState<Record<string, boolean>>({});
+  const [requestingPermissions, setRequestingPermissions] = useState(false);
 
   const handleNameSubmit = () => {
-    console.log('Setup: Submitting technician name:', technicianName);
+    console.log('Setup: Name step — Continue pressed, name:', technicianName.trim());
     activityLogger.info('SETUP', 'Name submitted', { name: technicianName.trim() });
     if (!technicianName.trim()) {
       Alert.alert('Required', 'Please enter your full name');
@@ -64,7 +63,7 @@ export default function SetupScreen() {
   };
 
   const handlePinSubmit = () => {
-    console.log('Setup: Submitting PIN, length:', pin.length);
+    console.log('Setup: PIN step — Continue pressed, PIN length:', pin.length);
     activityLogger.info('SETUP', 'PIN submitted');
     if (pin.length < 4 || pin.length > 6) {
       Alert.alert('Invalid PIN', 'PIN must be 4-6 digits');
@@ -78,7 +77,7 @@ export default function SetupScreen() {
   };
 
   const handleConfirmPinSubmit = async () => {
-    console.log('Setup: Confirming PIN');
+    console.log('Setup: Confirm PIN step — Finish Setup pressed');
     if (pin !== confirmPin) {
       Alert.alert('PIN Mismatch', 'The PINs you entered do not match. Please try again.');
       setConfirmPin('');
@@ -87,23 +86,18 @@ export default function SetupScreen() {
 
     setLoading(true);
     try {
-      console.log('Setup: Saving technician profile to backend');
       activityLogger.info('SETUP', 'Saving profile to backend');
-      // Save technician profile to backend
       await api.updateTechnicianProfile({ name: technicianName.trim() });
-      
-      console.log('Setup: Saving PIN to secure storage');
-      // Save PIN to secure storage (cross-platform)
+      console.log('Setup: Profile saved to backend');
+
       await setSecureItem(PIN_KEY, pin);
-      
-      console.log('Setup: Marking setup as complete');
-      // Mark setup as complete
+      console.log('Setup: PIN saved to secure storage');
+
       await setSecureItem(SETUP_COMPLETE_KEY, 'true');
-      
-      console.log('Setup: Setup complete, showing completion animation');
-      activityLogger.info('SETUP', 'Setup complete');
-      // Show completion animation
-      setStep('complete');
+      console.log('Setup: Setup marked complete — proceeding to permissions step');
+
+      activityLogger.info('SETUP', 'Setup complete — showing permissions step');
+      setStep('permissions');
     } catch (error) {
       console.error('Setup: Error completing setup:', error);
       activityLogger.error('SETUP', 'Setup failed', { error: String(error) });
@@ -112,8 +106,37 @@ export default function SetupScreen() {
     }
   };
 
+  const handleGrantPermissions = async () => {
+    console.log('Setup: Permissions step — Grant Permissions pressed');
+    setRequestingPermissions(true);
+    try {
+      const results = await requestAllPermissions();
+      console.log('Setup: Permission results:', results);
+      setPermissionsGranted({
+        notifications: results.notifications,
+        camera: results.camera,
+        mediaLibrary: results.mediaLibrary,
+        background: results.background,
+      });
+      setTimeout(() => {
+        console.log('Setup: Permissions done — proceeding to complete animation');
+        setStep('complete');
+      }, 800);
+    } catch {
+      console.log('Setup: Permission request error — skipping to complete');
+      setStep('complete');
+    } finally {
+      setRequestingPermissions(false);
+    }
+  };
+
+  const handleSkipPermissions = () => {
+    console.log('Setup: Permissions step — Skip for now pressed');
+    setStep('complete');
+  };
+
   const handleSetupComplete = () => {
-    console.log('Setup: Animation complete, navigating to login');
+    console.log('Setup: Animation complete — navigating to pin-login');
     activityLogger.info('SETUP', 'Navigating to pin-login after setup');
     router.replace('/pin-login');
   };
@@ -121,8 +144,8 @@ export default function SetupScreen() {
   // Show setup complete animation
   if (step === 'complete') {
     return (
-      <SetupCompleteScreen 
-        technicianName={technicianName} 
+      <SetupCompleteScreen
+        technicianName={technicianName}
         onComplete={handleSetupComplete}
       />
     );
@@ -136,7 +159,7 @@ export default function SetupScreen() {
       <Text style={[styles.subtitle, isDarkMode ? styles.textLight : styles.textDark]}>
         Let&apos;s set up your profile
       </Text>
-      
+
       <View style={styles.inputContainer}>
         <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
           Full Name *
@@ -166,7 +189,7 @@ export default function SetupScreen() {
       </TouchableOpacity>
 
       <Text style={[styles.stepIndicator, isDarkMode ? styles.textLight : styles.textDark]}>
-        Step 1 of 2
+        Step 1 of 3
       </Text>
     </View>
   );
@@ -179,7 +202,7 @@ export default function SetupScreen() {
       <Text style={[styles.subtitle, isDarkMode ? styles.textLight : styles.textDark]}>
         Choose a 4-6 digit PIN to secure your app
       </Text>
-      
+
       <View style={styles.inputContainer}>
         <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
           Enter PIN (4-6 digits) *
@@ -218,7 +241,10 @@ export default function SetupScreen() {
 
       <TouchableOpacity
         style={styles.backButton}
-        onPress={() => setStep('name')}
+        onPress={() => {
+          console.log('Setup: PIN step — Back pressed');
+          setStep('name');
+        }}
       >
         <Text style={[styles.backButtonText, isDarkMode ? styles.textLight : styles.textDark]}>
           Back
@@ -226,7 +252,7 @@ export default function SetupScreen() {
       </TouchableOpacity>
 
       <Text style={[styles.stepIndicator, isDarkMode ? styles.textLight : styles.textDark]}>
-        Step 2 of 2
+        Step 2 of 3
       </Text>
     </View>
   );
@@ -239,7 +265,7 @@ export default function SetupScreen() {
       <Text style={[styles.subtitle, isDarkMode ? styles.textLight : styles.textDark]}>
         Enter your PIN again to confirm
       </Text>
-      
+
       <View style={styles.inputContainer}>
         <Text style={[styles.label, isDarkMode ? styles.textLight : styles.textDark]}>
           Confirm PIN *
@@ -275,6 +301,7 @@ export default function SetupScreen() {
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => {
+          console.log('Setup: Confirm PIN step — Back pressed');
           setConfirmPin('');
           setStep('pin');
         }}
@@ -285,10 +312,106 @@ export default function SetupScreen() {
       </TouchableOpacity>
 
       <Text style={[styles.stepIndicator, isDarkMode ? styles.textLight : styles.textDark]}>
-        Step 2 of 2
+        Step 2 of 3
       </Text>
     </View>
   );
+
+  const renderPermissionsStep = () => {
+    const permissions = [
+      {
+        key: 'notifications',
+        icon: '🔔',
+        name: 'Notifications',
+        description: 'Work schedule reminders and daily alerts',
+      },
+      {
+        key: 'camera',
+        icon: '📷',
+        name: 'Camera',
+        description: 'Take photos for job records and profile',
+      },
+      {
+        key: 'mediaLibrary',
+        icon: '🖼️',
+        name: 'Gallery',
+        description: 'Import images from your photo library',
+      },
+      {
+        key: 'background',
+        icon: '⚙️',
+        name: 'Background',
+        description: 'Keep the live clock and widget updated',
+      },
+    ];
+
+    return (
+      <View style={styles.stepContainer}>
+        <Text style={[styles.title, isDarkMode ? styles.textLight : styles.textDark]}>
+          App Permissions
+        </Text>
+        <Text style={[styles.subtitle, isDarkMode ? styles.textLight : styles.textDark]}>
+          Grant the following permissions so TechTimes works fully
+        </Text>
+
+        <View style={styles.permissionsContainer}>
+          {permissions.map((perm) => {
+            const isGranted = permissionsGranted[perm.key] === true;
+            const isPending = requestingPermissions && permissionsGranted[perm.key] === undefined;
+            const statusIcon = isGranted ? '✅' : isPending ? '⏳' : '○';
+            const statusColor = isGranted ? '#4CAF50' : isDarkMode ? '#666' : '#ccc';
+
+            return (
+              <View
+                key={perm.key}
+                style={[
+                  styles.permissionRow,
+                  isDarkMode ? styles.permissionRowDark : styles.permissionRowLight,
+                ]}
+              >
+                <Text style={styles.permissionIcon}>{perm.icon}</Text>
+                <View style={styles.permissionInfo}>
+                  <Text style={[styles.permissionName, isDarkMode ? styles.textLight : styles.textDark]}>
+                    {perm.name}
+                  </Text>
+                  <Text style={[styles.permissionDesc, isDarkMode ? styles.textMutedDark : styles.textMutedLight]}>
+                    {perm.description}
+                  </Text>
+                </View>
+                <Text style={[styles.permissionStatus, { color: statusColor }]}>
+                  {statusIcon}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, requestingPermissions && styles.buttonDisabled]}
+          onPress={handleGrantPermissions}
+          disabled={requestingPermissions}
+        >
+          <Text style={styles.buttonText}>
+            {requestingPermissions ? 'Requesting...' : 'Grant Permissions'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleSkipPermissions}
+          disabled={requestingPermissions}
+        >
+          <Text style={[styles.backButtonText, isDarkMode ? styles.textLight : styles.textDark]}>
+            Skip for now
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.stepIndicator, isDarkMode ? styles.textLight : styles.textDark]}>
+          Step 3 of 3
+        </Text>
+      </View>
+    );
+  };
 
   return (
     <AppBackground>
@@ -303,6 +426,7 @@ export default function SetupScreen() {
           {step === 'name' && renderNameStep()}
           {step === 'pin' && renderPinStep()}
           {step === 'confirm' && renderConfirmStep()}
+          {step === 'permissions' && renderPermissionsStep()}
         </ScrollView>
       </KeyboardAvoidingView>
     </AppBackground>
@@ -412,5 +536,51 @@ const styles = StyleSheet.create({
   },
   textDark: {
     color: '#000',
+  },
+  // Permissions step styles
+  permissionsContainer: {
+    marginBottom: 28,
+    gap: 12,
+  },
+  permissionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+  },
+  permissionRowLight: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  permissionRowDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  permissionIcon: {
+    fontSize: 26,
+    marginRight: 14,
+  },
+  permissionInfo: {
+    flex: 1,
+  },
+  permissionName: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  permissionDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  permissionStatus: {
+    fontSize: 20,
+    marginLeft: 10,
+  },
+  textMutedDark: {
+    color: 'rgba(255, 255, 255, 0.55)',
+  },
+  textMutedLight: {
+    color: 'rgba(0, 0, 0, 0.5)',
   },
 });

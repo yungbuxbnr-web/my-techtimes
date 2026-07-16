@@ -225,7 +225,7 @@ export default function SettingsScreen() {
 
   const checkAppPermissions = async () => {
     const permissions = await checkPermissions();
-    setHasPermissions(permissions.notifications && permissions.storage);
+    setHasPermissions(permissions.notifications && permissions.mediaLibrary);
   };
 
   const handleRequestPermissions = async () => {
