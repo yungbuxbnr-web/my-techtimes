@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 interface DailyRingsProps {
@@ -10,6 +10,7 @@ interface DailyRingsProps {
   soldHoursLabel: string;
   soldColor: string;
   theme: any;
+  onPress?: () => void;
 }
 
 const SVG_SIZE = 200;
@@ -41,6 +42,7 @@ export default function DailyRings({
   soldHoursLabel,
   soldColor,
   theme,
+  onPress,
 }: DailyRingsProps) {
   const trackColor = 'rgba(255,255,255,0.08)';
 
@@ -54,7 +56,7 @@ export default function DailyRings({
 
   const dailyHoursDisplay = dailyHours.toFixed(1) + 'h';
 
-  return (
+  const content = (
     <View style={styles.wrapper}>
       {/* SVG rings */}
       <View style={styles.svgContainer}>
@@ -160,6 +162,15 @@ export default function DailyRings({
       </View>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+  return content;
 }
 
 const styles = StyleSheet.create({

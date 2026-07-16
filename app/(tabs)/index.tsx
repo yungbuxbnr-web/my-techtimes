@@ -19,6 +19,8 @@ import { formatTime, formatDecimalHours, calcDailyHoursFromSchedule } from '@/ut
 import { api } from '@/utils/api';
 import CircularProgress from '@/components/CircularProgress';
 import DailyRings from '@/components/DailyRings';
+import LiveTrackerRing from '@/components/LiveTrackerRing';
+import LiveTrackerModal from '@/components/LiveTrackerModal';
 import AppBackground from '@/components/AppBackground';
 import { useResponsiveLayout, getPadding, getFontSize, getSpacing, getCardPadding } from '@/utils/responsive';
 
@@ -53,6 +55,7 @@ export default function DashboardScreen() {
   const [streakData, setStreakData] = useState<any>(null);
   const [streaksEnabled, setStreaksEnabled] = useState(true);
   const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
+  const [showLiveTracker, setShowLiveTracker] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
     // FIX 9: enforce 10-second minimum between loads
@@ -376,6 +379,41 @@ export default function DashboardScreen() {
   const timeElapsed = calculateTimeElapsed();
 
   const soldHoursToday = todayStats ? (todayStats.totalAw * 5) / 60 : 0;
+
+  // Live tracker calculations
+  const parseTimeToMinutesLT = (timeStr: string) => {
+    const [h, m] = (timeStr || '00:00').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const todayScheduledHours = dailyHours;
+  const shiftProgressDecimal = Math.min(1, Math.max(0, timeElapsed.progressPct / 100));
+  const expectedSoldHoursNow = todayScheduledHours > 0 ? todayScheduledHours * shiftProgressDecimal : 0;
+  const paceDifference = soldHoursToday - expectedSoldHoursNow;
+  const forecastSoldHours = shiftProgressDecimal > 0.05 ? soldHoursToday / shiftProgressDecimal : soldHoursToday;
+
+  const ltStartMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.startTime || '07:00') : 0;
+  const ltEndMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.endTime || '18:00') : 0;
+  const ltLunchStartMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.lunchStartTime || '12:00') : 0;
+  const ltLunchEndMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.lunchEndTime || '12:30') : 0;
+  const ltLunchDuration = ltLunchEndMinutes - ltLunchStartMinutes;
+  const ltTotalWorkMinutes = Math.max(0, ltEndMinutes - ltStartMinutes - ltLunchDuration);
+
+  const ltNowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+  const ltElapsedMinutes = Math.max(0, Math.min(ltTotalWorkMinutes, (() => {
+    if (!workSchedule || ltNowMinutes <= ltStartMinutes) return 0;
+    if (ltNowMinutes >= ltEndMinutes) return ltTotalWorkMinutes;
+    let elapsed = ltNowMinutes - ltStartMinutes;
+    if (ltNowMinutes > ltLunchEndMinutes) elapsed -= ltLunchDuration;
+    else if (ltNowMinutes > ltLunchStartMinutes) elapsed -= (ltNowMinutes - ltLunchStartMinutes);
+    return Math.max(0, elapsed);
+  })()));
+  const ltTimeRemainingMinutes = Math.max(0, ltTotalWorkMinutes - ltElapsedMinutes);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayAbsenceRecord = todayAbsences.find((a: any) => a.absenceDate === todayStr);
+  const isFullAbsenceToday = !!todayAbsenceRecord && (todayAbsenceRecord.duration === 'full_day' || (!todayAbsenceRecord.duration && !todayAbsenceRecord.isHalfDay));
+  const isNonWorkingDayToday = !workdayProgress.isWorkDay && !isFullAbsenceToday;
   const soldHoursProgress = dailyHours > 0 ? Math.min(100, (soldHoursToday / dailyHours) * 100) : 0;
   const soldHoursLabel = soldHoursToday.toFixed(1) + 'h / ' + dailyHours.toFixed(1) + 'h';
 
@@ -724,18 +762,26 @@ export default function DashboardScreen() {
                 </View>
               )}
 
-              {/* Today's Live Progress — concentric rings (landscape) */}
+              {/* Today's Live Tracker — concentric rings (landscape) */}
               {workSchedule && (
                 <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
-                  <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
-                  <DailyRings
-                    dailyHours={dailyHours}
-                    timeElapsedProgress={Math.min(100, Math.max(0, timeElapsed.progressPct || 0))}
-                    timeElapsedLabel={timeElapsed.label}
-                    soldHoursProgress={Math.min(100, Math.max(0, soldHoursProgress || 0))}
-                    soldHoursLabel={soldHoursLabel}
-                    soldColor={soldColor}
+                  <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Tracker</Text>
+                  <LiveTrackerRing
+                    size={220}
+                    soldHours={soldHoursToday}
+                    targetHours={todayScheduledHours}
+                    shiftProgress={shiftProgressDecimal}
+                    expectedSoldHours={expectedSoldHoursNow}
+                    paceDifference={paceDifference}
+                    isNonWorkingDay={isNonWorkingDayToday}
+                    isFullAbsence={isFullAbsenceToday}
+                    isBeforeShift={workdayProgress.beforeWork}
+                    isAfterShift={workdayProgress.afterWork}
                     theme={theme}
+                    onPress={() => {
+                      console.log('[Dashboard] Live Tracker ring pressed (landscape) — opening modal');
+                      setShowLiveTracker(true);
+                    }}
                   />
                 </View>
               )}
@@ -994,18 +1040,26 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {/* Today's Live Progress — concentric rings */}
+            {/* Today's Live Tracker — concentric rings */}
             {workSchedule && (
               <View style={[styles.liveProgressCard, { backgroundColor: theme.card }]}>
-                <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Progress</Text>
-                <DailyRings
-                  dailyHours={dailyHours}
-                  timeElapsedProgress={timeElapsed.progressPct}
-                  timeElapsedLabel={timeElapsed.label}
-                  soldHoursProgress={soldHoursProgress}
-                  soldHoursLabel={soldHoursLabel}
-                  soldColor={soldColor}
+                <Text style={[styles.liveProgressTitle, { color: theme.text }]}>Today's Live Tracker</Text>
+                <LiveTrackerRing
+                  size={220}
+                  soldHours={soldHoursToday}
+                  targetHours={todayScheduledHours}
+                  shiftProgress={shiftProgressDecimal}
+                  expectedSoldHours={expectedSoldHoursNow}
+                  paceDifference={paceDifference}
+                  isNonWorkingDay={isNonWorkingDayToday}
+                  isFullAbsence={isFullAbsenceToday}
+                  isBeforeShift={workdayProgress.beforeWork}
+                  isAfterShift={workdayProgress.afterWork}
                   theme={theme}
+                  onPress={() => {
+                    console.log('[Dashboard] Live Tracker ring pressed (portrait) — opening modal');
+                    setShowLiveTracker(true);
+                  }}
                 />
               </View>
             )}
@@ -1289,6 +1343,45 @@ export default function DashboardScreen() {
           </View>
         </View>
       </Modal>
+
+      <LiveTrackerModal
+        visible={showLiveTracker}
+        onClose={() => {
+          console.log('[Dashboard] LiveTrackerModal closed');
+          setShowLiveTracker(false);
+        }}
+        soldHours={soldHoursToday}
+        targetHours={todayScheduledHours}
+        shiftProgress={shiftProgressDecimal}
+        expectedSoldHours={expectedSoldHoursNow}
+        paceDifference={paceDifference}
+        forecastSoldHours={forecastSoldHours}
+        efficiency={todayScheduledHours > 0 ? (soldHoursToday / todayScheduledHours) * 100 : 0}
+        shiftStart={workSchedule?.startTime || '07:00'}
+        shiftEnd={workSchedule?.endTime || '18:00'}
+        lunchStart={workSchedule?.lunchStartTime || '12:00'}
+        lunchEnd={workSchedule?.lunchEndTime || '12:30'}
+        scheduledHours={todayScheduledHours}
+        timeRemainingMinutes={ltTimeRemainingMinutes}
+        elapsedMinutes={ltElapsedMinutes}
+        totalWorkMinutes={ltTotalWorkMinutes}
+        todayJobCount={todayStats?.jobCount || 0}
+        todayTotalAw={todayStats?.totalAw || 0}
+        isNonWorkingDay={isNonWorkingDayToday}
+        isFullAbsence={isFullAbsenceToday}
+        isBeforeShift={workdayProgress.beforeWork}
+        isAfterShift={workdayProgress.afterWork}
+        absenceType={todayAbsenceRecord?.absenceType}
+        absenceHours={todayAbsenceRecord?.absenceHours}
+        isOvertime={todayAbsenceRecord?.absenceType === 'overtime'}
+        isCompensation={todayAbsenceRecord?.absenceType === 'compensation'}
+        theme={theme}
+        onViewJobs={() => {
+          console.log('[Dashboard] View jobs pressed from LiveTrackerModal');
+          setShowLiveTracker(false);
+          router.push('/(tabs)/jobs');
+        }}
+      />
     </AppBackground>
   );
 }
