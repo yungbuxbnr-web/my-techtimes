@@ -401,6 +401,7 @@ function RootLayoutContent() {
         }}
       />
       <Stack.Screen name="activity-logs" options={{ headerShown: false }} />
+      <Stack.Screen name="projections" options={{ headerShown: false, headerBackTitle: 'Back' }} />
     </Stack>
   );
 }

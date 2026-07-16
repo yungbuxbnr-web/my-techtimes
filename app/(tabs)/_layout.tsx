@@ -126,6 +126,20 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="ai"
+        options={{
+          title: 'AI',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="sparkles"
+              android_material_icon_name="auto-awesome"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
       {/* Hide these from tabs */}
       <Tabs.Screen
         name="add-job"
