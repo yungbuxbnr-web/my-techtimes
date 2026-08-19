@@ -1,7 +1,7 @@
 
 // utils/absenceCalculations.ts
 
-import { calcDailyHoursFromSchedule } from './jobCalculations';
+import { buildWorkScheduleInput, getNetScheduledHours } from './workTimeEngine';
 import { Schedule } from './offlineStorage';
 
 export type AbsenceDuration = 'full_day' | 'half_day' | 'custom_hours';
@@ -16,28 +16,25 @@ export function getScheduledHoursForDate(date: Date, schedule: Schedule): number
 
   // Saturday
   if (dayOfWeek === 6 && schedule.saturdayStartTime && schedule.saturdayEndTime) {
-    const lunchStart = '12:00';
-    let lunchEnd = '12:30';
-    if (schedule.saturdayLunchBreakMinutes) {
-      const h = Math.floor(schedule.saturdayLunchBreakMinutes / 60);
-      const m = schedule.saturdayLunchBreakMinutes % 60;
+    const lunchStart = (schedule as any).saturdayLunchStartTime || '12:00';
+    let lunchEnd = (schedule as any).saturdayLunchEndTime;
+    if (!lunchEnd && schedule.saturdayLunchBreakMinutes) {
+      const totalMins = 12 * 60 + schedule.saturdayLunchBreakMinutes;
+      const h = Math.floor(totalMins / 60);
+      const m = totalMins % 60;
       lunchEnd = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     }
-    return calcDailyHoursFromSchedule(
-      schedule.saturdayStartTime,
-      schedule.saturdayEndTime,
-      lunchStart,
-      lunchEnd
-    );
+    const satSchedule = {
+      startTime: schedule.saturdayStartTime,
+      endTime: schedule.saturdayEndTime,
+      lunchStartTime: lunchStart,
+      lunchEndTime: lunchEnd || '12:30',
+    };
+    return getNetScheduledHours(buildWorkScheduleInput(satSchedule));
   }
 
   // Regular weekday
-  return calcDailyHoursFromSchedule(
-    schedule.startTime || '07:00',
-    schedule.endTime || '18:00',
-    schedule.lunchStartTime || '12:00',
-    schedule.lunchEndTime || '12:30'
-  );
+  return getNetScheduledHours(buildWorkScheduleInput(schedule));
 }
 
 /**

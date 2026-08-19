@@ -3,6 +3,14 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { offlineStorage } from './offlineStorage';
+import {
+  buildWorkScheduleInput,
+  getNetScheduledMinutes,
+  getNetElapsedWorkingMinutes,
+  getWorkingProgress,
+  isCurrentlyOnBreak,
+  getNextBreakEnd,
+} from './workTimeEngine';
 
 const LIVE_WIDGET_CHANNEL = 'live-widget';
 const LIVE_WIDGET_ID = 'techtimes-live-widget';
@@ -61,30 +69,26 @@ export async function updateLiveWidget(): Promise<void> {
     const nowDate = new Date();
     const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 
-    const { hour: startH, minute: startM } = parseTime(schedule?.startTime || '07:00');
-    const { hour: endH, minute: endM } = parseTime(schedule?.endTime || '18:00');
-    const { hour: lunchStartH, minute: lunchStartM } = parseTime(schedule?.lunchStartTime || '12:00');
-    const { hour: lunchEndH, minute: lunchEndM } = parseTime(schedule?.lunchEndTime || '12:30');
+    const wsInput = buildWorkScheduleInput(schedule || {});
+    const netScheduledMins = getNetScheduledMinutes(wsInput);
+    const netElapsedMins = getNetElapsedWorkingMinutes(wsInput, nowMins);
+    const progress = getWorkingProgress(wsInput, nowMins);
+    const percent = Math.round(progress * 100);
+    const onBreak = isCurrentlyOnBreak(wsInput, nowMins);
 
-    const startMins = startH * 60 + startM;
-    const endMins = endH * 60 + endM;
-    const lunchStartMins = lunchStartH * 60 + lunchStartM;
-    const lunchEndMins = lunchEndH * 60 + lunchEndM;
-    const totalMins = Math.max(endMins - startMins, 1);
-
-    const elapsedMins = Math.min(Math.max(nowMins - startMins, 0), totalMins);
-    const percent = Math.round((elapsedMins / totalMins) * 100);
-    const elapsedH = Math.floor(elapsedMins / 60);
-    const elapsedM = elapsedMins % 60;
-
-    // Total shift hours/minutes for display
-    const totalH = Math.floor(totalMins / 60);
-    const totalM = totalMins % 60;
+    const elapsedH = Math.floor(netElapsedMins / 60);
+    const elapsedM = Math.round(netElapsedMins % 60);
+    const totalH = Math.floor(netScheduledMins / 60);
+    const totalM = Math.round(netScheduledMins % 60);
 
     // Work status
+    const { hour: startH, minute: startM } = parseTime(schedule?.startTime || '07:00');
+    const { hour: endH, minute: endM } = parseTime(schedule?.endTime || '18:00');
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
     let status = 'Off';
     if (nowMins >= startMins && nowMins < endMins) {
-      if (nowMins >= lunchStartMins && nowMins < lunchEndMins) {
+      if (onBreak) {
         status = 'Lunch Break';
       } else {
         status = 'Working';
@@ -100,9 +104,18 @@ export async function updateLiveWidget(): Promise<void> {
 
     // Clean format: percentage prominent in title, details in body
     const title = `Tech Times · ${percent}% · ${status}`;
-    const bodyLine1 = `${elapsedH}h ${elapsedM}m of ${totalH}h ${totalM}m elapsed`;
+    let bodyLine1 = `${elapsedH}h ${elapsedM}m of ${totalH}h ${totalM}m worked`;
+    if (onBreak) {
+      const breakEndMins = getNextBreakEnd(wsInput, nowMins);
+      if (breakEndMins !== null) {
+        const breakEndH = Math.floor(breakEndMins / 60);
+        const breakEndM = String(breakEndMins % 60).padStart(2, '0');
+        bodyLine1 += `\nWork resumes at ${breakEndH}:${breakEndM}`;
+      }
+    }
     const bodyLine2 = `${todayJobs} jobs today · Tap to open`;
     const body = `${bodyLine1}\n${bodyLine2}`;
+    console.log('[LiveWidget] updateLiveWidget: percent=%d status=%s elapsed=%dh%dm total=%dh%dm onBreak=%s', percent, status, elapsedH, elapsedM, totalH, totalM, onBreak);
 
     // Use presentNotificationAsync to fire immediately without scheduling.
     // Avoids Samsung One UI bug where scheduleNotificationAsync (even with trigger: null)

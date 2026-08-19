@@ -3,7 +3,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { offlineStorage } from './offlineStorage';
-import { calcDailyHoursFromSchedule } from './jobCalculations';
+import { buildWorkScheduleInput, getNetScheduledMinutes, getNetElapsedWorkingMinutes, getWorkingProgress } from './workTimeEngine';
 import { markDueHolidaysAsCounted, ensureTrackedHolidaysInitialised } from './bankHolidays';
 import {
   maybeSendTargetReminderNotification,
@@ -41,44 +41,23 @@ export async function runMainframeSync(): Promise<void> {
 
     console.log('Mainframe: Today is', ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][todayDow], '— working day:', isTodayWorkingDay);
 
-    // Calculate elapsed hours today
+    // Calculate elapsed hours today using the central work time engine
     let elapsedHours = 0;
+    let dailyHours = 0;
+    let progressPercent = 0;
+
     if (isTodayWorkingDay && schedule.startTime && schedule.endTime) {
-      const toMinutes = (t: string) => {
-        const [h, m] = t.split(':').map(Number);
-        return h * 60 + m;
-      };
-
-      const startMin = toMinutes(schedule.startTime);
-      const endMin = toMinutes(schedule.endTime);
-      const lunchStartMin = schedule.lunchStartTime ? toMinutes(schedule.lunchStartTime) : startMin;
-      const lunchEndMin = schedule.lunchEndTime ? toMinutes(schedule.lunchEndTime) : startMin;
-      const lunchDuration = Math.max(0, lunchEndMin - lunchStartMin);
-
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
-      const clampedNow = Math.min(nowMinutes, endMin);
-      const rawElapsed = Math.max(0, clampedNow - startMin);
-
-      // Subtract lunch if we're past lunch start
-      let lunchElapsed = 0;
-      if (nowMinutes > lunchStartMin) {
-        lunchElapsed = Math.min(lunchDuration, Math.max(0, clampedNow - lunchStartMin));
-      }
-
-      elapsedHours = Math.max(0, rawElapsed - lunchElapsed) / 60;
+      const wsInput = buildWorkScheduleInput(schedule);
+      const nowMinsEngine = now.getHours() * 60 + now.getMinutes();
+      const netScheduledMins = getNetScheduledMinutes(wsInput);
+      const netElapsedMins = getNetElapsedWorkingMinutes(wsInput, nowMinsEngine);
+      dailyHours = netScheduledMins / 60;
+      elapsedHours = netElapsedMins / 60;
+      progressPercent = getWorkingProgress(wsInput, nowMinsEngine) * 100;
+      console.log('[Mainframe] Work time engine: elapsed=%dh daily=%dh progress=%d%%', elapsedHours.toFixed(2), dailyHours.toFixed(2), progressPercent.toFixed(1));
+    } else {
+      dailyHours = schedule.dailyWorkingHours || 8.5;
     }
-
-    // Calculate daily hours from schedule
-    const dailyHours = schedule.startTime && schedule.endTime
-      ? calcDailyHoursFromSchedule(
-          schedule.startTime,
-          schedule.endTime,
-          schedule.lunchStartTime ?? '12:00',
-          schedule.lunchEndTime ?? '12:30'
-        )
-      : schedule.dailyWorkingHours;
-
-    const progressPercent = dailyHours > 0 ? Math.min(100, (elapsedHours / dailyHours) * 100) : 0;
 
     // Persist daily progress
     await AsyncStorage.setItem(DAILY_PROGRESS_KEY, JSON.stringify({

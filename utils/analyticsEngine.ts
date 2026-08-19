@@ -1,7 +1,14 @@
 
 import { api } from './api';
 import { offlineStorage } from './offlineStorage';
-import { calcDailyHoursFromSchedule, countWorkingDaysInMonth } from './jobCalculations';
+import { countWorkingDaysInMonth } from './jobCalculations';
+import {
+  buildWorkScheduleInput,
+  getNetScheduledMinutes,
+  getNetElapsedWorkingMinutes,
+  getNetRemainingWorkingMinutes,
+  getWorkingProgress,
+} from './workTimeEngine';
 
 export interface TodayAnalytics {
   date: string;
@@ -105,12 +112,15 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
   });
 
   // --- TODAY ---
-  const dailyHours = calcDailyHoursFromSchedule(
-    schedule.startTime || '07:00',
-    schedule.endTime || '18:00',
-    schedule.lunchStartTime || '12:00',
-    schedule.lunchEndTime || '12:30'
-  );
+  const wsInput = buildWorkScheduleInput(schedule);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const netScheduledMins = getNetScheduledMinutes(wsInput);
+  const dailyHours = netScheduledMins / 60;
+  const netElapsedMins = getNetElapsedWorkingMinutes(wsInput, nowMins);
+  const netRemainingMins = getNetRemainingWorkingMinutes(wsInput, nowMins);
+  const shiftProgress = getWorkingProgress(wsInput, nowMins);
+
+  console.log('[analyticsEngine] TODAY engine: netScheduled=%dmin elapsed=%dmin progress=%d%%', netScheduledMins, netElapsedMins, (shiftProgress * 100).toFixed(1));
 
   const todayAbsence = absences.find(a => a.absenceDate === todayStr);
   const todayAbsenceHours = todayAbsence?.absenceHours ?? (todayAbsence?.isHalfDay ? dailyHours / 2 : todayAbsence ? dailyHours : 0);
@@ -120,15 +130,6 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
   const todaySoldHours = (todayAw * 5) / 60;
   const todayEfficiency = todayAvailableHours > 0 ? (todaySoldHours / todayAvailableHours) * 100 : 0;
 
-  const [startH, startM] = (schedule.startTime || '07:00').split(':').map(Number);
-  const [endH, endM] = (schedule.endTime || '18:00').split(':').map(Number);
-  const lunchMins = schedule.lunchBreakMinutes ?? 30;
-  const shiftStartMins = startH * 60 + startM;
-  const shiftEndMins = endH * 60 + endM;
-  const totalShiftMins = shiftEndMins - shiftStartMins - lunchMins;
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const elapsedMins = Math.max(0, Math.min(totalShiftMins, nowMins - shiftStartMins));
-  const shiftProgress = totalShiftMins > 0 ? elapsedMins / totalShiftMins : 0;
   const expectedSoldHoursNow = todayAvailableHours * shiftProgress;
   const paceDifference = todaySoldHours - expectedSoldHoursNow;
   const forecastSoldHours = shiftProgress > 0.05 ? todaySoldHours / shiftProgress : todaySoldHours;
@@ -154,8 +155,8 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
     isWorkingDay,
     shiftStartTime: schedule.startTime || '07:00',
     shiftEndTime: schedule.endTime || '18:00',
-    elapsedMinutes: Math.round(elapsedMins),
-    remainingMinutes: Math.round(Math.max(0, totalShiftMins - elapsedMins)),
+    elapsedMinutes: Math.round(netElapsedMins),
+    remainingMinutes: Math.round(netRemainingMins),
   };
 
   // --- WEEK ---

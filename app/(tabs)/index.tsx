@@ -16,6 +16,14 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { router, useFocusEffect } from 'expo-router';
 import { formatTime, formatDecimalHours, calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
+import {
+  buildWorkScheduleInput,
+  getNetScheduledMinutes,
+  getNetElapsedWorkingMinutes,
+  getNetRemainingWorkingMinutes,
+  getWorkingProgress,
+  isCurrentlyOnBreak,
+} from '@/utils/workTimeEngine';
 import { api } from '@/utils/api';
 import CircularProgress from '@/components/CircularProgress';
 import DailyRings from '@/components/DailyRings';
@@ -318,13 +326,11 @@ export default function DashboardScreen() {
       return { progress: 100, isWorkDay: true, beforeWork: false, afterWork: true, isLunch: false, isAbsent: false };
     }
 
-    // Check if during lunch
-    const isLunch = nowTime >= lunchStartTime && nowTime <= lunchEndTime;
-
-    // Calculate progress
-    const totalWorkTime = endTime - startTime;
-    const elapsedTime = nowTime - startTime;
-    const progress = Math.min(100, Math.max(0, (elapsedTime / totalWorkTime) * 100));
+    // Use the engine for lunch-aware progress and break detection
+    const wsInputProg = buildWorkScheduleInput(workSchedule);
+    const nowMinutesProg = now.getHours() * 60 + now.getMinutes();
+    const progress = getWorkingProgress(wsInputProg, nowMinutesProg) * 100;
+    const isLunch = isCurrentlyOnBreak(wsInputProg, nowMinutesProg);
 
     return { progress, isWorkDay: true, beforeWork: false, afterWork: false, isLunch, isAbsent: false };
   };
@@ -338,41 +344,16 @@ export default function DashboardScreen() {
     if (workdayProgress.beforeWork) return { progressPct: 0, label: 'Before shift' };
     if (workdayProgress.afterWork) return { progressPct: 100, label: 'Shift complete' };
 
-    const parseTimeToMinutes = (timeStr: string) => {
-      const [h, m] = timeStr.split(':').map(Number);
-      return h * 60 + m;
-    };
+    const wsInput = buildWorkScheduleInput(workSchedule);
+    const nowMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+    const netScheduledMins = getNetScheduledMinutes(wsInput);
+    if (netScheduledMins <= 0) return { progressPct: 0, label: 'Not configured' };
 
-    const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-    const startMinutes = parseTimeToMinutes(workSchedule.startTime || '07:00');
-    const endMinutes = parseTimeToMinutes(workSchedule.endTime || '18:00');
-    const lunchStartMinutes = parseTimeToMinutes(workSchedule.lunchStartTime || '12:00');
-    const lunchEndMinutes = parseTimeToMinutes(workSchedule.lunchEndTime || '12:30');
-    const lunchDuration = lunchEndMinutes - lunchStartMinutes;
-    const totalWorkMinutes = endMinutes - startMinutes - lunchDuration;
-    if (totalWorkMinutes <= 0) return { progressPct: 0, label: 'Not configured' };
-
-    if (nowMinutes <= startMinutes) {
-      return { progressPct: 0, label: '0h 0m elapsed' };
-    }
-
-    if (nowMinutes >= endMinutes) {
-      const totalH = Math.floor(totalWorkMinutes / 60);
-      const totalM = totalWorkMinutes % 60;
-      return { progressPct: 100, label: `${totalH}h ${totalM}m elapsed` };
-    }
-
-    let elapsedMinutes = nowMinutes - startMinutes;
-    if (nowMinutes > lunchEndMinutes) {
-      elapsedMinutes -= lunchDuration;
-    } else if (nowMinutes > lunchStartMinutes) {
-      elapsedMinutes -= nowMinutes - lunchStartMinutes;
-    }
-    elapsedMinutes = Math.max(0, elapsedMinutes);
-
-    const progressPct = Math.min(100, (elapsedMinutes / totalWorkMinutes) * 100);
-    const elapsedH = Math.floor(elapsedMinutes / 60);
-    const elapsedM = elapsedMinutes % 60;
+    const netElapsedMins = getNetElapsedWorkingMinutes(wsInput, nowMins);
+    const progress = getWorkingProgress(wsInput, nowMins);
+    const progressPct = progress * 100;
+    const elapsedH = Math.floor(netElapsedMins / 60);
+    const elapsedM = Math.round(netElapsedMins % 60);
     return { progressPct, label: `${elapsedH}h ${elapsedM}m elapsed` };
   };
 
@@ -392,23 +373,11 @@ export default function DashboardScreen() {
   const paceDifference = soldHoursToday - expectedSoldHoursNow;
   const forecastSoldHours = shiftProgressDecimal > 0.05 ? soldHoursToday / shiftProgressDecimal : soldHoursToday;
 
-  const ltStartMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.startTime || '07:00') : 0;
-  const ltEndMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.endTime || '18:00') : 0;
-  const ltLunchStartMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.lunchStartTime || '12:00') : 0;
-  const ltLunchEndMinutes = workSchedule ? parseTimeToMinutesLT(workSchedule.lunchEndTime || '12:30') : 0;
-  const ltLunchDuration = ltLunchEndMinutes - ltLunchStartMinutes;
-  const ltTotalWorkMinutes = Math.max(0, ltEndMinutes - ltStartMinutes - ltLunchDuration);
-
+  const ltWsInput = workSchedule ? buildWorkScheduleInput(workSchedule) : null;
   const ltNowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-  const ltElapsedMinutes = Math.max(0, Math.min(ltTotalWorkMinutes, (() => {
-    if (!workSchedule || ltNowMinutes <= ltStartMinutes) return 0;
-    if (ltNowMinutes >= ltEndMinutes) return ltTotalWorkMinutes;
-    let elapsed = ltNowMinutes - ltStartMinutes;
-    if (ltNowMinutes > ltLunchEndMinutes) elapsed -= ltLunchDuration;
-    else if (ltNowMinutes > ltLunchStartMinutes) elapsed -= (ltNowMinutes - ltLunchStartMinutes);
-    return Math.max(0, elapsed);
-  })()));
-  const ltTimeRemainingMinutes = Math.max(0, ltTotalWorkMinutes - ltElapsedMinutes);
+  const ltTotalWorkMinutes = ltWsInput ? getNetScheduledMinutes(ltWsInput) : 0;
+  const ltElapsedMinutes = ltWsInput ? getNetElapsedWorkingMinutes(ltWsInput, ltNowMinutes) : 0;
+  const ltTimeRemainingMinutes = ltWsInput ? getNetRemainingWorkingMinutes(ltWsInput, ltNowMinutes) : 0;
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayAbsenceRecord = todayAbsences.find((a: any) => a.absenceDate === todayStr);
