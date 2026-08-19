@@ -11,10 +11,12 @@ import {
   Dimensions,
   Modal,
   Alert,
+  Animated,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { router, useFocusEffect } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { formatTime, formatDecimalHours, calcDailyHoursFromSchedule } from '@/utils/jobCalculations';
 import {
   buildWorkScheduleInput,
@@ -32,6 +34,17 @@ import LiveTrackerRing from '@/components/LiveTrackerRing';
 import LiveTrackerModal from '@/components/LiveTrackerModal';
 import AppBackground from '@/components/AppBackground';
 import { useResponsiveLayout, getPadding, getFontSize, getSpacing, getCardPadding } from '@/utils/responsive';
+
+const safeHaptics = {
+  impactAsync: async (style: Haptics.ImpactFeedbackStyle) => {
+    if (Platform.OS === 'web') return;
+    try { await Haptics.impactAsync(style); } catch {}
+  },
+  selectionAsync: async () => {
+    if (Platform.OS === 'web') return;
+    try { await Haptics.selectionAsync(); } catch {}
+  },
+};
 
 // Module-level minimum interval guard (10 seconds between loads)
 let lastDashboardLoad = 0;
@@ -66,6 +79,8 @@ export default function DashboardScreen() {
   const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
   const [showLiveTracker, setShowLiveTracker] = useState(false);
   const [billingStats, setBillingStats] = useState<any>(null);
+  const [fabOpen, setFabOpen] = useState(false);
+  const fabAnim = useRef(new Animated.Value(0)).current;
 
   const loadDashboardData = useCallback(async () => {
     // FIX 9: enforce 10-second minimum between loads
@@ -463,6 +478,23 @@ export default function DashboardScreen() {
     }
   };
 
+  const toggleFab = () => {
+    const toValue = fabOpen ? 0 : 1;
+    Animated.spring(fabAnim, {
+      toValue,
+      useNativeDriver: true,
+      damping: 15,
+      stiffness: 150,
+    }).start();
+    setFabOpen(!fabOpen);
+    if (!fabOpen) {
+      console.log('[Dashboard] FAB opened');
+      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } else {
+      console.log('[Dashboard] FAB closed');
+    }
+  };
+
   if (!monthlyStats || !todayStats || !weekStats) {
     return (
       <AppBackground>
@@ -478,6 +510,45 @@ export default function DashboardScreen() {
     : 0;
   const efficiencyColor = getEfficiencyColor(monthlyStats.efficiency);
   const efficiencyLabel = getEfficiencyLabel(monthlyStats.efficiency);
+
+  const fabActions = [
+    {
+      label: 'Add Job',
+      icon_ios: 'wrench.and.screwdriver.fill',
+      icon_android: 'build',
+      color: theme.primary,
+      onPress: () => {
+        console.log('[Dashboard] FAB action: Add Job');
+        setFabOpen(false);
+        Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
+        router.push('/add-job-modal');
+      },
+    },
+    {
+      label: 'Add Absence',
+      icon_ios: 'calendar.badge.minus',
+      icon_android: 'event-busy',
+      color: theme.chartYellow,
+      onPress: () => {
+        console.log('[Dashboard] FAB action: Add Absence');
+        setFabOpen(false);
+        Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
+        router.push('/absence-logger');
+      },
+    },
+    {
+      label: 'Add Overtime',
+      icon_ios: 'clock.badge.plus',
+      icon_android: 'more-time',
+      color: theme.chartGreen,
+      onPress: () => {
+        console.log('[Dashboard] FAB action: Add Overtime');
+        setFabOpen(false);
+        Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
+        router.push('/edit-work-schedule');
+      },
+    },
+  ];
   
   const padding = getPadding(layout);
   const titleSize = getFontSize(32, layout);
@@ -1433,6 +1504,73 @@ export default function DashboardScreen() {
           router.push('/(tabs)/jobs');
         }}
       />
+
+      {/* FAB overlay — dismiss on tap outside */}
+      {fabOpen && (
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => {
+            console.log('[Dashboard] FAB overlay tapped — closing FAB');
+            setFabOpen(false);
+            Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
+          }}
+          activeOpacity={1}
+        />
+      )}
+
+      {/* FAB actions + main button */}
+      <View style={styles.fabContainer} pointerEvents="box-none">
+        {fabActions.map((action, index) => {
+          const translateY = fabAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -(60 * (index + 1))],
+          });
+          const opacity = fabAnim.interpolate({
+            inputRange: [0, 0.5, 1],
+            outputRange: [0, 0, 1],
+          });
+          return (
+            <Animated.View
+              key={action.label}
+              style={[
+                styles.fabAction,
+                { transform: [{ translateY }], opacity },
+              ]}
+              pointerEvents={fabOpen ? 'auto' : 'none'}
+            >
+              <Text style={[styles.fabActionLabel, { color: theme.text, backgroundColor: theme.card }]}>
+                {action.label}
+              </Text>
+              <TouchableOpacity
+                style={[styles.fabActionBtn, { backgroundColor: action.color }]}
+                onPress={action.onPress}
+              >
+                <IconSymbol
+                  ios_icon_name={action.icon_ios}
+                  android_material_icon_name={action.icon_android as any}
+                  size={22}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </Animated.View>
+          );
+        })}
+
+        {/* Main FAB button */}
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.primary }]}
+          onPress={toggleFab}
+          activeOpacity={0.85}
+        >
+          <Animated.View style={{
+            transform: [{
+              rotate: fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }),
+            }],
+          }}>
+            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={28} color="#ffffff" />
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
     </AppBackground>
   );
 }
@@ -1892,5 +2030,51 @@ const styles = StyleSheet.create({
   billingHealthText: {
     fontSize: 12,
     marginTop: 4,
+  },
+  fabContainer: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    alignItems: 'flex-end',
+    zIndex: 1000,
+  },
+  fab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  fabAction: {
+    position: 'absolute',
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  fabActionBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  fabActionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
 });

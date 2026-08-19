@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Alert,
   RefreshControl,
   Platform,
+  PanResponder,
+  Animated as RNAnimated,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -33,6 +35,7 @@ const safeHaptics = {
 
 type PeriodMode = 'day' | 'week' | 'month' | 'year' | 'entire';
 type TabKey = 'all' | 'open' | 'ready' | 'billed' | 'legacy';
+type SubTab = 'overview' | 'records' | 'trends' | 'reports' | 'backup';
 
 // ── Period boundary helpers ──────────────────────────────────────────────────
 
@@ -128,6 +131,138 @@ function getJobDateForViewBy(
   return new Date(job.createdAt);
 }
 
+// ── Status chip helper (outside component so BillingJobRow can use it) ───────
+
+function getStatusChipStyle(billing: BillingRecord, theme: any) {
+  switch (billing.billingStatus) {
+    case 'billed': return { bg: theme.chartGreen, label: 'Billed' };
+    case 'ready_to_bill': return { bg: theme.chartYellow, label: 'Ready' };
+    case 'legacy_unknown': return { bg: theme.textSecondary, label: 'Legacy' };
+    default:
+      return billing.workStatus === 'in_progress'
+        ? { bg: theme.chartYellow, label: 'In Progress' }
+        : { bg: theme.chartRed, label: 'Open' };
+  }
+}
+
+// ── Swipeable job row component ───────────────────────────────────────────────
+
+function BillingJobRow({
+  job,
+  billing,
+  selectionMode,
+  isSelected,
+  onPress,
+  onLongPress,
+  onMarkBilled,
+  onEdit,
+  theme,
+}: {
+  job: Job;
+  billing: BillingRecord;
+  selectionMode: boolean;
+  isSelected: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+  onMarkBilled: () => void;
+  onEdit: () => void;
+  theme: any;
+}) {
+  const translateX = useRef(new RNAnimated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 10 && Math.abs(gs.dy) < 20,
+      onPanResponderMove: (_, gs) => {
+        translateX.setValue(Math.max(-100, Math.min(80, gs.dx)));
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx > 60 && billing.billingStatus === 'ready_to_bill') {
+          console.log('BillingScreen: Swipe right — mark billed for job:', job.wipNumber);
+          RNAnimated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+          onMarkBilled();
+        } else if (gs.dx < -60) {
+          console.log('BillingScreen: Swipe left — reveal edit for job:', job.wipNumber);
+          RNAnimated.spring(translateX, { toValue: -100, useNativeDriver: true }).start();
+        } else {
+          RNAnimated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  const chip = getStatusChipStyle(billing, theme);
+  const hoursDisplay = ((job.aw * 5) / 60).toFixed(2);
+  const dateDisplay = job.createdAt.split('T')[0];
+
+  return (
+    <View style={styles.swipeContainer}>
+      {/* Background action — right (swipe right = bill) */}
+      <View style={[styles.swipeActionsRight, { backgroundColor: theme.chartGreen }]}>
+        <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color="#fff" />
+        <Text style={styles.swipeActionText}>Bill</Text>
+      </View>
+      {/* Background action — left (swipe left = edit) */}
+      <View style={[styles.swipeActionsLeft, { backgroundColor: theme.primary }]}>
+        <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={24} color="#fff" />
+        <Text style={styles.swipeActionText}>Edit</Text>
+      </View>
+      <RNAnimated.View
+        style={{ transform: [{ translateX }] }}
+        {...panResponder.panHandlers}
+      >
+        <TouchableOpacity
+          style={[
+            styles.jobRow,
+            { backgroundColor: theme.card, borderColor: isSelected ? theme.primary : theme.border },
+            isSelected && { borderWidth: 2 },
+          ]}
+          onPress={onPress}
+          onLongPress={onLongPress}
+          activeOpacity={0.75}
+        >
+          {selectionMode && (
+            <View style={[
+              styles.selectionCheckbox,
+              { borderColor: theme.primary },
+              isSelected && { backgroundColor: theme.primary },
+            ]}>
+              {isSelected && (
+                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={12} color="#ffffff" />
+              )}
+            </View>
+          )}
+          <View style={styles.jobRowContent}>
+            <View style={styles.jobRowTop}>
+              <Text style={[styles.jobWip, { color: theme.primary }]}>{job.wipNumber}</Text>
+              <View style={[styles.statusChip, { backgroundColor: chip.bg }]}>
+                <Text style={styles.statusChipText}>{chip.label}</Text>
+              </View>
+            </View>
+            <View style={styles.jobRowMid}>
+              <Text style={[styles.jobReg, { color: theme.text }]}>{job.vehicleReg}</Text>
+              <Text style={[styles.jobAw, { color: theme.textSecondary }]}>{job.aw} AW</Text>
+              <Text style={[styles.jobHours, { color: theme.primary }]}>{hoursDisplay}h</Text>
+            </View>
+            <Text style={[styles.jobDate, { color: theme.textSecondary }]}>{dateDisplay}</Text>
+          </View>
+          {!selectionMode && (
+            <TouchableOpacity
+              onPress={() => {
+                console.log('BillingScreen: Edit chevron tapped for job:', job.wipNumber);
+                onEdit();
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={theme.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
+      </RNAnimated.View>
+    </View>
+  );
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
 export default function BillingScreen() {
@@ -143,6 +278,7 @@ export default function BillingScreen() {
   const [viewBy, setViewBy] = useState<'work_date' | 'billing_date'>('work_date');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [subTab, setSubTab] = useState<SubTab>('overview');
 
   const loadData = useCallback(async () => {
     console.log('BillingScreen: Loading billing data');
@@ -528,18 +664,6 @@ export default function BillingScreen() {
     setSelectedIds(next);
   };
 
-  const getStatusChipStyle = (billing: BillingRecord) => {
-    switch (billing.billingStatus) {
-      case 'billed': return { bg: theme.chartGreen, label: 'Billed' };
-      case 'ready_to_bill': return { bg: theme.chartYellow, label: 'Ready' };
-      case 'legacy_unknown': return { bg: theme.textSecondary, label: 'Legacy' };
-      default:
-        return billing.workStatus === 'in_progress'
-          ? { bg: theme.chartYellow, label: 'In Progress' }
-          : { bg: theme.chartRed, label: 'Open' };
-    }
-  };
-
   // ── Derived values ────────────────────────────────────────────────────────
 
   const readyCount = periodStats.jobsReady;
@@ -575,18 +699,13 @@ export default function BillingScreen() {
 
   const renderItem = ({ item }: { item: { job: Job; billing: BillingRecord } }) => {
     const { job, billing } = item;
-    const chip = getStatusChipStyle(billing);
-    const hoursDisplay = ((job.aw * 5) / 60).toFixed(2);
-    const dateDisplay = job.createdAt.split('T')[0];
-    const isSelected = selectedIds.has(billing.id);
-
     return (
-      <TouchableOpacity
-        style={[
-          styles.jobRow,
-          { backgroundColor: theme.card, borderColor: isSelected ? theme.primary : theme.border },
-          isSelected && { borderWidth: 2 },
-        ]}
+      <BillingJobRow
+        job={job}
+        billing={billing}
+        selectionMode={selectionMode}
+        isSelected={selectedIds.has(billing.id)}
+        theme={theme}
         onPress={() => {
           if (selectionMode) {
             console.log('BillingScreen: Selection toggled for billing id:', billing.id);
@@ -601,49 +720,208 @@ export default function BillingScreen() {
           setSelectionMode(true);
           setSelectedIds(new Set([billing.id]));
         }}
-        activeOpacity={0.75}
-      >
-        {selectionMode && (
-          <View style={[
-            styles.selectionCheckbox,
-            { borderColor: theme.primary },
-            isSelected && { backgroundColor: theme.primary },
-          ]}>
-            {isSelected && (
-              <IconSymbol
-                ios_icon_name="checkmark"
-                android_material_icon_name="check"
-                size={12}
-                color="#ffffff"
-              />
-            )}
-          </View>
-        )}
-        <View style={styles.jobRowContent}>
-          <View style={styles.jobRowTop}>
-            <Text style={[styles.jobWip, { color: theme.primary }]}>{job.wipNumber}</Text>
-            <View style={[styles.statusChip, { backgroundColor: chip.bg }]}>
-              <Text style={styles.statusChipText}>{chip.label}</Text>
-            </View>
-          </View>
-          <View style={styles.jobRowMid}>
-            <Text style={[styles.jobReg, { color: theme.text }]}>{job.vehicleReg}</Text>
-            <Text style={[styles.jobAw, { color: theme.textSecondary }]}>{job.aw} AW</Text>
-            <Text style={[styles.jobHours, { color: theme.primary }]}>{hoursDisplay}h</Text>
-          </View>
-          <Text style={[styles.jobDate, { color: theme.textSecondary }]}>{dateDisplay}</Text>
-        </View>
-        {!selectionMode && (
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron-right"
-            size={16}
-            color={theme.textSecondary}
-          />
-        )}
-      </TouchableOpacity>
+        onMarkBilled={() => handleMarkBilled(job, billing)}
+        onEdit={() => router.push({
+          pathname: '/add-job-modal',
+          params: {
+            editId: job.id,
+            editWipNumber: job.wipNumber,
+            editVehicleReg: job.vehicleReg,
+            editAw: String(job.aw),
+            editNotes: job.notes || '',
+            editVhcStatus: job.vhcStatus,
+            editCreatedAt: job.createdAt,
+            editImageUri: job.imageUri || '',
+          },
+        })}
+      />
     );
   };
+
+  // ── Sub-tab labels ────────────────────────────────────────────────────────
+  const subTabLabels: Record<SubTab, string> = {
+    overview: 'Overview',
+    records: 'Records',
+    trends: 'Trends',
+    reports: 'Reports',
+    backup: 'Backup',
+  };
+
+  // ── Period selector block (shared between overview and records) ───────────
+  const renderPeriodSelector = () => (
+    <>
+      {/* Period Mode Selector */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.periodModeScroll}
+        contentContainerStyle={styles.periodModeContent}
+      >
+        {(['day', 'week', 'month', 'year', 'entire'] as PeriodMode[]).map(mode => {
+          const isActive = periodMode === mode;
+          return (
+            <TouchableOpacity
+              key={mode}
+              style={[
+                styles.periodModeBtn,
+                { borderColor: theme.border },
+                isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
+              ]}
+              onPress={() => {
+                console.log('BillingScreen: Period mode changed to:', mode);
+                setPeriodMode(mode);
+              }}
+            >
+              <Text style={[
+                styles.periodModeBtnText,
+                { color: isActive ? '#ffffff' : theme.textSecondary },
+              ]}>
+                {mode.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Period Navigator */}
+      {periodMode !== 'entire' ? (
+        <View style={[styles.periodNav, { backgroundColor: theme.card }]}>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('BillingScreen: Period navigate backward, mode:', periodMode);
+              setSelectedDate(navigatePeriod(periodMode, selectedDate, -1));
+            }}
+            style={styles.periodNavBtn}
+          >
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={20} color={theme.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('BillingScreen: Period reset to today');
+              setSelectedDate(new Date());
+            }}
+            style={styles.periodNavCenter}
+          >
+            <Text style={[styles.periodNavLabel, { color: theme.text }]}>
+              {periodLabel}
+            </Text>
+            <Text style={[styles.periodNavToday, { color: theme.textSecondary }]}>Tap for today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('BillingScreen: Period navigate forward, mode:', periodMode);
+              setSelectedDate(navigatePeriod(periodMode, selectedDate, 1));
+            }}
+            style={styles.periodNavBtn}
+          >
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={theme.primary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={[styles.periodNav, { backgroundColor: theme.card }]}>
+          <Text style={[styles.periodNavLabel, { color: theme.text, textAlign: 'center', flex: 1 }]}>
+            Entire History
+          </Text>
+        </View>
+      )}
+
+      {/* View By toggle */}
+      <View style={[styles.viewByRow, { backgroundColor: theme.card }]}>
+        <Text style={[styles.viewByLabel, { color: theme.textSecondary }]}>View by:</Text>
+        <TouchableOpacity
+          style={[
+            styles.viewByBtn,
+            viewBy === 'work_date' && { backgroundColor: theme.primary },
+          ]}
+          onPress={() => {
+            console.log('BillingScreen: View by changed to work_date');
+            setViewBy('work_date');
+          }}
+        >
+          <Text style={[styles.viewByBtnText, { color: viewBy === 'work_date' ? '#ffffff' : theme.textSecondary }]}>
+            Work Date
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.viewByBtn,
+            viewBy === 'billing_date' && { backgroundColor: theme.primary },
+          ]}
+          onPress={() => {
+            console.log('BillingScreen: View by changed to billing_date');
+            setViewBy('billing_date');
+          }}
+        >
+          <Text style={[styles.viewByBtnText, { color: viewBy === 'billing_date' ? '#ffffff' : theme.textSecondary }]}>
+            Billing Date
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  // ── Summary cards block ───────────────────────────────────────────────────
+  const renderSummaryCards = () => (
+    <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.summaryScroll}
+        contentContainerStyle={styles.summaryScrollContent}
+      >
+        <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.summaryValue, { color: theme.primary }]}>
+            {periodStats.recordedHours.toFixed(1)}h
+          </Text>
+          <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Recorded</Text>
+          <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
+            {periodStats.jobsRecorded} jobs
+          </Text>
+        </View>
+        <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.summaryValue, { color: theme.chartGreen }]}>
+            {periodStats.billedHours.toFixed(1)}h
+          </Text>
+          <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Billed</Text>
+          <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
+            {periodStats.jobsBilled} jobs
+          </Text>
+        </View>
+        <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.summaryValue, { color: theme.chartYellow }]}>
+            {periodStats.readyHours.toFixed(1)}h
+          </Text>
+          <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Ready to Bill</Text>
+          <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
+            {periodStats.jobsReady} jobs
+          </Text>
+        </View>
+        <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.summaryValue, { color: theme.chartRed }]}>
+            {periodStats.openHours.toFixed(1)}h
+          </Text>
+          <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Open Work</Text>
+          <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
+            {periodStats.jobsOpen} jobs
+          </Text>
+        </View>
+      </ScrollView>
+
+      {/* Unbilled Banner */}
+      <View style={[styles.unbilledBanner, { backgroundColor: theme.card }]}>
+        <View style={styles.unbilledLeft}>
+          <Text style={[styles.unbilledLabel, { color: theme.textSecondary }]}>Total Unbilled</Text>
+          <Text style={[styles.unbilledValue, { color: theme.chartYellow }]}>
+            {unbilledHours.toFixed(1)}h
+          </Text>
+        </View>
+        <View style={[styles.healthBadge, { backgroundColor: healthColor + '22' }]}>
+          <View style={[styles.healthDot, { backgroundColor: healthColor }]} />
+          <Text style={[styles.healthText, { color: healthColor }]}>{healthStatus}</Text>
+        </View>
+      </View>
+    </>
+  );
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -695,115 +973,37 @@ export default function BillingScreen() {
           </View>
         </View>
 
-        {/* Period Mode Selector */}
+        {/* Sub-navigation */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.periodModeScroll}
-          contentContainerStyle={styles.periodModeContent}
+          style={[styles.subNavScroll, { borderBottomColor: theme.border }]}
+          contentContainerStyle={styles.subNavContent}
         >
-          {(['day', 'week', 'month', 'year', 'entire'] as PeriodMode[]).map(mode => {
-            const isActive = periodMode === mode;
+          {(['overview', 'records', 'trends', 'reports', 'backup'] as SubTab[]).map(tab => {
+            const isActive = subTab === tab;
             return (
               <TouchableOpacity
-                key={mode}
+                key={tab}
                 style={[
-                  styles.periodModeBtn,
-                  { borderColor: theme.border },
-                  isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  styles.subNavTab,
+                  isActive && { borderBottomColor: theme.primary, borderBottomWidth: 2.5 },
                 ]}
                 onPress={() => {
-                  console.log('BillingScreen: Period mode changed to:', mode);
-                  setPeriodMode(mode);
+                  console.log('BillingScreen: Sub-tab pressed:', tab);
+                  setSubTab(tab);
+                  safeHaptics.selectionAsync();
                 }}
               >
-                <Text style={[
-                  styles.periodModeBtnText,
-                  { color: isActive ? '#ffffff' : theme.textSecondary },
-                ]}>
-                  {mode.toUpperCase()}
+                <Text style={[styles.subNavTabText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+                  {subTabLabels[tab]}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        {/* Period Navigator */}
-        {periodMode !== 'entire' ? (
-          <View style={[styles.periodNav, { backgroundColor: theme.card }]}>
-            <TouchableOpacity
-              onPress={() => {
-                console.log('BillingScreen: Period navigate backward, mode:', periodMode);
-                setSelectedDate(navigatePeriod(periodMode, selectedDate, -1));
-              }}
-              style={styles.periodNavBtn}
-            >
-              <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={20} color={theme.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                console.log('BillingScreen: Period reset to today');
-                setSelectedDate(new Date());
-              }}
-              style={styles.periodNavCenter}
-            >
-              <Text style={[styles.periodNavLabel, { color: theme.text }]}>
-                {periodLabel}
-              </Text>
-              <Text style={[styles.periodNavToday, { color: theme.textSecondary }]}>Tap for today</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                console.log('BillingScreen: Period navigate forward, mode:', periodMode);
-                setSelectedDate(navigatePeriod(periodMode, selectedDate, 1));
-              }}
-              style={styles.periodNavBtn}
-            >
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={theme.primary} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={[styles.periodNav, { backgroundColor: theme.card }]}>
-            <Text style={[styles.periodNavLabel, { color: theme.text, textAlign: 'center', flex: 1 }]}>
-              Entire History
-            </Text>
-          </View>
-        )}
-
-        {/* View By toggle */}
-        <View style={[styles.viewByRow, { backgroundColor: theme.card }]}>
-          <Text style={[styles.viewByLabel, { color: theme.textSecondary }]}>View by:</Text>
-          <TouchableOpacity
-            style={[
-              styles.viewByBtn,
-              viewBy === 'work_date' && { backgroundColor: theme.primary },
-            ]}
-            onPress={() => {
-              console.log('BillingScreen: View by changed to work_date');
-              setViewBy('work_date');
-            }}
-          >
-            <Text style={[styles.viewByBtnText, { color: viewBy === 'work_date' ? '#ffffff' : theme.textSecondary }]}>
-              Work Date
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.viewByBtn,
-              viewBy === 'billing_date' && { backgroundColor: theme.primary },
-            ]}
-            onPress={() => {
-              console.log('BillingScreen: View by changed to billing_date');
-              setViewBy('billing_date');
-            }}
-          >
-            <Text style={[styles.viewByBtnText, { color: viewBy === 'billing_date' ? '#ffffff' : theme.textSecondary }]}>
-              Billing Date
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Search bar */}
+        {/* Search bar (shown when search is active) */}
         {showSearch && (
           <View style={[styles.searchBar, { backgroundColor: theme.card }]}>
             <IconSymbol
@@ -839,118 +1039,180 @@ export default function BillingScreen() {
           </View>
         )}
 
-        {/* Summary Cards */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.summaryScroll}
-          contentContainerStyle={styles.summaryScrollContent}
-        >
-          <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.summaryValue, { color: theme.primary }]}>
-              {periodStats.recordedHours.toFixed(1)}h
-            </Text>
-            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Recorded</Text>
-            <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {periodStats.jobsRecorded} jobs
-            </Text>
-          </View>
-          <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.summaryValue, { color: theme.chartGreen }]}>
-              {periodStats.billedHours.toFixed(1)}h
-            </Text>
-            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Billed</Text>
-            <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {periodStats.jobsBilled} jobs
-            </Text>
-          </View>
-          <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.summaryValue, { color: theme.chartYellow }]}>
-              {periodStats.readyHours.toFixed(1)}h
-            </Text>
-            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Ready to Bill</Text>
-            <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {periodStats.jobsReady} jobs
-            </Text>
-          </View>
-          <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.summaryValue, { color: theme.chartRed }]}>
-              {periodStats.openHours.toFixed(1)}h
-            </Text>
-            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Open Work</Text>
-            <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {periodStats.jobsOpen} jobs
-            </Text>
-          </View>
-        </ScrollView>
+        {/* ── OVERVIEW sub-tab ─────────────────────────────────────────────── */}
+        {subTab === 'overview' && (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.subTabContent}
+          >
+            {renderPeriodSelector()}
+            {renderSummaryCards()}
+          </ScrollView>
+        )}
 
-        {/* Unbilled Banner */}
-        <View style={[styles.unbilledBanner, { backgroundColor: theme.card }]}>
-          <View style={styles.unbilledLeft}>
-            <Text style={[styles.unbilledLabel, { color: theme.textSecondary }]}>Total Unbilled</Text>
-            <Text style={[styles.unbilledValue, { color: theme.chartYellow }]}>
-              {unbilledHours.toFixed(1)}h
-            </Text>
-          </View>
-          <View style={[styles.healthBadge, { backgroundColor: healthColor + '22' }]}>
-            <View style={[styles.healthDot, { backgroundColor: healthColor }]} />
-            <Text style={[styles.healthText, { color: healthColor }]}>{healthStatus}</Text>
-          </View>
-        </View>
+        {/* ── RECORDS sub-tab ──────────────────────────────────────────────── */}
+        {subTab === 'records' && (
+          <>
+            {renderPeriodSelector()}
 
-        {/* Tab Bar */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabScroll}
-          contentContainerStyle={styles.tabScrollContent}
-        >
-          {TABS.map(tab => {
-            const isActive = activeTab === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[
-                  styles.tab,
-                  { borderColor: theme.border },
-                  isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
-                ]}
-                onPress={() => {
-                  console.log('BillingScreen: Tab pressed:', tab.key);
-                  setActiveTab(tab.key);
-                }}
-              >
-                <Text style={[styles.tabText, { color: isActive ? '#ffffff' : theme.textSecondary }]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+            {/* Tab Bar */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabScroll}
+              contentContainerStyle={styles.tabScrollContent}
+            >
+              {TABS.map(tab => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[
+                      styles.tab,
+                      { borderColor: theme.border },
+                      isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      console.log('BillingScreen: Tab pressed:', tab.key);
+                      setActiveTab(tab.key);
+                    }}
+                  >
+                    <Text style={[styles.tabText, { color: isActive ? '#ffffff' : theme.textSecondary }]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
-        {/* Job List */}
-        <FlatList
-          data={filteredItems}
-          keyExtractor={item => item.billing.id}
-          renderItem={renderItem}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-          }
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
+            {/* Job List */}
+            <FlatList
+              data={filteredItems}
+              keyExtractor={item => item.billing.id}
+              renderItem={renderItem}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+              }
+              contentContainerStyle={styles.listContent}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <IconSymbol
+                    ios_icon_name="creditcard"
+                    android_material_icon_name="receipt"
+                    size={48}
+                    color={theme.textSecondary}
+                  />
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                    No jobs found for this filter
+                  </Text>
+                </View>
+              }
+            />
+          </>
+        )}
+
+        {/* ── TRENDS sub-tab ───────────────────────────────────────────────── */}
+        {subTab === 'trends' && (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.subTabContent}
+          >
+            <View style={[styles.placeholderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <IconSymbol
-                ios_icon_name="creditcard"
-                android_material_icon_name="receipt"
+                ios_icon_name="chart.line.uptrend.xyaxis"
+                android_material_icon_name="trending-up"
                 size={48}
-                color={theme.textSecondary}
+                color={theme.primary}
               />
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                No jobs found for this filter
+              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Trends</Text>
+              <Text style={[styles.placeholderSubtitle, { color: theme.textSecondary }]}>
+                Billing trends and historical charts coming soon
               </Text>
             </View>
-          }
-        />
+          </ScrollView>
+        )}
+
+        {/* ── REPORTS sub-tab ──────────────────────────────────────────────── */}
+        {subTab === 'reports' && (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.subTabContent}
+          >
+            <View style={[styles.placeholderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <IconSymbol
+                ios_icon_name="doc.text.fill"
+                android_material_icon_name="description"
+                size={48}
+                color={theme.primary}
+              />
+              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Generate Report</Text>
+              <Text style={[styles.placeholderSubtitle, { color: theme.textSecondary }]}>
+                Create a billing summary report for any period
+              </Text>
+              <TouchableOpacity
+                style={[styles.reportBtn, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  console.log('BillingScreen: Generate billing report tapped');
+                  Alert.alert(
+                    'Generate Billing Report',
+                    `Generate a billing report for ${periodLabel}?\n\nRecorded: ${periodStats.recordedHours.toFixed(1)}h\nBilled: ${periodStats.billedHours.toFixed(1)}h\nUnbilled: ${unbilledHours.toFixed(1)}h`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Generate',
+                        onPress: () => {
+                          console.log('BillingScreen: Billing report generation confirmed');
+                          Alert.alert('Report Generated', 'Billing report feature coming soon.');
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.reportBtnText}>Generate Billing Report</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        )}
+
+        {/* ── BACKUP sub-tab ───────────────────────────────────────────────── */}
+        {subTab === 'backup' && (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.subTabContent}
+          >
+            <View style={[styles.placeholderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <IconSymbol
+                ios_icon_name="arrow.up.doc.fill"
+                android_material_icon_name="backup"
+                size={48}
+                color={theme.primary}
+              />
+              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Backup Centre</Text>
+              <Text style={[styles.placeholderSubtitle, { color: theme.textSecondary }]}>
+                Export or restore your billing data
+              </Text>
+              <TouchableOpacity
+                style={[styles.reportBtn, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  console.log('BillingScreen: Export billing backup tapped');
+                  Alert.alert('Export Backup', 'Billing backup export coming soon.');
+                }}
+              >
+                <Text style={styles.reportBtnText}>Export Billing Backup</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reportBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginTop: 8 }]}
+                onPress={() => {
+                  console.log('BillingScreen: Restore billing backup tapped');
+                  Alert.alert('Restore Backup', 'Billing backup restore coming soon.');
+                }}
+              >
+                <Text style={[styles.reportBtnText, { color: theme.text }]}>Restore Billing Backup</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        )}
 
         {/* Bulk Action Bar */}
         {selectionMode && selectedIds.size > 0 && (
@@ -1008,9 +1270,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
   },
+  subNavScroll: {
+    flexGrow: 0,
+    borderBottomWidth: 0.5,
+  },
+  subNavContent: {
+    paddingHorizontal: 16,
+    gap: 0,
+  },
+  subNavTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 2.5,
+    borderBottomColor: 'transparent',
+  },
+  subNavTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  subTabContent: {
+    paddingBottom: 120,
+  },
   periodModeScroll: {
     flexGrow: 0,
     marginBottom: 6,
+    marginTop: 8,
   },
   periodModeContent: {
     paddingHorizontal: 16,
@@ -1178,13 +1462,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 120,
   },
+  swipeContainer: {
+    position: 'relative',
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  swipeActionsRight: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  swipeActionsLeft: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  swipeActionText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   jobRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
     padding: 12,
-    marginBottom: 8,
     elevation: 2,
     gap: 10,
   },
@@ -1275,6 +1589,36 @@ const styles = StyleSheet.create({
   bulkBtnText: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  placeholderCard: {
+    margin: 16,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 0.5,
+  },
+  placeholderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  placeholderSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  reportBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  reportBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

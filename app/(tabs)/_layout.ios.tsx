@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 
@@ -16,34 +17,41 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.card,
           borderTopColor: theme.border,
+          borderTopWidth: 0.5,
+          paddingTop: 8,
+          paddingBottom: Platform.OS === 'android' ? 20 : 8,
+          height: Platform.OS === 'android' ? 88 : 64,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarIconStyle: {
+          marginTop: 2,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
+          title: 'Home',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="chart.bar.fill"
-              android_material_icon_name="dashboard"
-              size={size}
-              color={color}
-            />
+            <IconSymbol ios_icon_name="house.fill" android_material_icon_name="home" size={size + 2} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="jobs"
         options={{
-          title: 'Job Records',
+          title: 'Jobs',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="list.bullet"
-              android_material_icon_name="list"
-              size={size}
-              color={color}
-            />
+            <IconSymbol ios_icon_name="wrench.and.screwdriver.fill" android_material_icon_name="build" size={size + 2} color={color} />
           ),
         }}
       />
@@ -52,40 +60,7 @@ export default function TabLayout() {
         options={{
           title: 'Billing',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="creditcard.fill"
-              android_material_icon_name="receipt"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="insights"
-        options={{
-          title: 'Insights',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="chart.bar.fill"
-              android_material_icon_name="bar-chart"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="job-store"
-        options={{
-          title: 'Job Store',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="magnifyingglass"
-              android_material_icon_name="search"
-              size={size}
-              color={color}
-            />
+            <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="receipt" size={size + 2} color={color} />
           ),
         }}
       />
@@ -94,82 +69,29 @@ export default function TabLayout() {
         options={{
           title: 'Stats',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="chart.pie.fill"
-              android_material_icon_name="pie-chart"
-              size={size}
-              color={color}
-            />
+            <IconSymbol ios_icon_name="chart.bar.fill" android_material_icon_name="bar-chart" size={size + 2} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="media"
+        name="more"
         options={{
-          title: 'Media',
+          title: 'More',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="photo.stack.fill"
-              android_material_icon_name="photo_library"
-              size={size}
-              color={color}
-            />
+            <IconSymbol ios_icon_name="ellipsis.circle.fill" android_material_icon_name="more-horiz" size={size + 2} color={color} />
           ),
         }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="gearshape.fill"
-              android_material_icon_name="settings"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="ai"
-        options={{
-          title: 'AI',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol
-              ios_icon_name="sparkles"
-              android_material_icon_name="auto-awesome"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      {/* Hide these from tabs */}
-      <Tabs.Screen
-        name="add-job"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="(home)"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile.ios"
-        options={{
-          href: null,
-        }}
-      />
+      {/* Hidden from tab bar — still accessible via router.push */}
+      <Tabs.Screen name="insights" options={{ href: null }} />
+      <Tabs.Screen name="job-store" options={{ href: null }} />
+      <Tabs.Screen name="media" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="ai" options={{ href: null }} />
+      <Tabs.Screen name="add-job" options={{ href: null }} />
+      <Tabs.Screen name="(home)" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="profile.ios" options={{ href: null }} />
     </Tabs>
   );
 }

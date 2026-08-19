@@ -1,5 +1,5 @@
 // Updated: 2025-07-14T00:00:00Z
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 import {
   View,
@@ -13,17 +13,22 @@ import {
   Alert,
   Platform,
   StatusBar,
+  ScrollView,
+  TextInput,
 } from 'react-native';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { awToMinutes, formatTime } from '@/utils/jobCalculations';
 import { router, useFocusEffect } from 'expo-router';
 import { api, Job } from '@/utils/api';
+import { billingStorage } from '@/utils/billingStorage';
 import { exportToPdf } from '@/utils/exportUtils';
 import { updateWidgetData } from '@/utils/widgetManager';
 
 // Android status bar height helper
 const ANDROID_STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
+
+type JobsSubTab = 'records' | 'open' | 'billed' | 'search' | 'reports';
 
 export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -33,6 +38,9 @@ export default function JobRecordsScreen() {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [technicianName, setTechnicianName] = useState('Technician');
+  const [subTab, setSubTab] = useState<JobsSubTab>('records');
+  const [billingRecords, setBillingRecords] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   function getCurrentMonth() {
     const now = new Date();
@@ -112,6 +120,42 @@ export default function JobRecordsScreen() {
       loadJobs();
     }, [loadJobs])
   );
+
+  // Load billing records when open/billed sub-tab is active
+  useEffect(() => {
+    if (subTab === 'open' || subTab === 'billed') {
+      console.log('JobRecordsScreen: Loading billing records for sub-tab:', subTab);
+      billingStorage.getAllRecords().then(setBillingRecords).catch(err => {
+        console.error('JobRecordsScreen: Error loading billing records:', err);
+      });
+    }
+  }, [subTab]);
+
+  // Filtered jobs based on sub-tab
+  const displayJobs = useMemo(() => {
+    if (subTab === 'open') {
+      const billedJobIds = new Set(
+        billingRecords.filter(r => r.billingStatus === 'billed').map((r: any) => r.jobId)
+      );
+      return jobs.filter(j => !billedJobIds.has(j.id));
+    }
+    if (subTab === 'billed') {
+      const billedJobIds = new Set(
+        billingRecords.filter(r => r.billingStatus === 'billed').map((r: any) => r.jobId)
+      );
+      return jobs.filter(j => billedJobIds.has(j.id));
+    }
+    if (subTab === 'search') {
+      if (!searchQuery.trim()) return jobs;
+      const q = searchQuery.toLowerCase();
+      return jobs.filter(j =>
+        j.wipNumber.toLowerCase().includes(q) ||
+        j.vehicleReg.toLowerCase().includes(q) ||
+        (j.notes || '').toLowerCase().includes(q)
+      );
+    }
+    return jobs;
+  }, [jobs, billingRecords, subTab, searchQuery]);
 
   const handleDeleteJob = (jobId: string) => {
     Alert.alert(
@@ -377,6 +421,14 @@ export default function JobRecordsScreen() {
   // Header top padding: on Android add status bar height + extra breathing room
   const headerPaddingTop = Platform.OS === 'android' ? ANDROID_STATUS_BAR_HEIGHT + 12 : 16;
 
+  const subTabLabels: Record<JobsSubTab, string> = {
+    records: 'Records',
+    open: 'Open',
+    billed: 'Billed',
+    search: 'Search',
+    reports: 'Reports',
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <ImageBackground
@@ -406,6 +458,37 @@ export default function JobRecordsScreen() {
               )}
             </View>
 
+            {/* Sub-navigation */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.subNavScroll, { borderBottomColor: 'rgba(255,255,255,0.2)' }]}
+              contentContainerStyle={styles.subNavContent}
+            >
+              {(['records', 'open', 'billed', 'search', 'reports'] as JobsSubTab[]).map(tab => {
+                const isActive = subTab === tab;
+                return (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[
+                      styles.subNavTab,
+                      isActive && { borderBottomColor: '#ffffff', borderBottomWidth: 2.5 },
+                    ]}
+                    onPress={() => {
+                      console.log('JobRecordsScreen: Sub-tab pressed:', tab);
+                      setSubTab(tab);
+                    }}
+                  >
+                    <Text style={[styles.subNavTabText, { color: isActive ? '#ffffff' : 'rgba(255,255,255,0.6)' }]}>
+                      {subTabLabels[tab]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Month selector — shown for records/open/billed */}
+            {(subTab === 'records' || subTab === 'open' || subTab === 'billed') && (
             <View style={[styles.monthSelector, { backgroundColor: theme.card }]}>
               <TouchableOpacity
                 onPress={handlePreviousMonth}
@@ -422,7 +505,7 @@ export default function JobRecordsScreen() {
               <View style={styles.monthInfo}>
                 <Text style={[styles.monthText, { color: theme.text }]}>{monthName}</Text>
                 <Text style={[styles.monthSubtext, { color: theme.textSecondary }]}>
-                  {totals.count} jobs
+                  {displayJobs.length} jobs
                 </Text>
               </View>
               <TouchableOpacity
@@ -438,6 +521,82 @@ export default function JobRecordsScreen() {
                 />
               </TouchableOpacity>
             </View>
+            )}
+
+            {/* Search bar — shown for search sub-tab */}
+            {subTab === 'search' && (
+              <View style={[styles.searchBar, { backgroundColor: theme.card }]}>
+                <IconSymbol
+                  ios_icon_name="magnifyingglass"
+                  android_material_icon_name="search"
+                  size={18}
+                  color={theme.textSecondary}
+                />
+                <TextInput
+                  style={[styles.searchInput, { color: theme.text }]}
+                  value={searchQuery}
+                  onChangeText={text => {
+                    console.log('JobRecordsScreen: Search query changed:', text);
+                    setSearchQuery(text);
+                  }}
+                  placeholder="Search WIP, reg, notes..."
+                  placeholderTextColor={theme.textSecondary}
+                  autoFocus
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => {
+                    console.log('JobRecordsScreen: Search cleared');
+                    setSearchQuery('');
+                  }}>
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="close"
+                      size={18}
+                      color={theme.textSecondary}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* Reports sub-tab */}
+            {subTab === 'reports' && (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+              >
+                <View style={[styles.reportCard, { backgroundColor: theme.card }]}>
+                  <IconSymbol
+                    ios_icon_name="doc.text.fill"
+                    android_material_icon_name="description"
+                    size={40}
+                    color={theme.primary}
+                  />
+                  <Text style={[styles.reportTitle, { color: theme.text }]}>Export Reports</Text>
+                  <Text style={[styles.reportSubtitle, { color: theme.textSecondary }]}>
+                    Export job records to PDF or share data
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.reportBtn, { backgroundColor: theme.primary }]}
+                    onPress={() => {
+                      console.log('JobRecordsScreen: Export all jobs to PDF tapped');
+                      if (jobs.length === 0) {
+                        Alert.alert('No Jobs', 'No jobs to export for this month');
+                        return;
+                      }
+                      exportToPdf(jobs, technicianName, { type: 'all' })
+                        .then(() => Alert.alert('Success', `Exported ${jobs.length} jobs to PDF`))
+                        .catch(err => {
+                          console.error('JobRecordsScreen: PDF export error:', err);
+                          Alert.alert('Error', 'Failed to export jobs to PDF');
+                        });
+                    }}
+                  >
+                    <Text style={styles.reportBtnText}>Export Month to PDF</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
 
             {selectionMode ? (
               <View style={[styles.selectionBar, { backgroundColor: theme.primary }]}>
@@ -536,8 +695,9 @@ export default function JobRecordsScreen() {
               </View>
             )}
 
+            {subTab !== 'reports' && (
             <FlatList
-              data={jobs}
+              data={displayJobs}
               renderItem={renderJob}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
@@ -553,11 +713,15 @@ export default function JobRecordsScreen() {
                     color={theme.textSecondary}
                   />
                   <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                    No jobs found for this month
+                    {subTab === 'open' ? 'No open jobs found' :
+                     subTab === 'billed' ? 'No billed jobs found' :
+                     subTab === 'search' ? 'No jobs match your search' :
+                     'No jobs found for this month'}
                   </Text>
                 </View>
               }
             />
+            )}
           </View>
         </View>
       </ImageBackground>
@@ -823,5 +987,68 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     marginTop: 16,
+  },
+  subNavScroll: {
+    flexGrow: 0,
+    borderBottomWidth: 0.5,
+    marginBottom: 4,
+  },
+  subNavContent: {
+    paddingHorizontal: 16,
+    gap: 0,
+  },
+  subNavTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 2.5,
+    borderBottomColor: 'transparent',
+  },
+  subNavTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    marginTop: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+  },
+  reportCard: {
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 12,
+    elevation: 2,
+  },
+  reportTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  reportSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  reportBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  reportBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
