@@ -25,6 +25,7 @@ import {
   isCurrentlyOnBreak,
 } from '@/utils/workTimeEngine';
 import { api } from '@/utils/api';
+import { billingStorage } from '@/utils/billingStorage';
 import CircularProgress from '@/components/CircularProgress';
 import DailyRings from '@/components/DailyRings';
 import LiveTrackerRing from '@/components/LiveTrackerRing';
@@ -64,6 +65,7 @@ export default function DashboardScreen() {
   const [streaksEnabled, setStreaksEnabled] = useState(true);
   const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
   const [showLiveTracker, setShowLiveTracker] = useState(false);
+  const [billingStats, setBillingStats] = useState<any>(null);
 
   const loadDashboardData = useCallback(async () => {
     // FIX 9: enforce 10-second minimum between loads
@@ -111,6 +113,18 @@ export default function DashboardScreen() {
       
       // FIX 8: use ref so this callback doesn't need selectedMonth in its deps
       await loadCalendarData(schedule, selectedMonthRef.current);
+
+      // Load billing stats
+      try {
+        const allJobsForBilling = await api.getAllJobs();
+        const bStats = await billingStorage.getBillingStats(
+          allJobsForBilling.map(j => ({ id: j.id, aw: j.aw, createdAt: j.createdAt }))
+        );
+        setBillingStats(bStats);
+        console.log('DashboardScreen: Billing stats loaded — unbilledHours:', bStats.unbilledHours.toFixed(2));
+      } catch (billingError) {
+        console.error('DashboardScreen: Billing stats load failed (non-fatal):', billingError);
+      }
 
       // FIX 9: record successful load time
       lastDashboardLoad = Date.now();
@@ -1033,6 +1047,74 @@ export default function DashboardScreen() {
               </View>
             )}
 
+            {/* Billing Position */}
+            <TouchableOpacity
+              style={[styles.billingSection, { backgroundColor: theme.card }]}
+              onPress={() => {
+                console.log('[Dashboard] Billing Position card pressed — navigating to billing tab');
+                router.push('/(tabs)/billing');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.billingSectionHeader}>
+                <Text style={[styles.billingSectionTitle, { color: theme.text }]}>Billing Position</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={16}
+                  color={theme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.billingCardsRow}>
+                <View style={[styles.billingCard, { backgroundColor: theme.background }]}>
+                  <Text style={[styles.billingCardValue, { color: theme.primary }]}>
+                    {(billingStats?.recordedHours ?? 0).toFixed(1)}h
+                  </Text>
+                  <Text style={[styles.billingCardLabel, { color: theme.textSecondary }]}>Recorded</Text>
+                </View>
+                <View style={[styles.billingCard, { backgroundColor: theme.background }]}>
+                  <Text style={[styles.billingCardValue, { color: theme.chartGreen }]}>
+                    {(billingStats?.billedHours ?? 0).toFixed(1)}h
+                  </Text>
+                  <Text style={[styles.billingCardLabel, { color: theme.textSecondary }]}>Billed</Text>
+                </View>
+                <View style={[styles.billingCard, { backgroundColor: theme.background }]}>
+                  <Text style={[styles.billingCardValue, { color: theme.chartYellow }]}>
+                    {(billingStats?.readyToBillHours ?? 0).toFixed(1)}h
+                  </Text>
+                  <Text style={[styles.billingCardLabel, { color: theme.textSecondary }]}>Ready</Text>
+                </View>
+                <View style={[styles.billingCard, { backgroundColor: theme.background }]}>
+                  <Text style={[styles.billingCardValue, { color: theme.chartRed }]}>
+                    {(billingStats?.openHours ?? 0).toFixed(1)}h
+                  </Text>
+                  <Text style={[styles.billingCardLabel, { color: theme.textSecondary }]}>Open</Text>
+                </View>
+              </View>
+
+              <View style={[styles.billingUnbilledRow, { borderTopColor: theme.border }]}>
+                <Text style={[styles.billingUnbilledLabel, { color: theme.textSecondary }]}>
+                  Total Unbilled
+                </Text>
+                <Text style={[styles.billingUnbilledValue, { color: theme.chartYellow }]}>
+                  {(billingStats?.unbilledHours ?? 0).toFixed(1)}h
+                </Text>
+              </View>
+
+              {billingStats && (billingStats.jobsReady > 0 || billingStats.jobsOpen > 0) && (
+                <Text style={[styles.billingHealthText, { color: theme.textSecondary }]}>
+                  {billingStats.jobsReady > 0
+                    ? `${billingStats.jobsReady} job${billingStats.jobsReady !== 1 ? 's' : ''} awaiting closure`
+                    : ''}
+                  {billingStats.jobsReady > 0 && billingStats.jobsOpen > 0 ? ' · ' : ''}
+                  {billingStats.jobsOpen > 0
+                    ? `${billingStats.jobsOpen} job${billingStats.jobsOpen !== 1 ? 's' : ''} still open`
+                    : ''}
+                </Text>
+              )}
+            </TouchableOpacity>
+
             {/* Progress Rings */}
             <View style={styles.ringsContainer}>
               <View style={styles.ringWrapper}>
@@ -1753,5 +1835,62 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  billingSection: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 16,
+    padding: 16,
+    elevation: 2,
+  },
+  billingSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  billingSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  billingCardsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  billingCard: {
+    flex: 1,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+  },
+  billingCardValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  billingCardLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  billingUnbilledRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    marginBottom: 6,
+  },
+  billingUnbilledLabel: {
+    fontSize: 13,
+  },
+  billingUnbilledValue: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  billingHealthText: {
+    fontSize: 12,
+    marginTop: 4,
   },
 });

@@ -385,6 +385,118 @@ export default function SettingsScreen() {
     setShowExportModal(true);
   };
 
+  const handleExportJobsBackup = async () => {
+    console.log('SettingsScreen: User tapped Export Job Records Backup');
+    try {
+      const jobs = await api.getAllJobs();
+      const backup = {
+        jobsBackupVersion: '1.0',
+        createdAt: new Date().toISOString(),
+        jobs,
+      };
+      const json = JSON.stringify(backup, null, 2);
+      const { Share } = await import('react-native');
+      await Share.share({
+        message: json,
+        title: `TechTimes_Jobs_Backup_${new Date().toISOString().replace(/[:.]/g, '-').substring(0, 16)}.json`,
+      });
+      console.log('SettingsScreen: Job records backup exported, jobs count:', jobs.length);
+    } catch (error) {
+      console.error('SettingsScreen: Error exporting job records backup:', error);
+      Alert.alert('Error', 'Failed to export job records backup');
+    }
+  };
+
+  const handleImportJobsBackup = async () => {
+    console.log('SettingsScreen: User tapped Restore Job Records Backup');
+    Alert.alert(
+      'Restore Job Records',
+      'This will restore job records from a backup. Billing records will NOT be affected. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Choose File',
+          onPress: async () => {
+            try {
+              console.log('SettingsScreen: Opening document picker for job records restore');
+              const DocumentPickerMod = await import('expo-document-picker');
+              const result = await DocumentPickerMod.getDocumentAsync({ type: 'application/json' });
+              if (result.canceled) {
+                console.log('SettingsScreen: Job records restore cancelled');
+                return;
+              }
+              const FileSystem = await import('expo-file-system');
+              const content = await FileSystem.default.readAsStringAsync(result.assets[0].uri);
+              const backup = JSON.parse(content);
+              if (!backup.jobs || !Array.isArray(backup.jobs)) {
+                Alert.alert('Error', 'Invalid job records backup file');
+                return;
+              }
+              const { offlineStorage } = await import('@/utils/offlineStorage');
+              await offlineStorage.saveJobs(backup.jobs);
+              console.log('SettingsScreen: Job records restored, count:', backup.jobs.length);
+              Alert.alert('Success', `Restored ${backup.jobs.length} job records`);
+            } catch (error) {
+              console.error('SettingsScreen: Error restoring job records backup:', error);
+              Alert.alert('Error', 'Failed to restore job records backup');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleExportBillingBackup = async () => {
+    console.log('SettingsScreen: User tapped Export Billing Backup');
+    try {
+      const { billingStorage } = await import('@/utils/billingStorage');
+      const json = await billingStorage.exportBillingBackup();
+      const { Share } = await import('react-native');
+      await Share.share({
+        message: json,
+        title: `TechTimes_Billing_Backup_${new Date().toISOString().replace(/[:.]/g, '-').substring(0, 16)}.json`,
+      });
+      console.log('SettingsScreen: Billing backup exported');
+    } catch (error) {
+      console.error('SettingsScreen: Error exporting billing backup:', error);
+      Alert.alert('Error', 'Failed to export billing backup');
+    }
+  };
+
+  const handleImportBillingBackup = async () => {
+    console.log('SettingsScreen: User tapped Restore Billing Backup');
+    Alert.alert(
+      'Restore Billing Records',
+      'This will restore billing records. Job records will NOT be affected. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Choose File',
+          onPress: async () => {
+            try {
+              console.log('SettingsScreen: Opening document picker for billing restore');
+              const DocumentPickerMod = await import('expo-document-picker');
+              const result = await DocumentPickerMod.getDocumentAsync({ type: 'application/json' });
+              if (result.canceled) {
+                console.log('SettingsScreen: Billing restore cancelled');
+                return;
+              }
+              const FileSystem = await import('expo-file-system');
+              const content = await FileSystem.default.readAsStringAsync(result.assets[0].uri);
+              const { billingStorage } = await import('@/utils/billingStorage');
+              const { imported, unmatched } = await billingStorage.importBillingBackup(content);
+              console.log('SettingsScreen: Billing restore complete — imported:', imported, 'unmatched:', unmatched);
+              Alert.alert('Success', `Restored ${imported} billing records. ${unmatched} unmatched records preserved.`);
+            } catch (error) {
+              console.error('SettingsScreen: Error restoring billing backup:', error);
+              Alert.alert('Error', 'Failed to restore billing backup');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const [exportType, setExportType] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
   const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('json');
   const [exportDate, setExportDate] = useState(new Date());
@@ -1274,6 +1386,54 @@ export default function SettingsScreen() {
               color="#ffffff"
             />
             <Text style={[styles.actionButtonText, { color: '#ffffff' }]}>Clear All Data</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Job Records Backup & Restore */}
+        <View style={[styles.card, { backgroundColor: theme.card, marginHorizontal: 16, marginBottom: 16 }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Job Records Backup & Restore</Text>
+          <Text style={[styles.cardSubtitle, { color: theme.textSecondary, marginBottom: 12 }]}>
+            Independent backup of job records only
+          </Text>
+          <TouchableOpacity
+            style={[styles.settingRow, { borderBottomColor: theme.border, borderBottomWidth: 1, paddingBottom: 12, marginBottom: 12 }]}
+            onPress={handleExportJobsBackup}
+          >
+            <IconSymbol ios_icon_name="square.and.arrow.up" android_material_icon_name="upload" size={20} color={theme.primary} />
+            <Text style={[styles.settingLabel, { color: theme.text, flex: 1 }]}>Export Job Records Backup</Text>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={theme.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingRow, { borderBottomColor: theme.border }]}
+            onPress={handleImportJobsBackup}
+          >
+            <IconSymbol ios_icon_name="square.and.arrow.down" android_material_icon_name="download" size={20} color={theme.primary} />
+            <Text style={[styles.settingLabel, { color: theme.text, flex: 1 }]}>Restore Job Records Backup</Text>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={theme.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Billing Backup & Restore */}
+        <View style={[styles.card, { backgroundColor: theme.card, marginHorizontal: 16, marginBottom: 16 }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Billing Backup & Restore</Text>
+          <Text style={[styles.cardSubtitle, { color: theme.textSecondary, marginBottom: 12 }]}>
+            Independent backup of billing records only
+          </Text>
+          <TouchableOpacity
+            style={[styles.settingRow, { borderBottomColor: theme.border, borderBottomWidth: 1, paddingBottom: 12, marginBottom: 12 }]}
+            onPress={handleExportBillingBackup}
+          >
+            <IconSymbol ios_icon_name="square.and.arrow.up" android_material_icon_name="upload" size={20} color={theme.chartGreen} />
+            <Text style={[styles.settingLabel, { color: theme.text, flex: 1 }]}>Export Billing Backup</Text>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={theme.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingRow, { borderBottomColor: theme.border }]}
+            onPress={handleImportBillingBackup}
+          >
+            <IconSymbol ios_icon_name="square.and.arrow.down" android_material_icon_name="download" size={20} color={theme.chartGreen} />
+            <Text style={[styles.settingLabel, { color: theme.text, flex: 1 }]}>Restore Billing Backup</Text>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 

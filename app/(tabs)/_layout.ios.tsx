@@ -48,6 +48,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="billing"
+        options={{
+          title: 'Billing',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol
+              ios_icon_name="creditcard.fill"
+              android_material_icon_name="receipt"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="insights"
         options={{
           title: 'Insights',

@@ -89,6 +89,7 @@ export default function AddJobModal() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [jobCardImageUri, setJobCardImageUri] = useState<string | undefined>(undefined);
+  const [workCompleted, setWorkCompleted] = useState(false);
 
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
@@ -303,6 +304,23 @@ export default function AddJobModal() {
           }
         }
 
+        // Update billing record snapshot if AW changed
+        try {
+          const { billingStorage } = await import('@/utils/billingStorage');
+          const billingRecord = await billingStorage.getRecordForJob(editId);
+          if (billingRecord && billingRecord.billingStatus !== 'billed') {
+            await billingStorage.updateRecord(billingRecord.id, {
+              billedAW: aw,
+              billedHours: (aw * 5) / 60,
+              wipNumber: wipNumber,
+              vehicleReg: vehicleReg.toUpperCase(),
+            });
+            console.log('AddJobModal: Billing record updated for job:', editId);
+          }
+        } catch (billingError) {
+          console.error('AddJobModal: Billing record update failed (non-fatal):', billingError);
+        }
+
         await updateWidgetData();
         setSaveNotificationType('success');
         toastManager.success('Job updated successfully!');
@@ -325,6 +343,32 @@ export default function AddJobModal() {
           } catch (imgError) {
             console.error('AddJobModal: Error storing job image (non-fatal):', imgError);
           }
+        }
+
+        // Create billing record
+        try {
+          const { billingStorage } = await import('@/utils/billingStorage');
+          const billingRecord = await billingStorage.createRecord({
+            jobId: newJob.id,
+            workStatus: workCompleted ? 'work_complete' : 'open',
+            billingStatus: workCompleted ? 'ready_to_bill' : 'unbilled',
+            billedAW: newJob.aw,
+            billedHours: (newJob.aw * 5) / 60,
+            wipNumber: newJob.wipNumber,
+            vehicleReg: newJob.vehicleReg,
+            workDate: newJob.createdAt.split('T')[0],
+          });
+          console.log('AddJobModal: Billing record created for job:', newJob.id, 'status:', billingRecord.billingStatus);
+          await billingStorage.addHistoryEntry({
+            billingRecordId: billingRecord.id,
+            jobId: newJob.id,
+            eventType: 'billing_created',
+            description: workCompleted
+              ? `Job created as Ready to Bill — ${newJob.aw} AW`
+              : `Job created as Open — ${newJob.aw} AW`,
+          });
+        } catch (billingError) {
+          console.error('AddJobModal: Billing record creation failed (non-fatal):', billingError);
         }
 
         console.log('AddJobModal: Reloading suggestions for live updates');
@@ -1083,10 +1127,44 @@ export default function AddJobModal() {
               )}
             </View>
 
+            {/* Work Completed checkbox */}
+            {!isEditMode && (
+              <TouchableOpacity
+                style={[styles.checkboxRow, { borderColor: theme.border }]}
+                onPress={() => {
+                  console.log('AddJobModal: Work Completed checkbox toggled to:', !workCompleted);
+                  setWorkCompleted(!workCompleted);
+                  safeHaptics.selectionAsync();
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.checkbox,
+                  { borderColor: theme.primary },
+                  workCompleted && { backgroundColor: theme.primary },
+                ]}>
+                  {workCompleted && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={14}
+                      color="#ffffff"
+                    />
+                  )}
+                </View>
+                <View style={styles.checkboxTextContainer}>
+                  <Text style={[styles.checkboxLabel, { color: theme.text }]}>Work Completed</Text>
+                  <Text style={[styles.checkboxSubtitle, { color: theme.textSecondary }]}>
+                    {workCompleted ? 'Ready to bill — job work is done' : 'Job still in progress (default)'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: theme.primary }]}
               onPress={() => {
-                console.log('AddJobModal: User tapped Save/Update Record button');
+                console.log('AddJobModal: User tapped Save/Update Record button, workCompleted:', workCompleted);
                 safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 handleSave(false);
               }}
@@ -1475,5 +1553,33 @@ const styles = StyleSheet.create({
   },
   suggestionDate: {
     fontSize: 12,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    marginBottom: 20,
+    borderTopWidth: 1,
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxTextContainer: {
+    flex: 1,
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  checkboxSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
   },
 });
