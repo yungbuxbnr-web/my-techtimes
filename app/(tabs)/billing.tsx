@@ -31,12 +31,104 @@ const safeHaptics = {
   },
 };
 
-function getCurrentMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+type PeriodMode = 'day' | 'week' | 'month' | 'year' | 'entire';
+type TabKey = 'all' | 'open' | 'ready' | 'billed' | 'legacy';
+
+// ── Period boundary helpers ──────────────────────────────────────────────────
+
+function getDayBounds(date: Date): { start: Date; end: Date } {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  return { start, end };
 }
 
-type TabKey = 'all' | 'open' | 'ready' | 'billed' | 'legacy';
+function getWeekBounds(date: Date): { start: Date; end: Date } {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff, 0, 0, 0, 0);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function getMonthBounds(date: Date): { start: Date; end: Date } {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function getYearBounds(date: Date): { start: Date; end: Date } {
+  const start = new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0);
+  const end = new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function getPeriodBounds(mode: PeriodMode, date: Date): { start: Date; end: Date } | null {
+  switch (mode) {
+    case 'day': return getDayBounds(date);
+    case 'week': return getWeekBounds(date);
+    case 'month': return getMonthBounds(date);
+    case 'year': return getYearBounds(date);
+    case 'entire': return null;
+  }
+}
+
+function navigatePeriod(mode: PeriodMode, date: Date, direction: -1 | 1): Date {
+  const d = new Date(date);
+  switch (mode) {
+    case 'day':
+      d.setDate(d.getDate() + direction);
+      break;
+    case 'week':
+      d.setDate(d.getDate() + direction * 7);
+      break;
+    case 'month':
+      d.setMonth(d.getMonth() + direction);
+      break;
+    case 'year':
+      d.setFullYear(d.getFullYear() + direction);
+      break;
+    case 'entire':
+      break;
+  }
+  return d;
+}
+
+function getPeriodLabel(mode: PeriodMode, date: Date): string {
+  switch (mode) {
+    case 'day': {
+      const today = new Date();
+      const isToday = date.toDateString() === today.toDateString();
+      const label = date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      return isToday ? `Today — ${label}` : label;
+    }
+    case 'week': {
+      const { start, end } = getWeekBounds(date);
+      const s = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      const e = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      return `${s} – ${e}`;
+    }
+    case 'month':
+      return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    case 'year':
+      return String(date.getFullYear());
+    case 'entire':
+      return 'Entire History';
+  }
+}
+
+function getJobDateForViewBy(
+  job: { createdAt: string },
+  billing: { billedDate?: string; billedAt?: string },
+  viewBy: 'work_date' | 'billing_date'
+): Date {
+  if (viewBy === 'billing_date' && billing.billedDate) {
+    return new Date(billing.billedDate);
+  }
+  return new Date(job.createdAt);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 
 export default function BillingScreen() {
   const { theme } = useThemeContext();
@@ -46,8 +138,9 @@ export default function BillingScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [stats, setStats] = useState<any>(null);
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('month');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [viewBy, setViewBy] = useState<'work_date' | 'billing_date'>('work_date');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -67,10 +160,6 @@ export default function BillingScreen() {
       );
       const records = await billingStorage.getAllRecords();
       setBillingRecords(records);
-      const s = await billingStorage.getBillingStats(
-        allJobs.map(j => ({ id: j.id, aw: j.aw, createdAt: j.createdAt }))
-      );
-      setStats(s);
       console.log('BillingScreen: Data loaded — jobs:', allJobs.length, 'records:', records.length);
     } catch (error) {
       console.error('BillingScreen: Error loading data:', error);
@@ -90,27 +179,77 @@ export default function BillingScreen() {
     setRefreshing(false);
   }, [loadData]);
 
+  // ── Period stats (computed from all period items before tab filter) ────────
+  const periodStats = useMemo(() => {
+    const recordsByJobId = new Map(billingRecords.map(r => [r.jobId, r]));
+    const bounds = getPeriodBounds(periodMode, selectedDate);
+
+    const allPeriodItems = jobs
+      .map(job => ({ job, billing: recordsByJobId.get(job.id) }))
+      .filter((item): item is { job: Job; billing: BillingRecord } => item.billing !== undefined)
+      .filter(({ job, billing }) => {
+        if (!bounds) return true;
+        const d = getJobDateForViewBy(job, billing, viewBy);
+        return d >= bounds.start && d <= bounds.end;
+      });
+
+    const recordedAW = allPeriodItems.reduce((s, { job }) => s + job.aw, 0);
+    const recordedHours = (recordedAW * 5) / 60;
+
+    const billedItems = allPeriodItems.filter(({ billing }) => billing.billingStatus === 'billed');
+    const billedHours = billedItems.reduce((s, { billing }) => s + billing.billedHours, 0);
+
+    const readyItems = allPeriodItems.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
+    const readyHours = readyItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
+
+    const openItems = allPeriodItems.filter(({ billing }) =>
+      billing.billingStatus === 'unbilled' || billing.billingStatus === 'legacy_unknown'
+    );
+    const openHours = openItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
+
+    const unbilledHours = readyHours + openHours;
+
+    return {
+      recordedAW,
+      recordedHours,
+      billedHours,
+      readyHours,
+      openHours,
+      unbilledHours,
+      jobsRecorded: allPeriodItems.length,
+      jobsBilled: billedItems.length,
+      jobsReady: readyItems.length,
+      jobsOpen: openItems.length,
+    };
+  }, [jobs, billingRecords, periodMode, selectedDate, viewBy]);
+
+  // ── Filtered items (period + tab + search) ────────────────────────────────
   const filteredItems = useMemo(() => {
     const recordsByJobId = new Map(billingRecords.map(r => [r.jobId, r]));
+    const bounds = getPeriodBounds(periodMode, selectedDate);
 
-    // Filter by selected month
-    const monthJobs = jobs.filter(j => j.createdAt.substring(0, 7) === selectedMonth);
-
-    const items = monthJobs
+    const items = jobs
       .map(job => ({ job, billing: recordsByJobId.get(job.id) }))
       .filter((item): item is { job: Job; billing: BillingRecord } => item.billing !== undefined);
 
-    let filtered = items;
+    const periodItems = bounds
+      ? items.filter(({ job, billing }) => {
+          const d = getJobDateForViewBy(job, billing, viewBy);
+          return d >= bounds.start && d <= bounds.end;
+        })
+      : items;
+
+    let filtered = periodItems;
     if (activeTab === 'open') {
-      filtered = items.filter(({ billing }) =>
+      filtered = periodItems.filter(({ billing }) =>
         billing.billingStatus === 'unbilled' && billing.workStatus === 'open'
       );
     } else if (activeTab === 'ready') {
-      filtered = items.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
+      filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
     } else if (activeTab === 'billed') {
-      filtered = items.filter(({ billing }) => billing.billingStatus === 'billed');
+      filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'billed');
     } else if (activeTab === 'legacy') {
-      filtered = items.filter(({ billing }) => billing.billingStatus === 'legacy_unknown');
+      filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'legacy_unknown');
     }
 
     if (searchQuery.trim()) {
@@ -125,23 +264,9 @@ export default function BillingScreen() {
     return filtered.sort(
       (a, b) => new Date(b.job.createdAt).getTime() - new Date(a.job.createdAt).getTime()
     );
-  }, [jobs, billingRecords, activeTab, searchQuery, selectedMonth]);
+  }, [jobs, billingRecords, activeTab, searchQuery, periodMode, selectedDate, viewBy]);
 
-  const handlePrevMonth = () => {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    const newMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    console.log('BillingScreen: Navigating to previous month:', newMonth);
-    setSelectedMonth(newMonth);
-  };
-
-  const handleNextMonth = () => {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    const newMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    console.log('BillingScreen: Navigating to next month:', newMonth);
-    setSelectedMonth(newMonth);
-  };
+  // ── Action handlers ───────────────────────────────────────────────────────
 
   const handleMarkWorkComplete = async (job: Job, billing: BillingRecord) => {
     console.log('BillingScreen: Marking work complete for job:', job.wipNumber);
@@ -415,19 +540,15 @@ export default function BillingScreen() {
     }
   };
 
-  const openCount = billingRecords.filter(r => r.workStatus === 'open').length;
-  const readyCount = billingRecords.filter(r => r.billingStatus === 'ready_to_bill').length;
-  const unbilledHours = (stats?.readyToBillHours ?? 0) + (stats?.openHours ?? 0);
+  // ── Derived values ────────────────────────────────────────────────────────
+
+  const readyCount = periodStats.jobsReady;
+  const unbilledHours = periodStats.unbilledHours;
 
   let healthStatus = 'All caught up';
   let healthColor = theme.chartGreen;
   if (readyCount > 0) { healthStatus = 'Jobs awaiting closure'; healthColor = theme.chartYellow; }
   if (unbilledHours > 10) { healthStatus = 'Attention — high unbilled hours'; healthColor = theme.chartRed; }
-
-  const monthLabel = (() => {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  })();
 
   const selectedBillingHours = useMemo(() => {
     let total = 0;
@@ -447,6 +568,10 @@ export default function BillingScreen() {
     { key: 'billed', label: 'BILLED' },
     { key: 'legacy', label: 'LEGACY' },
   ];
+
+  const periodLabel = getPeriodLabel(periodMode, selectedDate);
+
+  // ── Render helpers ────────────────────────────────────────────────────────
 
   const renderItem = ({ item }: { item: { job: Job; billing: BillingRecord } }) => {
     const { job, billing } = item;
@@ -520,6 +645,8 @@ export default function BillingScreen() {
     );
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <AppBackground>
       <View style={[styles.container, Platform.OS === 'android' && { paddingTop: 48 }]}>
@@ -568,24 +695,111 @@ export default function BillingScreen() {
           </View>
         </View>
 
-        {/* Month Navigator */}
-        <View style={[styles.monthNav, { backgroundColor: theme.card }]}>
-          <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavBtn}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="chevron-left"
-              size={20}
-              color={theme.primary}
-            />
+        {/* Period Mode Selector */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.periodModeScroll}
+          contentContainerStyle={styles.periodModeContent}
+        >
+          {(['day', 'week', 'month', 'year', 'entire'] as PeriodMode[]).map(mode => {
+            const isActive = periodMode === mode;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[
+                  styles.periodModeBtn,
+                  { borderColor: theme.border },
+                  isActive && { backgroundColor: theme.primary, borderColor: theme.primary },
+                ]}
+                onPress={() => {
+                  console.log('BillingScreen: Period mode changed to:', mode);
+                  setPeriodMode(mode);
+                }}
+              >
+                <Text style={[
+                  styles.periodModeBtnText,
+                  { color: isActive ? '#ffffff' : theme.textSecondary },
+                ]}>
+                  {mode.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Period Navigator */}
+        {periodMode !== 'entire' ? (
+          <View style={[styles.periodNav, { backgroundColor: theme.card }]}>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('BillingScreen: Period navigate backward, mode:', periodMode);
+                setSelectedDate(navigatePeriod(periodMode, selectedDate, -1));
+              }}
+              style={styles.periodNavBtn}
+            >
+              <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={20} color={theme.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('BillingScreen: Period reset to today');
+                setSelectedDate(new Date());
+              }}
+              style={styles.periodNavCenter}
+            >
+              <Text style={[styles.periodNavLabel, { color: theme.text }]}>
+                {periodLabel}
+              </Text>
+              <Text style={[styles.periodNavToday, { color: theme.textSecondary }]}>Tap for today</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('BillingScreen: Period navigate forward, mode:', periodMode);
+                setSelectedDate(navigatePeriod(periodMode, selectedDate, 1));
+              }}
+              style={styles.periodNavBtn}
+            >
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={theme.primary} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.periodNav, { backgroundColor: theme.card }]}>
+            <Text style={[styles.periodNavLabel, { color: theme.text, textAlign: 'center', flex: 1 }]}>
+              Entire History
+            </Text>
+          </View>
+        )}
+
+        {/* View By toggle */}
+        <View style={[styles.viewByRow, { backgroundColor: theme.card }]}>
+          <Text style={[styles.viewByLabel, { color: theme.textSecondary }]}>View by:</Text>
+          <TouchableOpacity
+            style={[
+              styles.viewByBtn,
+              viewBy === 'work_date' && { backgroundColor: theme.primary },
+            ]}
+            onPress={() => {
+              console.log('BillingScreen: View by changed to work_date');
+              setViewBy('work_date');
+            }}
+          >
+            <Text style={[styles.viewByBtnText, { color: viewBy === 'work_date' ? '#ffffff' : theme.textSecondary }]}>
+              Work Date
+            </Text>
           </TouchableOpacity>
-          <Text style={[styles.monthLabel, { color: theme.text }]}>{monthLabel}</Text>
-          <TouchableOpacity onPress={handleNextMonth} style={styles.monthNavBtn}>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron-right"
-              size={20}
-              color={theme.primary}
-            />
+          <TouchableOpacity
+            style={[
+              styles.viewByBtn,
+              viewBy === 'billing_date' && { backgroundColor: theme.primary },
+            ]}
+            onPress={() => {
+              console.log('BillingScreen: View by changed to billing_date');
+              setViewBy('billing_date');
+            }}
+          >
+            <Text style={[styles.viewByBtnText, { color: viewBy === 'billing_date' ? '#ffffff' : theme.textSecondary }]}>
+              Billing Date
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -634,38 +848,38 @@ export default function BillingScreen() {
         >
           <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
             <Text style={[styles.summaryValue, { color: theme.primary }]}>
-              {(stats?.recordedHours ?? 0).toFixed(1)}h
+              {periodStats.recordedHours.toFixed(1)}h
             </Text>
             <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Recorded</Text>
             <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {stats?.jobsRecorded ?? 0} jobs
+              {periodStats.jobsRecorded} jobs
             </Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
             <Text style={[styles.summaryValue, { color: theme.chartGreen }]}>
-              {(stats?.billedHours ?? 0).toFixed(1)}h
+              {periodStats.billedHours.toFixed(1)}h
             </Text>
             <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Billed</Text>
             <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {stats?.jobsBilled ?? 0} jobs
+              {periodStats.jobsBilled} jobs
             </Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
             <Text style={[styles.summaryValue, { color: theme.chartYellow }]}>
-              {(stats?.readyToBillHours ?? 0).toFixed(1)}h
+              {periodStats.readyHours.toFixed(1)}h
             </Text>
             <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Ready to Bill</Text>
             <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {stats?.jobsReady ?? 0} jobs
+              {periodStats.jobsReady} jobs
             </Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
             <Text style={[styles.summaryValue, { color: theme.chartRed }]}>
-              {(stats?.openHours ?? 0).toFixed(1)}h
+              {periodStats.openHours.toFixed(1)}h
             </Text>
             <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Open Work</Text>
             <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-              {stats?.jobsOpen ?? 0} jobs
+              {periodStats.jobsOpen} jobs
             </Text>
           </View>
         </ScrollView>
@@ -794,21 +1008,72 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
   },
-  monthNav: {
+  periodModeScroll: {
+    flexGrow: 0,
+    marginBottom: 6,
+  },
+  periodModeContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  periodModeBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  periodModeBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  periodNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginHorizontal: 16,
     marginBottom: 8,
     borderRadius: 10,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingVertical: 6,
   },
-  monthNavBtn: {
-    padding: 6,
+  periodNavBtn: {
+    padding: 8,
   },
-  monthLabel: {
-    fontSize: 15,
+  periodNavCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  periodNavLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  periodNavToday: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  viewByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  viewByLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  viewByBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  viewByBtnText: {
+    fontSize: 12,
     fontWeight: '600',
   },
   searchBar: {
