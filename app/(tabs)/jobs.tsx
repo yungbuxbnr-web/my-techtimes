@@ -28,7 +28,7 @@ import { updateWidgetData } from '@/utils/widgetManager';
 // Android status bar height helper
 const ANDROID_STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
-type JobsSubTab = 'records' | 'open' | 'billed' | 'search' | 'reports';
+type JobsSubTab = 'records' | 'open' | 'billed' | 'search' | 'reports' | 'vehicles' | 'handover';
 
 export default function JobRecordsScreen() {
   const { theme, overlayStrength } = useThemeContext();
@@ -427,6 +427,8 @@ export default function JobRecordsScreen() {
     billed: 'Billed',
     search: 'Search',
     reports: 'Reports',
+    vehicles: 'Vehicles',
+    handover: 'Handover',
   };
 
   return (
@@ -465,7 +467,7 @@ export default function JobRecordsScreen() {
               style={[styles.subNavScroll, { borderBottomColor: 'rgba(255,255,255,0.2)' }]}
               contentContainerStyle={styles.subNavContent}
             >
-              {(['records', 'open', 'billed', 'search', 'reports'] as JobsSubTab[]).map(tab => {
+              {(['records', 'open', 'billed', 'search', 'reports', 'vehicles', 'handover'] as JobsSubTab[]).map(tab => {
                 const isActive = subTab === tab;
                 return (
                   <TouchableOpacity
@@ -695,7 +697,40 @@ export default function JobRecordsScreen() {
               </View>
             )}
 
-            {subTab !== 'reports' && (
+            {subTab === 'vehicles' && (
+              <View style={styles.subTabLaunchContainer}>
+                <IconSymbol ios_icon_name="car.fill" android_material_icon_name="directions-car" size={48} color={theme.primary} />
+                <Text style={[styles.subTabLaunchTitle, { color: theme.text }]}>Vehicle History</Text>
+                <Text style={[styles.subTabLaunchSubtitle, { color: theme.textSecondary }]}>Browse all jobs grouped by vehicle registration</Text>
+                <TouchableOpacity
+                  style={[styles.subTabLaunchBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    console.log('JobRecordsScreen: User tapped Open Vehicle History');
+                    router.push('/vehicle-history' as any);
+                  }}
+                >
+                  <Text style={styles.subTabLaunchBtnText}>Open Vehicle History</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {subTab === 'handover' && (
+              <View style={styles.subTabLaunchContainer}>
+                <IconSymbol ios_icon_name="arrow.triangle.2.circlepath" android_material_icon_name="sync" size={48} color={theme.chartYellow} />
+                <Text style={[styles.subTabLaunchTitle, { color: theme.text }]}>Handover Board</Text>
+                <Text style={[styles.subTabLaunchSubtitle, { color: theme.textSecondary }]}>Carry-over jobs and workshop notes</Text>
+                <TouchableOpacity
+                  style={[styles.subTabLaunchBtn, { backgroundColor: theme.chartYellow }]}
+                  onPress={() => {
+                    console.log('JobRecordsScreen: User tapped Open Handover Board');
+                    router.push('/handover' as any);
+                  }}
+                >
+                  <Text style={styles.subTabLaunchBtnText}>Open Handover Board</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {subTab !== 'reports' && subTab !== 'vehicles' && subTab !== 'handover' && (
             <FlatList
               data={displayJobs}
               renderItem={renderJob}
@@ -728,6 +763,7 @@ export default function JobRecordsScreen() {
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   background: {
@@ -1049,6 +1085,34 @@ const styles = StyleSheet.create({
   reportBtnText: {
     color: '#ffffff',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  subTabLaunchContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  subTabLaunchTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  subTabLaunchSubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  subTabLaunchBtn: {
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  subTabLaunchBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: '700',
   },
 });

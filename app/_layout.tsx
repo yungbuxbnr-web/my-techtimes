@@ -402,6 +402,16 @@ function RootLayoutContent() {
       />
       <Stack.Screen name="activity-logs" options={{ headerShown: false }} />
       <Stack.Screen name="projections" options={{ headerShown: false, headerBackTitle: 'Back' }} />
+      <Stack.Screen name="vehicle-history" options={{ headerShown: false }} />
+      <Stack.Screen name="job-templates" options={{ headerShown: false }} />
+      <Stack.Screen name="handover" options={{ headerShown: false }} />
+      <Stack.Screen name="technical-cases" options={{ headerShown: false }} />
+      <Stack.Screen name="data-quality" options={{ headerShown: false }} />
+      <Stack.Screen name="heatmap" options={{ headerShown: false }} />
+      <Stack.Screen name="vhc-intelligence" options={{ headerShown: false }} />
+      <Stack.Screen name="reconciliation" options={{ headerShown: false }} />
+      <Stack.Screen name="report-builder" options={{ headerShown: false }} />
+      <Stack.Screen name="smart-search" options={{ headerShown: false }} />
     </Stack>
   );
 }

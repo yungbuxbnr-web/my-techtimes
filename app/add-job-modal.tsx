@@ -45,6 +45,7 @@ const safeHaptics = {
   },
 };
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
+import { templateStorage, JobTemplate } from '@/utils/moduleStorage';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -91,6 +92,10 @@ export default function AddJobModal() {
   const [jobCardImageUri, setJobCardImageUri] = useState<string | undefined>(undefined);
   const [workCompleted, setWorkCompleted] = useState(false);
 
+  // Template state
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState<JobTemplate[]>([]);
+
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [suggestions, setSuggestions] = useState<JobSuggestion[]>([]);
@@ -127,6 +132,11 @@ export default function AddJobModal() {
       if (rawImageUri) setJobCardImageUri(rawImageUri);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load templates
+  useEffect(() => {
+    templateStorage.getAll().then(t => setAvailableTemplates(t.filter(tmpl => !tmpl.isArchived)));
+  }, []);
 
   // Load all jobs for suggestions
   useEffect(() => {
@@ -1127,6 +1137,20 @@ export default function AddJobModal() {
               )}
             </View>
 
+            {/* Use Template button */}
+            {!isEditMode && (
+              <TouchableOpacity
+                style={[styles.templatePickerBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+                onPress={() => {
+                  console.log('AddJobModal: User tapped Use Template button');
+                  setShowTemplateModal(true);
+                }}
+              >
+                <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={18} color={theme.primary} />
+                <Text style={[styles.templatePickerBtnText, { color: theme.primary }]}>Use Template</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Work Completed checkbox */}
             {!isEditMode && (
               <TouchableOpacity
@@ -1278,6 +1302,47 @@ export default function AddJobModal() {
           is24Hour={true}
         />
       )}
+
+      <Modal visible={showTemplateModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.templateModalContainer, { backgroundColor: theme.background }]}>
+          <View style={[styles.templateModalHeader, { borderBottomColor: theme.border }]}>
+            <TouchableOpacity onPress={() => {
+              console.log('AddJobModal: User dismissed template picker');
+              setShowTemplateModal(false);
+            }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 16 }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>Choose Template</Text>
+            <View style={{ width: 60 }} />
+          </View>
+          <FlatList
+            data={availableTemplates}
+            keyExtractor={t => t.id}
+            contentContainerStyle={{ padding: 16, gap: 10 }}
+            ListEmptyComponent={
+              <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, fontSize: 15 }}>
+                No templates yet.{'\n'}Create one in Job Templates (More tab).
+              </Text>
+            }
+            renderItem={({ item: tmpl }) => (
+              <TouchableOpacity
+                style={{ backgroundColor: theme.card, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: theme.border }}
+                onPress={() => {
+                  console.log('AddJobModal: User selected template:', tmpl.name);
+                  if (tmpl.defaultNotes) setNotes(tmpl.defaultNotes);
+                  if (tmpl.defaultAW !== null) setAw(tmpl.defaultAW);
+                  templateStorage.incrementUsage(tmpl.id);
+                  setShowTemplateModal(false);
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600' }}>{tmpl.name}</Text>
+                {tmpl.description ? <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }}>{tmpl.description}</Text> : null}
+                {tmpl.defaultAW !== null && <Text style={{ color: theme.primary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>{tmpl.defaultAW} AW default</Text>}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
     </>
   );
 }
@@ -1581,5 +1646,30 @@ const styles = StyleSheet.create({
   checkboxSubtitle: {
     fontSize: 13,
     marginTop: 2,
+  },
+  templatePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+  },
+  templatePickerBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  templateModalContainer: {
+    flex: 1,
+  },
+  templateModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 0.5,
   },
 });

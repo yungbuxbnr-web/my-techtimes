@@ -25,6 +25,7 @@ const YEAR_START_DATE_KEY = '@techtimes_year_start_date';
 
 export default function StatsScreen() {
   const { theme, overlayStrength } = useThemeContext();
+  const [statsSubTab, setStatsSubTab] = useState<'performance' | 'heatmap' | 'vhc' | 'reconciliation' | 'reports'>('performance');
   const [refreshing, setRefreshing] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState<any>(null);
   const [todayStats, setTodayStats] = useState<any>(null);
@@ -459,6 +460,41 @@ export default function StatsScreen() {
       style={styles.background}
     >
       <View style={[styles.overlay, { backgroundColor: `rgba(0, 0, 0, ${overlayStrength})` }]}>
+        {/* Stats Sub-navigation */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, borderBottomWidth: 0.5, borderBottomColor: theme.border }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 0 }}
+        >
+          {([
+            { key: 'performance', label: 'Performance' },
+            { key: 'heatmap', label: 'Heatmap' },
+            { key: 'vhc', label: 'VHC' },
+            { key: 'reconciliation', label: 'Reconciliation' },
+            { key: 'reports', label: 'Reports' },
+          ] as const).map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderBottomWidth: statsSubTab === tab.key ? 2.5 : 0,
+                borderBottomColor: theme.primary,
+              }}
+              onPress={() => {
+                console.log('StatsScreen: Sub-tab pressed:', tab.key);
+                setStatsSubTab(tab.key);
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '600', color: statsSubTab === tab.key ? theme.primary : theme.textSecondary }}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {statsSubTab === 'performance' && (
         <ScrollView
           style={styles.container}
           contentContainerStyle={styles.contentContainer}
@@ -1109,20 +1145,20 @@ export default function StatsScreen() {
 
               return (
                 <>
-                  <View style={styles.metricRow}>
+                  <View style={styles.metricRowGrid}>
                     <View style={styles.metricItem}>
                       <Text style={[styles.metricValue, { color: utilizationColor }]}>{utilization.toFixed(1)}%</Text>
-                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Utilization</Text>
+                      <Text style={[styles.metricLabelSm, { color: theme.textSecondary }]}>Utilization</Text>
                     </View>
                     <View style={[styles.metricDivider, { backgroundColor: theme.border }]} />
                     <View style={styles.metricItem}>
                       <Text style={[styles.metricValue, { color: theme.primary }]}>{avgAwPerDay.toFixed(1)}</Text>
-                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Avg AW/Day</Text>
+                      <Text style={[styles.metricLabelSm, { color: theme.textSecondary }]}>Avg AW/Day</Text>
                     </View>
                     <View style={[styles.metricDivider, { backgroundColor: theme.border }]} />
                     <View style={styles.metricItem}>
                       <Text style={[styles.metricValue, { color: theme.primary }]}>{avgHoursPerDay.toFixed(2)}h</Text>
-                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Avg Hrs/Day</Text>
+                      <Text style={[styles.metricLabelSm, { color: theme.textSecondary }]}>Avg Hrs/Day</Text>
                     </View>
                   </View>
                   <View style={[styles.paceRow, { borderTopColor: theme.border }]}>
@@ -1164,6 +1200,76 @@ export default function StatsScreen() {
             ))}
           </View>
         </ScrollView>
+        )}
+
+        {statsSubTab !== 'performance' && (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 }}>
+            {statsSubTab === 'heatmap' && (
+              <>
+                <IconSymbol ios_icon_name="calendar.badge.clock" android_material_icon_name="calendar-today" size={56} color={theme.primary} />
+                <Text style={{ fontSize: 22, fontWeight: '700', color: theme.text, textAlign: 'center' }}>Performance Heatmap</Text>
+                <Text style={{ fontSize: 15, color: theme.textSecondary, textAlign: 'center' }}>Visual calendar showing daily performance metrics</Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: theme.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 }}
+                  onPress={() => {
+                    console.log('StatsScreen: User tapped Open Heatmap');
+                    router.push('/heatmap' as any);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Open Heatmap</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {statsSubTab === 'vhc' && (
+              <>
+                <IconSymbol ios_icon_name="checkmark.shield.fill" android_material_icon_name="verified" size={56} color={theme.chartGreen} />
+                <Text style={{ fontSize: 22, fontWeight: '700', color: theme.text, textAlign: 'center' }}>VHC Intelligence</Text>
+                <Text style={{ fontSize: 15, color: theme.textSecondary, textAlign: 'center' }}>Advanced analytics on VHC completion and performance</Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: theme.chartGreen, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 }}
+                  onPress={() => {
+                    console.log('StatsScreen: User tapped Open VHC Intelligence');
+                    router.push('/vhc-intelligence' as any);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Open VHC Intelligence</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {statsSubTab === 'reconciliation' && (
+              <>
+                <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="compare-arrows" size={56} color={theme.chartYellow} />
+                <Text style={{ fontSize: 22, fontWeight: '700', color: theme.text, textAlign: 'center' }}>Reconciliation Centre</Text>
+                <Text style={{ fontSize: 15, color: theme.textSecondary, textAlign: 'center' }}>Check that recorded, billed and open hours reconcile correctly</Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: theme.chartYellow, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 }}
+                  onPress={() => {
+                    console.log('StatsScreen: User tapped Open Reconciliation');
+                    router.push('/reconciliation' as any);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Open Reconciliation</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {statsSubTab === 'reports' && (
+              <>
+                <IconSymbol ios_icon_name="doc.richtext.fill" android_material_icon_name="article" size={56} color={theme.primary} />
+                <Text style={{ fontSize: 22, fontWeight: '700', color: theme.text, textAlign: 'center' }}>Report Builder</Text>
+                <Text style={{ fontSize: 15, color: theme.textSecondary, textAlign: 'center' }}>Build custom reports with the sections you need</Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: theme.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 }}
+                  onPress={() => {
+                    console.log('StatsScreen: User tapped Open Report Builder');
+                    router.push('/report-builder' as any);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Open Report Builder</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
       </View>
     </ImageBackground>
   );
@@ -1294,11 +1400,6 @@ const styles = StyleSheet.create({
   efficiencyDetailValue: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
   },
   periodCard: {
     padding: 16,
@@ -1665,17 +1766,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  metricsCard: {
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  metricRow: {
+  metricRowGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
@@ -1685,12 +1776,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  metricValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  metricLabel: {
+  metricLabelSm: {
     fontSize: 11,
     textAlign: 'center',
   },
