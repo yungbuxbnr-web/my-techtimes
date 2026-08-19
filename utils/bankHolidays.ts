@@ -1,5 +1,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { buildWorkScheduleInput, getNetScheduledHours } from './workTimeEngine';
 
 const BANK_HOLIDAYS_KEY = 'england_bank_holidays';
 const LAST_FETCH_KEY = 'bank_holidays_last_fetch';
@@ -221,7 +222,7 @@ export async function ensureTrackedHolidaysInitialised(): Promise<void> {
  */
 export async function importBankHolidaysAsAbsences(
   holidays: BankHoliday[],
-  schedule: { dailyWorkingHours: number; startTime?: string; endTime?: string; saturdayDailyHours?: number }
+  schedule: { dailyWorkingHours: number; startTime?: string; endTime?: string; lunchStartTime?: string; lunchEndTime?: string; saturdayDailyHours?: number; saturdayStartTime?: string; saturdayEndTime?: string }
 ): Promise<{ added: number; skipped: number }> {
   console.log('BankHolidays: importBankHolidaysAsAbsences — importing', holidays.length, 'holidays');
   const { offlineStorage } = await import('./offlineStorage');
@@ -244,11 +245,19 @@ export async function importBankHolidaysAsAbsences(
     holidayDate.setHours(0, 0, 0, 0);
     const monthStr = holiday.date.substring(0, 7); // YYYY-MM
 
-    // Determine hours for this day
+    // Determine hours for this day using net scheduled hours (lunch excluded)
     const dayOfWeek = holidayDate.getDay();
-    let dailyHours = schedule.dailyWorkingHours;
-    if (dayOfWeek === 6 && schedule.saturdayDailyHours !== undefined) {
-      dailyHours = schedule.saturdayDailyHours;
+    let dailyHours: number;
+    if (dayOfWeek === 6 && schedule.saturdayStartTime && schedule.saturdayEndTime) {
+      const satInput = buildWorkScheduleInput({
+        startTime: schedule.saturdayStartTime,
+        endTime: schedule.saturdayEndTime,
+        lunchStartTime: schedule.lunchStartTime || '12:00',
+        lunchEndTime: schedule.lunchEndTime || '12:30',
+      });
+      dailyHours = getNetScheduledHours(satInput);
+    } else {
+      dailyHours = getNetScheduledHours(buildWorkScheduleInput(schedule));
     }
 
     await offlineStorage.createAbsence({

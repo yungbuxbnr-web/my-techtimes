@@ -14,6 +14,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { router } from 'expo-router';
 import { api, DashboardData } from '@/utils/api';
 import { formatTime } from '@/utils/jobCalculations';
+import { buildWorkScheduleInput, getNetElapsedWorkingMinutes, getWorkingProgress, getNetScheduledHours } from '@/utils/workTimeEngine';
 import CircularProgress from '@/components/CircularProgress';
 import AppBackground from '@/components/AppBackground';
 
@@ -23,7 +24,7 @@ export default function HomeScreen() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [technicianName, setTechnicianName] = useState('Technician');
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [workSchedule, setWorkSchedule] = useState({ startTime: '07:00', endTime: '18:00', dailyWorkingHours: 8.5 });
+  const [workSchedule, setWorkSchedule] = useState({ startTime: '07:00', endTime: '18:00', dailyWorkingHours: 8.5, lunchStartTime: '12:00', lunchEndTime: '12:30' });
   const [liveAvailableHours, setLiveAvailableHours] = useState(0);
 
   const loadDashboard = useCallback(async () => {
@@ -53,6 +54,8 @@ export default function HomeScreen() {
         startTime: schedule.startTime || '07:00',
         endTime: schedule.endTime || '18:00',
         dailyWorkingHours: schedule.dailyWorkingHours || 8.5,
+        lunchStartTime: schedule.lunchStartTime || '12:00',
+        lunchEndTime: schedule.lunchEndTime || '12:30',
       });
     } catch (error) {
       console.error('HomeScreen: Error loading schedule:', error);
@@ -61,27 +64,10 @@ export default function HomeScreen() {
 
   const calculateLiveAvailableHours = useCallback(() => {
     const now = new Date();
-    const [startHour, startMinute] = workSchedule.startTime.split(':').map(Number);
-    const [endHour, endMinute] = workSchedule.endTime.split(':').map(Number);
-    
-    const startTime = new Date(now);
-    startTime.setHours(startHour, startMinute, 0, 0);
-    
-    const endTime = new Date(now);
-    endTime.setHours(endHour, endMinute, 0, 0);
-    
-    // Check if current time is within work hours
-    if (now >= startTime && now <= endTime) {
-      const elapsedMs = now.getTime() - startTime.getTime();
-      const elapsedHours = elapsedMs / (1000 * 60 * 60);
-      setLiveAvailableHours(elapsedHours);
-    } else if (now > endTime) {
-      // Work day is over
-      setLiveAvailableHours(workSchedule.dailyWorkingHours);
-    } else {
-      // Before work starts
-      setLiveAvailableHours(0);
-    }
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const wsInput = buildWorkScheduleInput(workSchedule);
+    const netElapsed = getNetElapsedWorkingMinutes(wsInput, nowMins);
+    setLiveAvailableHours(netElapsed / 60);
   }, [workSchedule]);
 
   useEffect(() => {
@@ -154,9 +140,9 @@ export default function HomeScreen() {
   const endTime = new Date(now);
   endTime.setHours(endHour, endMinute, 0, 0);
   
-  const totalWorkMs = endTime.getTime() - startTime.getTime();
-  const elapsedMs = now.getTime() - startTime.getTime();
-  const workDayProgress = Math.max(0, Math.min(100, (elapsedMs / totalWorkMs) * 100));
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const wsInputProgress = buildWorkScheduleInput(workSchedule);
+  const workDayProgress = getWorkingProgress(wsInputProgress, nowMins) * 100;
   
   const isWorkTime = now >= startTime && now <= endTime;
   const workDayStatus = now < startTime ? 'Not Started' : now > endTime ? 'Completed' : 'In Progress';
@@ -226,7 +212,7 @@ export default function HomeScreen() {
                 Available Hours Today:
               </Text>
               <Text style={[styles.liveHoursValue, { color: theme.primary }]}>
-                {liveAvailableHours.toFixed(2)}h / {workSchedule.dailyWorkingHours.toFixed(2)}h
+                {liveAvailableHours.toFixed(2)}h / {getNetScheduledHours(buildWorkScheduleInput(workSchedule)).toFixed(2)}h
               </Text>
             </View>
           </View>

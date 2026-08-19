@@ -16,7 +16,8 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
-import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
+import { formatTime, formatDecimalHours, countWorkingDaysInMonth } from '@/utils/jobCalculations';
+import { buildWorkScheduleInput, getNetScheduledHours } from '@/utils/workTimeEngine';
 import { exportToPdf, exportToJson } from '@/utils/exportUtils';
 import * as Sharing from 'expo-sharing';
 
@@ -132,7 +133,13 @@ export default function JobStatsScreen() {
         await exportToPdf(jobsToExport, technicianName, {
           type: 'all',
           targetHours: settings.monthlyTarget,
-          availableHours: schedule.dailyWorkingHours * 20,
+          availableHours: countWorkingDaysInMonth(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            schedule.workingDays || [1, 2, 3, 4, 5],
+            undefined,
+            schedule
+          ) * getNetScheduledHours(buildWorkScheduleInput(schedule)),
         });
       } else {
         await exportToJson(jobsToExport);

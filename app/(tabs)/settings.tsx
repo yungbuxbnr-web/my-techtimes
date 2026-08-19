@@ -19,6 +19,7 @@ import {
 } from '@/utils/widgetManager';
 import { updateLiveWidget, dismissLiveWidget } from '@/utils/liveWidget';
 import { fetchAndStoreBankHolidays, importBankHolidaysAsAbsences } from '@/utils/bankHolidays';
+import { buildWorkScheduleInput, getNetScheduledHours } from '@/utils/workTimeEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -531,7 +532,7 @@ export default function SettingsScreen() {
         const dayOfWeek = exportDate.getDay();
         const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
         const isWorkingDay = workingDays.includes(dayOfWeek);
-        exportOptions.availableHours = isWorkingDay ? schedule.dailyWorkingHours : 0;
+        exportOptions.availableHours = isWorkingDay ? getNetScheduledHours(buildWorkScheduleInput(schedule)) : 0;
       } else if (exportType === 'weekly') {
         const weekEnd = new Date(exportWeekStart);
         weekEnd.setDate(exportWeekStart.getDate() + 6); // Saturday is 6 days after Sunday
@@ -549,7 +550,7 @@ export default function SettingsScreen() {
           day.setDate(exportWeekStart.getDate() + i);
           const dayOfWeek = day.getDay();
           if (workingDays.includes(dayOfWeek)) {
-            weekAvailableHours += schedule.dailyWorkingHours;
+            weekAvailableHours += getNetScheduledHours(buildWorkScheduleInput(schedule));
           }
         }
         exportOptions.availableHours = weekAvailableHours;
