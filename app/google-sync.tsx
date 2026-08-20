@@ -9,7 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -34,6 +34,7 @@ const WHAT_SYNCED = [
 ];
 
 export default function GoogleSyncScreen() {
+  const syncAvailable = false;
   const { theme } = useThemeContext();
   const { request, response, promptAsync, redirectUri } = useGoogleAuth();
 
@@ -133,6 +134,36 @@ export default function GoogleSyncScreen() {
     console.log('GoogleSyncScreen: User tapped Connect Google Account');
     promptAsync();
   };
+
+  if (!syncAvailable) {
+    console.log('GoogleSyncScreen: Showing coming-soon card (sync not yet available)');
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <Stack.Screen options={{ title: 'Google Drive Sync', headerBackTitle: 'Back' }} />
+        <ScrollView contentContainerStyle={comingSoonStyles.container}>
+          <View style={[comingSoonStyles.card, { backgroundColor: theme.card }]}>
+            <AntDesign name="google" size={52} color="#4285F4" />
+            <Text style={[comingSoonStyles.title, { color: theme.text }]}>Google Drive Sync</Text>
+            <Text style={[comingSoonStyles.subtitle, { color: theme.textSecondary }]}>
+              Google Drive sync is coming in a future update.
+            </Text>
+            <Text style={[comingSoonStyles.body, { color: theme.textSecondary }]}>
+              In the meantime, use the Billing Backup Centre to export and restore your billing data manually.
+            </Text>
+            <TouchableOpacity
+              style={[comingSoonStyles.backBtn, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                console.log('GoogleSyncScreen: Back button tapped on coming-soon card');
+                router.back();
+              }}
+            >
+              <Text style={comingSoonStyles.backBtnText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -256,6 +287,51 @@ export default function GoogleSyncScreen() {
     </ScrollView>
   );
 }
+
+const comingSoonStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    minHeight: 500,
+  },
+  card: {
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    gap: 14,
+    width: '100%',
+    maxWidth: 400,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  body: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  backBtn: {
+    marginTop: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  backBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});
 
 const styles = StyleSheet.create({
   loadingContainer: {

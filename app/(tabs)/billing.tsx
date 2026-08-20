@@ -22,6 +22,13 @@ import { billingStorage, BillingRecord } from '@/utils/billingStorage';
 import { normaliseBillingStatus } from '@/utils/billingEngine';
 import AppBackground from '@/components/AppBackground';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
+
+const BACKUP_HISTORY_KEY = '@techtimes_billing_backup_history';
 
 const safeHaptics = {
   impactAsync: async (style: Haptics.ImpactFeedbackStyle) => {
@@ -268,6 +275,485 @@ function BillingJobRow({
         </TouchableOpacity>
       </RNAnimated.View>
     </View>
+  );
+}
+
+// ── BackupSubTab ──────────────────────────────────────────────────────────────
+
+function BackupSubTab({ theme }: { theme: any }) {
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [backupHistory, setBackupHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(BACKUP_HISTORY_KEY).then(raw => {
+      if (raw) {
+        try { setBackupHistory(JSON.parse(raw)); } catch {}
+      }
+    });
+  }, []);
+
+  const saveHistoryEntry = async (ts: string) => {
+    const next = [ts, ...backupHistory].slice(0, 5);
+    setBackupHistory(next);
+    await AsyncStorage.setItem(BACKUP_HISTORY_KEY, JSON.stringify(next));
+  };
+
+  const handleExport = async () => {
+    console.log('BillingScreen: Export billing backup tapped');
+    setExporting(true);
+    try {
+      const json = await billingStorage.exportBillingBackup();
+      const ts = new Date().toISOString();
+      const fileName = `TechTimes_BillingBackup_${ts.split('T')[0]}.json`;
+      const destUri = (FileSystem.cacheDirectory ?? '') + fileName;
+      await FileSystem.writeAsStringAsync(destUri, json, { encoding: FileSystem.EncodingType.UTF8 });
+      console.log('BillingScreen: Backup written to', destUri);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(destUri, { mimeType: 'application/json', dialogTitle: 'Share Billing Backup' });
+        console.log('BillingScreen: Backup shared successfully');
+      } else {
+        Alert.alert('Backup Saved', `Backup saved to: ${destUri}`);
+      }
+      await saveHistoryEntry(new Date().toLocaleString());
+    } catch (err: any) {
+      console.error('BillingScreen: Export backup failed', err);
+      Alert.alert('Export Failed', err?.message ?? 'Could not export backup.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async () => {
+    console.log('BillingScreen: Restore billing backup tapped');
+    setImporting(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.[0]) {
+        console.log('BillingScreen: Restore cancelled by user');
+        setImporting(false);
+        return;
+      }
+      const fileUri = result.assets[0].uri;
+      console.log('BillingScreen: Picked backup file:', fileUri);
+      const raw = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
+      let parsed: any;
+      try { parsed = JSON.parse(raw); } catch {
+        Alert.alert('Invalid File', 'The selected file is not valid JSON.');
+        setImporting(false);
+        return;
+      }
+      if (!parsed.billingBackupVersion || !Array.isArray(parsed.records)) {
+        Alert.alert('Invalid Backup', 'This file does not appear to be a Tech Times billing backup (missing billingBackupVersion or records array).');
+        setImporting(false);
+        return;
+      }
+      const recordCount = parsed.records.length;
+      Alert.alert(
+        'Restore Billing Backup',
+        `This backup contains ${recordCount} billing record${recordCount !== 1 ? 's' : ''}.\n\nExisting records will be merged. Continue?`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => setImporting(false) },
+          {
+            text: 'Restore',
+            onPress: async () => {
+              try {
+                console.log('BillingScreen: Confirmed restore — importing', recordCount, 'records');
+                const { imported, unmatched } = await billingStorage.importBillingBackup(raw);
+                console.log('BillingScreen: Restore complete — imported:', imported, 'unmatched:', unmatched);
+                Alert.alert('Restore Complete', `Imported ${imported} record${imported !== 1 ? 's' : ''}${unmatched > 0 ? `\n${unmatched} unmatched (no matching job found)` : ''}.`);
+              } catch (err: any) {
+                console.error('BillingScreen: Restore failed', err);
+                Alert.alert('Restore Failed', err?.message ?? 'Could not restore backup.');
+              } finally {
+                setImporting(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (err: any) {
+      console.error('BillingScreen: Import error', err);
+      Alert.alert('Import Error', err?.message ?? 'Could not read file.');
+      setImporting(false);
+    }
+  };
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.subTabContent}>
+      {/* Header card */}
+      <View style={[styles.backupCard, { backgroundColor: theme.card }]}>
+        <IconSymbol ios_icon_name="arrow.up.doc.fill" android_material_icon_name="backup" size={40} color={theme.primary} />
+        <Text style={[styles.backupCardTitle, { color: theme.text }]}>Backup Centre</Text>
+        <Text style={[styles.backupCardSubtitle, { color: theme.textSecondary }]}>
+          Export your billing data as a JSON file or restore from a previous backup.
+        </Text>
+      </View>
+
+      {/* Export */}
+      <View style={[styles.backupSection, { backgroundColor: theme.card }]}>
+        <Text style={[styles.backupSectionTitle, { color: theme.text }]}>Export Backup</Text>
+        <Text style={[styles.backupSectionDesc, { color: theme.textSecondary }]}>
+          Save all billing records to a JSON file you can share or store externally.
+        </Text>
+        <TouchableOpacity
+          style={[styles.reportBtn, { backgroundColor: theme.primary, opacity: exporting ? 0.6 : 1 }]}
+          onPress={handleExport}
+          disabled={exporting}
+        >
+          <Text style={styles.reportBtnText}>{exporting ? 'Exporting…' : 'Export Billing Backup'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Restore */}
+      <View style={[styles.backupSection, { backgroundColor: theme.card }]}>
+        <Text style={[styles.backupSectionTitle, { color: theme.text }]}>Restore Backup</Text>
+        <Text style={[styles.backupSectionDesc, { color: theme.textSecondary }]}>
+          Pick a previously exported JSON backup file to restore billing records.
+        </Text>
+        <TouchableOpacity
+          style={[styles.reportBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, opacity: importing ? 0.6 : 1 }]}
+          onPress={handleImport}
+          disabled={importing}
+        >
+          <Text style={[styles.reportBtnText, { color: theme.text }]}>{importing ? 'Importing…' : 'Restore Billing Backup'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* History */}
+      {backupHistory.length > 0 && (
+        <View style={[styles.backupSection, { backgroundColor: theme.card }]}>
+          <Text style={[styles.backupSectionTitle, { color: theme.text }]}>Recent Exports</Text>
+          {backupHistory.map((ts, i) => (
+            <View key={i} style={[styles.historyRow, i > 0 && { borderTopWidth: 0.5, borderTopColor: theme.border }]}>
+              <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color={theme.textSecondary} />
+              <Text style={[styles.historyText, { color: theme.textSecondary }]}>{ts}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+// ── ReportsSubTab ─────────────────────────────────────────────────────────────
+
+function ReportsSubTab({
+  periodMode,
+  periodLabel,
+  periodStats,
+  unbilledHours,
+  renderPeriodSelector,
+  theme,
+}: {
+  periodMode: PeriodMode;
+  periodLabel: string;
+  periodStats: {
+    recordedHours: number; billedHours: number; openHours: number; readyHours: number;
+    jobsRecorded: number; jobsBilled: number; jobsOpen: number; jobsReady: number;
+    recordedAW: number; unbilledHours: number;
+  };
+  unbilledHours: number;
+  renderPeriodSelector: () => React.ReactNode;
+  theme: any;
+}) {
+  const [generating, setGenerating] = useState(false);
+
+  const billingConversion = periodStats.recordedHours > 0
+    ? (periodStats.billedHours / periodStats.recordedHours) * 100
+    : 0;
+
+  const handleGeneratePDF = async () => {
+    console.log('BillingScreen: Generate PDF report tapped for period:', periodLabel);
+    setGenerating(true);
+    try {
+      const now = new Date();
+      const currentDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+      const conversionDisplay = billingConversion.toFixed(1);
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 30px; background: #f5f5f5; color: #2c3e50; }
+            .container { background: white; border-radius: 16px; padding: 36px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+            .header { text-align: center; padding: 24px; background: linear-gradient(135deg, #0a0a2e, #1a1a5e); border-radius: 12px; margin-bottom: 32px; }
+            .header h1 { color: #00d4ff; font-size: 32px; font-weight: 800; }
+            .header .period { color: #fff; font-size: 18px; margin-top: 8px; }
+            .header .meta { color: #aaaacc; font-size: 13px; margin-top: 8px; }
+            .section { margin-bottom: 28px; }
+            h2 { font-size: 20px; color: #0a0a5e; border-bottom: 2px solid #00d4ff; padding-bottom: 8px; margin-bottom: 16px; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+            .stat-card { background: #f0f4ff; border-radius: 10px; padding: 16px; border-left: 4px solid #00d4ff; }
+            .stat-card .value { font-size: 28px; font-weight: 800; color: #0055cc; }
+            .stat-card .label { font-size: 13px; color: #555; margin-top: 4px; }
+            .stat-card .sub { font-size: 12px; color: #888; margin-top: 2px; }
+            .conversion { background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-left-color: #4caf50; }
+            .conversion .value { color: #2e7d32; }
+            .footer { margin-top: 32px; text-align: center; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Billing Report</h1>
+              <div class="period">${periodLabel}</div>
+              <div class="meta">Generated: ${currentDate} &nbsp;|&nbsp; Tech Times</div>
+            </div>
+            <div class="section">
+              <h2>Hours Summary</h2>
+              <div class="grid">
+                <div class="stat-card">
+                  <div class="value">${periodStats.recordedHours.toFixed(1)}h</div>
+                  <div class="label">Recorded Hours</div>
+                  <div class="sub">${periodStats.jobsRecorded} jobs</div>
+                </div>
+                <div class="stat-card">
+                  <div class="value">${periodStats.billedHours.toFixed(1)}h</div>
+                  <div class="label">Billed Hours</div>
+                  <div class="sub">${periodStats.jobsBilled} jobs closed</div>
+                </div>
+                <div class="stat-card">
+                  <div class="value">${periodStats.openHours.toFixed(1)}h</div>
+                  <div class="label">Open Hours</div>
+                  <div class="sub">${periodStats.jobsOpen} jobs open</div>
+                </div>
+                <div class="stat-card">
+                  <div class="value">${unbilledHours.toFixed(1)}h</div>
+                  <div class="label">Total Unbilled</div>
+                  <div class="sub">Open + Ready to Bill</div>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <h2>Billing Conversion</h2>
+              <div class="grid">
+                <div class="stat-card conversion">
+                  <div class="value">${conversionDisplay}%</div>
+                  <div class="label">Billing Conversion</div>
+                  <div class="sub">Billed ÷ Recorded</div>
+                </div>
+                <div class="stat-card">
+                  <div class="value">${periodStats.jobsReady}</div>
+                  <div class="label">Ready to Bill</div>
+                  <div class="sub">${periodStats.readyHours.toFixed(1)}h pending</div>
+                </div>
+              </div>
+            </div>
+            <div class="footer">Tech Times Billing Report &nbsp;|&nbsp; ${periodLabel} &nbsp;|&nbsp; ${currentDate}</div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      console.log('BillingScreen: PDF generated at', uri);
+      const fileName = `TechTimes_BillingReport_${new Date().toISOString().split('T')[0]}.pdf`;
+      const destUri = (FileSystem.cacheDirectory ?? '') + fileName;
+      if (uri !== destUri) {
+        await FileSystem.copyAsync({ from: uri, to: destUri });
+        try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
+      }
+      console.log('BillingScreen: PDF report copied to', destUri);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(destUri, { mimeType: 'application/pdf', dialogTitle: 'Share Billing Report', UTI: 'com.adobe.pdf' });
+        console.log('BillingScreen: PDF report shared successfully');
+      } else {
+        Alert.alert('PDF Saved', `Report saved to: ${destUri}`);
+      }
+    } catch (err: any) {
+      console.error('BillingScreen: PDF report generation failed', err);
+      Alert.alert('Export Failed', err?.message ?? 'Could not generate PDF report.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const conversionDisplay = billingConversion.toFixed(1);
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.subTabContent}>
+      {renderPeriodSelector()}
+
+      {/* Preview card */}
+      <View style={[styles.backupSection, { backgroundColor: theme.card }]}>
+        <Text style={[styles.backupSectionTitle, { color: theme.text }]}>Period Summary — {periodLabel}</Text>
+        <View style={styles.reportPreviewGrid}>
+          <View style={[styles.reportPreviewCell, { backgroundColor: theme.background }]}>
+            <Text style={[styles.reportPreviewValue, { color: theme.primary }]}>{periodStats.recordedHours.toFixed(1)}h</Text>
+            <Text style={[styles.reportPreviewLabel, { color: theme.textSecondary }]}>Recorded</Text>
+            <Text style={[styles.reportPreviewSub, { color: theme.textSecondary }]}>{periodStats.jobsRecorded} jobs</Text>
+          </View>
+          <View style={[styles.reportPreviewCell, { backgroundColor: theme.background }]}>
+            <Text style={[styles.reportPreviewValue, { color: theme.chartGreen }]}>{periodStats.billedHours.toFixed(1)}h</Text>
+            <Text style={[styles.reportPreviewLabel, { color: theme.textSecondary }]}>Billed</Text>
+            <Text style={[styles.reportPreviewSub, { color: theme.textSecondary }]}>{periodStats.jobsBilled} jobs</Text>
+          </View>
+          <View style={[styles.reportPreviewCell, { backgroundColor: theme.background }]}>
+            <Text style={[styles.reportPreviewValue, { color: theme.chartRed }]}>{periodStats.openHours.toFixed(1)}h</Text>
+            <Text style={[styles.reportPreviewLabel, { color: theme.textSecondary }]}>Open</Text>
+            <Text style={[styles.reportPreviewSub, { color: theme.textSecondary }]}>{periodStats.jobsOpen} jobs</Text>
+          </View>
+          <View style={[styles.reportPreviewCell, { backgroundColor: theme.background }]}>
+            <Text style={[styles.reportPreviewValue, { color: theme.chartGreen }]}>{conversionDisplay}%</Text>
+            <Text style={[styles.reportPreviewLabel, { color: theme.textSecondary }]}>Conversion</Text>
+            <Text style={[styles.reportPreviewSub, { color: theme.textSecondary }]}>Billed ÷ Recorded</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Generate button */}
+      <TouchableOpacity
+        style={[styles.reportBtn, { backgroundColor: theme.primary, marginHorizontal: 16, opacity: generating ? 0.6 : 1 }]}
+        onPress={handleGeneratePDF}
+        disabled={generating}
+      >
+        <Text style={styles.reportBtnText}>{generating ? 'Generating PDF…' : 'Generate PDF Report'}</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+// ── TrendsSubTab ──────────────────────────────────────────────────────────────
+
+function TrendsSubTab({
+  periodMode,
+  selectedDate,
+  periodStats,
+  jobs,
+  billingRecords,
+  viewBy,
+  renderPeriodSelector,
+  theme,
+}: {
+  periodMode: PeriodMode;
+  selectedDate: Date;
+  periodStats: {
+    recordedHours: number; billedHours: number; openHours: number;
+    jobsRecorded: number; readyHours: number; jobsBilled: number;
+    jobsOpen: number; jobsReady: number; recordedAW: number;
+    unbilledHours: number;
+  };
+  jobs: Job[];
+  billingRecords: BillingRecord[];
+  viewBy: 'work_date' | 'billing_date';
+  renderPeriodSelector: () => React.ReactNode;
+  theme: any;
+}) {
+  // Compute previous period date
+  const prevDate = useMemo(() => navigatePeriod(periodMode, selectedDate, -1), [periodMode, selectedDate]);
+
+  // Compute previous period stats
+  const prevStats = useMemo(() => {
+    const recordsByJobId = new Map(billingRecords.map(r => [r.jobId, r]));
+    const bounds = getPeriodBounds(periodMode, prevDate);
+
+    const allPeriodItems = jobs
+      .map(job => ({ job, billing: recordsByJobId.get(job.id) }))
+      .filter((item): item is { job: Job; billing: BillingRecord } => item.billing !== undefined)
+      .filter(({ job, billing }) => {
+        if (!bounds) return true;
+        const d = getJobDateForViewBy(job, billing, viewBy);
+        return d >= bounds.start && d <= bounds.end;
+      });
+
+    const recordedAW = allPeriodItems.reduce((s, { job }) => s + job.aw, 0);
+    const recordedHours = (recordedAW * 5) / 60;
+    const billedItems = allPeriodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
+    const billedHours = billedItems.reduce((s, { billing }) => s + billing.billedHours, 0);
+    const openItems = allPeriodItems.filter(({ billing }) =>
+      normaliseBillingStatus(billing.billingStatus) === 'open' && billing.billingStatus !== 'ready_to_bill'
+    );
+    const openHours = openItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
+    return { recordedHours, billedHours, openHours, jobsRecorded: allPeriodItems.length };
+  }, [jobs, billingRecords, periodMode, prevDate, viewBy]);
+
+  const currentConversion = periodStats.recordedHours > 0
+    ? (periodStats.billedHours / periodStats.recordedHours) * 100 : 0;
+  const prevConversion = prevStats.recordedHours > 0
+    ? (prevStats.billedHours / prevStats.recordedHours) * 100 : 0;
+
+  const trendCards = [
+    {
+      label: 'Recorded Hours',
+      current: periodStats.recordedHours,
+      prev: prevStats.recordedHours,
+      format: (v: number) => `${v.toFixed(1)}h`,
+      color: theme.primary,
+    },
+    {
+      label: 'Billed Hours',
+      current: periodStats.billedHours,
+      prev: prevStats.billedHours,
+      format: (v: number) => `${v.toFixed(1)}h`,
+      color: theme.chartGreen,
+    },
+    {
+      label: 'Open Hours',
+      current: periodStats.openHours,
+      prev: prevStats.openHours,
+      format: (v: number) => `${v.toFixed(1)}h`,
+      color: theme.chartRed,
+    },
+    {
+      label: 'Billing Conversion',
+      current: currentConversion,
+      prev: prevConversion,
+      format: (v: number) => `${v.toFixed(1)}%`,
+      color: theme.chartGreen,
+    },
+    {
+      label: 'Jobs Worked',
+      current: periodStats.jobsRecorded,
+      prev: prevStats.jobsRecorded,
+      format: (v: number) => String(Math.round(v)),
+      color: theme.primary,
+    },
+  ];
+
+  const prevPeriodLabel = periodMode !== 'entire' ? getPeriodLabel(periodMode, prevDate) : 'Previous';
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.subTabContent}>
+      {renderPeriodSelector()}
+
+      <Text style={[styles.trendsSectionLabel, { color: theme.textSecondary }]}>
+        Comparing current period vs {prevPeriodLabel}
+      </Text>
+
+      {trendCards.map(card => {
+        const diff = card.current - card.prev;
+        const pctDiff = card.prev !== 0 ? (diff / card.prev) * 100 : 0;
+        const isUp = diff > 0;
+        const isFlat = Math.abs(diff) < 0.01;
+        const arrowIcon = isFlat ? 'minus' : isUp ? 'arrow.up' : 'arrow.down';
+        const arrowColor = isFlat ? theme.textSecondary : isUp ? theme.chartGreen : theme.chartRed;
+        const currentDisplay = card.format(card.current);
+        const prevDisplay = card.format(card.prev);
+        const pctDisplay = isFlat ? '—' : `${isUp ? '+' : ''}${pctDiff.toFixed(1)}%`;
+
+        return (
+          <View key={card.label} style={[styles.trendCard, { backgroundColor: theme.card }]}>
+            <View style={styles.trendCardTop}>
+              <Text style={[styles.trendCardLabel, { color: theme.textSecondary }]}>{card.label}</Text>
+              <View style={[styles.trendArrowBadge, { backgroundColor: arrowColor + '22' }]}>
+                <IconSymbol ios_icon_name={arrowIcon} android_material_icon_name={isFlat ? 'remove' : isUp ? 'arrow-upward' : 'arrow-downward'} size={12} color={arrowColor} />
+                <Text style={[styles.trendPct, { color: arrowColor }]}>{pctDisplay}</Text>
+              </View>
+            </View>
+            <Text style={[styles.trendCurrentValue, { color: card.color }]}>{currentDisplay}</Text>
+            <Text style={[styles.trendPrevValue, { color: theme.textSecondary }]}>
+              Previous: {prevDisplay}
+            </Text>
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -1124,105 +1610,33 @@ export default function BillingScreen() {
 
         {/* ── TRENDS sub-tab ───────────────────────────────────────────────── */}
         {subTab === 'trends' && (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.subTabContent}
-          >
-            <View style={[styles.placeholderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <IconSymbol
-                ios_icon_name="chart.line.uptrend.xyaxis"
-                android_material_icon_name="trending-up"
-                size={48}
-                color={theme.primary}
-              />
-              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Trends</Text>
-              <Text style={[styles.placeholderSubtitle, { color: theme.textSecondary }]}>
-                Billing trends and historical charts coming soon
-              </Text>
-            </View>
-          </ScrollView>
+          <TrendsSubTab
+            periodMode={periodMode}
+            selectedDate={selectedDate}
+            periodStats={periodStats}
+            jobs={jobs}
+            billingRecords={billingRecords}
+            viewBy={viewBy}
+            renderPeriodSelector={renderPeriodSelector}
+            theme={theme}
+          />
         )}
 
         {/* ── REPORTS sub-tab ──────────────────────────────────────────────── */}
         {subTab === 'reports' && (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.subTabContent}
-          >
-            <View style={[styles.placeholderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <IconSymbol
-                ios_icon_name="doc.text.fill"
-                android_material_icon_name="description"
-                size={48}
-                color={theme.primary}
-              />
-              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Generate Report</Text>
-              <Text style={[styles.placeholderSubtitle, { color: theme.textSecondary }]}>
-                Create a billing summary report for any period
-              </Text>
-              <TouchableOpacity
-                style={[styles.reportBtn, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  console.log('BillingScreen: Generate billing report tapped');
-                  Alert.alert(
-                    'Generate Billing Report',
-                    `Generate a billing report for ${periodLabel}?\n\nRecorded: ${periodStats.recordedHours.toFixed(1)}h\nBilled: ${periodStats.billedHours.toFixed(1)}h\nUnbilled: ${unbilledHours.toFixed(1)}h`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Generate',
-                        onPress: () => {
-                          console.log('BillingScreen: Billing report generation confirmed');
-                          Alert.alert('Report Generated', 'Billing report feature coming soon.');
-                        },
-                      },
-                    ]
-                  );
-                }}
-              >
-                <Text style={styles.reportBtnText}>Generate Billing Report</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+          <ReportsSubTab
+            periodMode={periodMode}
+            periodLabel={periodLabel}
+            periodStats={periodStats}
+            unbilledHours={unbilledHours}
+            renderPeriodSelector={renderPeriodSelector}
+            theme={theme}
+          />
         )}
 
         {/* ── BACKUP sub-tab ───────────────────────────────────────────────── */}
         {subTab === 'backup' && (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.subTabContent}
-          >
-            <View style={[styles.placeholderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <IconSymbol
-                ios_icon_name="arrow.up.doc.fill"
-                android_material_icon_name="backup"
-                size={48}
-                color={theme.primary}
-              />
-              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Backup Centre</Text>
-              <Text style={[styles.placeholderSubtitle, { color: theme.textSecondary }]}>
-                Export or restore your billing data
-              </Text>
-              <TouchableOpacity
-                style={[styles.reportBtn, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  console.log('BillingScreen: Export billing backup tapped');
-                  Alert.alert('Export Backup', 'Billing backup export coming soon.');
-                }}
-              >
-                <Text style={styles.reportBtnText}>Export Billing Backup</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reportBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginTop: 8 }]}
-                onPress={() => {
-                  console.log('BillingScreen: Restore billing backup tapped');
-                  Alert.alert('Restore Backup', 'Billing backup restore coming soon.');
-                }}
-              >
-                <Text style={[styles.reportBtnText, { color: theme.text }]}>Restore Billing Backup</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+          <BackupSubTab theme={theme} />
         )}
 
         {/* Bulk Action Bar */}
@@ -1631,5 +2045,117 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  // Backup sub-tab
+  backupCard: {
+    margin: 16,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  backupCardTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  backupCardSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  backupSection: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 14,
+    padding: 16,
+  },
+  backupSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  backupSectionDesc: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  historyText: {
+    fontSize: 13,
+  },
+  // Reports sub-tab
+  reportPreviewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 12,
+  },
+  reportPreviewCell: {
+    flex: 1,
+    minWidth: '45%',
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+  },
+  reportPreviewValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  reportPreviewLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  reportPreviewSub: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  // Trends sub-tab
+  trendsSectionLabel: {
+    fontSize: 13,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  trendCard: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 14,
+    padding: 16,
+  },
+  trendCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trendCardLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  trendArrowBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  trendPct: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trendCurrentValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  trendPrevValue: {
+    fontSize: 13,
   },
 });

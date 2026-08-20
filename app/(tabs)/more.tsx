@@ -195,6 +195,14 @@ export default function MoreScreen() {
       title: 'About',
       items: [
         {
+          icon_ios: 'book.fill',
+          icon_android: 'menu-book',
+          label: 'Help & User Manual',
+          subtitle: 'Complete guide to Tech Times',
+          route: '/user-manual',
+          color: '#2563EB',
+        },
+        {
           icon_ios: 'info.circle.fill',
           icon_android: 'info',
           label: 'About Tech Times',

@@ -16,10 +16,12 @@ import { IconSymbol } from '@/components/IconSymbol';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import Constants from 'expo-constants';
 
 export default function AboutScreen() {
   console.log('AboutScreen: Rendering comprehensive about page');
   const { theme } = useThemeContext();
+  const appVersion = Constants.expoConfig?.version ?? '1.7.0';
   const [exporting, setExporting] = useState(false);
 
   const handleExportToPDF = async () => {
@@ -104,7 +106,7 @@ export default function AboutScreen() {
               <h1>⚙️ Tech Times</h1>
               <div class="subtitle">Complete User Guide &amp; Feature Documentation</div>
               <div class="meta">
-                <strong>Version:</strong> 1.0.9 &nbsp;|&nbsp;
+                <strong>Version:</strong> ${appVersion} &nbsp;|&nbsp;
                 <strong>Generated:</strong> ${currentDate}
               </div>
             </div>
@@ -368,7 +370,7 @@ export default function AboutScreen() {
 
             <div class="section" id="privacy">
               <h2>🔒 18. Privacy &amp; Data</h2>
-              <p>All data stored locally (AsyncStorage + device file system). No internet required. No data sent to servers. No analytics, no tracking, no cloud sync.</p>
+              <p>Core job records, billing data, work schedules and absences are stored locally on your device and never automatically uploaded. When you use the AI Assistant, your query is sent to an AI service over the internet — your raw job database is not sent. Optional Google Drive sync, if enabled, uses the internet to back up data to your own Google Drive. PIN and biometric secrets never leave your device.</p>
               <div class="success-box">
                 <strong>✅ GDPR Compliant:</strong> Only vehicle regs and job data stored. No customer personal info. Permissions: Camera (optional), Photo Library (optional), Notifications (optional), Biometrics (optional).
               </div>
@@ -450,7 +452,7 @@ export default function AboutScreen() {
             </div>
 
             <div class="footer">
-              <h3>⚙️ Tech Times v1.0.9</h3>
+              <h3>⚙️ Tech Times v${appVersion}</h3>
               <p>Secure Personal Job Tracking for Vehicle Technicians</p>
               <p style="margin-top: 10px;">Created by b.rugge — Owner &amp; Creator</p>
               <p style="margin-top: 8px;">© 2025 b.rugge / Tech Times. All rights reserved.</p>
@@ -464,7 +466,7 @@ export default function AboutScreen() {
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       console.log('AboutScreen: PDF generated at', uri);
 
-      const fileName = `TechTimes_Guide_v1.0.9_${now.toISOString().split('T')[0]}.pdf`;
+      const fileName = `TechTimes_Guide_v${appVersion}_${now.toISOString().split('T')[0]}.pdf`;
       const cacheDir = FileSystem.cacheDirectory ?? '';
       const destUri = cacheDir + fileName;
       if (uri !== destUri) {
@@ -515,7 +517,7 @@ export default function AboutScreen() {
             color={theme.primary}
           />
           <Text style={[styles.appName, { color: theme.text }]}>Tech Times</Text>
-          <Text style={[styles.versionText, { color: theme.primary }]}>Version 1.0.9</Text>
+          <Text style={[styles.versionText, { color: theme.primary }]}>Version {appVersion}</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             Secure Personal Job Tracking for Vehicle Technicians
           </Text>
@@ -765,7 +767,7 @@ export default function AboutScreen() {
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>18. Privacy &amp; Data</Text>
           <Text style={[styles.text, { color: theme.textSecondary }]}>
-            All data stored locally (AsyncStorage + device file system). No internet required. No data sent to servers. No analytics, no tracking, no cloud sync. GDPR compliant: only vehicle regs and job data stored, no customer personal info.
+            Core job records, billing data, work schedules and absences are stored locally on your device and never automatically uploaded. When you use the AI Assistant, your query is sent to an AI service over the internet — your raw job database is not sent. Optional Google Drive sync, if enabled, uses the internet to back up data to your own Google Drive. PIN and biometric secrets never leave your device.
           </Text>
           <Text style={[styles.text, { color: theme.textSecondary }]}>
             Permissions: Camera (optional, for photos/OCR), Photo Library (optional), Notifications (optional), Biometrics (optional).
@@ -851,7 +853,7 @@ export default function AboutScreen() {
 
         {/* Footer */}
         <View style={[styles.footer, { backgroundColor: theme.card }]}>
-          <Text style={[styles.footerText, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>Tech Times v1.0.9</Text>
+          <Text style={[styles.footerText, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>Tech Times v{appVersion}</Text>
           <Text style={[styles.footerText, { color: theme.textSecondary }]}>Secure Personal Job Tracking for Vehicle Technicians</Text>
           <Text style={[styles.footerText, { color: theme.textSecondary }]}>Created by b.rugge — Owner &amp; Creator</Text>
           <Text style={[styles.footerText, { color: theme.textSecondary }]}>© 2025 Tech Times. All rights reserved.</Text>

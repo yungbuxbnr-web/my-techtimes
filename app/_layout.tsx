@@ -104,43 +104,56 @@ function RootLayoutContent() {
     const initApp = async () => {
       try {
         activityLogger.info('NOTIFICATIONS', 'Requesting notification permissions');
-        const hasNotificationPermission = await requestNotificationPermissions();
-        
+        let hasNotificationPermission = false;
+        try {
+          hasNotificationPermission = await requestNotificationPermissions();
+        } catch (e) { console.warn('RootLayout: non-fatal — requestNotificationPermissions failed:', e); }
+
         if (hasNotificationPermission) {
           activityLogger.info('NOTIFICATIONS', 'Scheduling all notifications');
-          await scheduleAllNotifications();
-          activityLogger.info('NOTIFICATIONS', 'Notifications scheduled successfully');
+          try {
+            await scheduleAllNotifications();
+            activityLogger.info('NOTIFICATIONS', 'Notifications scheduled successfully');
+          } catch (e) { console.warn('RootLayout: non-fatal — scheduleAllNotifications failed:', e); }
         } else {
           activityLogger.warn('NOTIFICATIONS', 'Notification permissions not granted');
         }
 
         // Request background permissions for live clock and work schedule
         activityLogger.info('BACKGROUND', 'Requesting background permissions');
-        const hasBackgroundPermission = await requestBackgroundPermissions();
-        
-        if (hasBackgroundPermission) {
-          activityLogger.info('BACKGROUND', 'Background permissions granted');
-        } else {
-          activityLogger.warn('BACKGROUND', 'Background permissions not granted');
-        }
+        try {
+          const hasBackgroundPermission = await requestBackgroundPermissions();
+          if (hasBackgroundPermission) {
+            activityLogger.info('BACKGROUND', 'Background permissions granted');
+          } else {
+            activityLogger.warn('BACKGROUND', 'Background permissions not granted');
+          }
+        } catch (e) { console.warn('RootLayout: non-fatal — requestBackgroundPermissions failed:', e); }
 
         // Initialize widget data and schedule daily refresh
         if (Platform.OS === 'android') {
           activityLogger.info('WIDGET', 'Initializing Android widget');
-          await updateWidgetData();
-          scheduleDailyWidgetRefresh();
-          activityLogger.info('WIDGET', 'Widget initialized and daily refresh scheduled');
+          try {
+            await updateWidgetData();
+            scheduleDailyWidgetRefresh();
+            activityLogger.info('WIDGET', 'Widget initialized and daily refresh scheduled');
+          } catch (e) { console.warn('RootLayout: non-fatal — updateWidgetData/scheduleDailyWidgetRefresh failed:', e); }
 
           activityLogger.info('WIDGET', 'Setting up live widget notification channel');
-          await setupLiveWidgetChannel();
-          await updateLiveWidget();
-          activityLogger.info('WIDGET', 'Live widget initialized');
+          try {
+            await setupLiveWidgetChannel();
+            await updateLiveWidget();
+            activityLogger.info('WIDGET', 'Live widget initialized');
+          } catch (e) { console.warn('RootLayout: non-fatal — setupLiveWidgetChannel/updateLiveWidget failed:', e); }
         }
 
         // Register background mainframe for time tracking
         activityLogger.info('BACKGROUND', 'Registering background mainframe');
-        await registerBackgroundMainframe();
-        activityLogger.info('BACKGROUND', 'Background mainframe registered');
+        try {
+          await registerBackgroundMainframe();
+          activityLogger.info('BACKGROUND', 'Background mainframe registered');
+        } catch (e) { console.warn('RootLayout: non-fatal — registerBackgroundMainframe failed:', e); }
+
       } catch (error) {
         console.error('RootLayout: Error initializing app:', error);
         activityLogger.error('APP_LIFECYCLE', 'Error initializing app', { error: String(error) });
@@ -412,6 +425,7 @@ function RootLayoutContent() {
       <Stack.Screen name="reconciliation" options={{ headerShown: false }} />
       <Stack.Screen name="report-builder" options={{ headerShown: false }} />
       <Stack.Screen name="smart-search" options={{ headerShown: false }} />
+      <Stack.Screen name="user-manual" options={{ title: 'User Manual', headerShown: true }} />
     </Stack>
   );
 }
