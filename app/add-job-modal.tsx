@@ -361,9 +361,11 @@ export default function AddJobModal() {
           const billingRecord = await billingStorage.createRecord({
             jobId: newJob.id,
             workStatus: workCompleted ? 'work_complete' : 'open',
-            billingStatus: workCompleted ? 'ready_to_bill' : 'unbilled',
-            billedAW: newJob.aw,
-            billedHours: (newJob.aw * 5) / 60,
+            billingStatus: workCompleted ? 'billed' : 'open',
+            billedAW: workCompleted ? newJob.aw : 0,
+            billedHours: workCompleted ? (newJob.aw * 5) / 60 : 0,
+            billedDate: workCompleted ? newJob.createdAt.split('T')[0] : undefined,
+            billedAt: workCompleted ? new Date().toISOString() : undefined,
             wipNumber: newJob.wipNumber,
             vehicleReg: newJob.vehicleReg,
             workDate: newJob.createdAt.split('T')[0],
@@ -374,7 +376,7 @@ export default function AddJobModal() {
             jobId: newJob.id,
             eventType: 'billing_created',
             description: workCompleted
-              ? `Job created as Ready to Bill — ${newJob.aw} AW`
+              ? `Job created as Billed — ${newJob.aw} AW`
               : `Job created as Open — ${newJob.aw} AW`,
           });
         } catch (billingError) {
@@ -1156,7 +1158,7 @@ export default function AddJobModal() {
               <TouchableOpacity
                 style={[styles.checkboxRow, { borderColor: theme.border }]}
                 onPress={() => {
-                  console.log('AddJobModal: Work Completed checkbox toggled to:', !workCompleted);
+                  console.log('AddJobModal: Job Finished checkbox toggled to:', !workCompleted);
                   setWorkCompleted(!workCompleted);
                   safeHaptics.selectionAsync();
                 }}
@@ -1177,9 +1179,9 @@ export default function AddJobModal() {
                   )}
                 </View>
                 <View style={styles.checkboxTextContainer}>
-                  <Text style={[styles.checkboxLabel, { color: theme.text }]}>Work Completed</Text>
+                  <Text style={[styles.checkboxLabel, { color: theme.text }]}>Job Finished</Text>
                   <Text style={[styles.checkboxSubtitle, { color: theme.textSecondary }]}>
-                    {workCompleted ? 'Ready to bill — job work is done' : 'Job still in progress (default)'}
+                    {workCompleted ? 'Job Finished — will be marked as Billed' : 'Job still in progress (default)'}
                   </Text>
                 </View>
               </TouchableOpacity>

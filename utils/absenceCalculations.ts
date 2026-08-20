@@ -50,15 +50,18 @@ export function calculateAbsenceHours(
   scheduledHours: number,
   customHours?: number
 ): number {
+  const safeScheduled = isFinite(scheduledHours) && scheduledHours > 0 ? scheduledHours : 0;
   switch (duration) {
     case 'full_day':
-      return scheduledHours;
+      return safeScheduled;
     case 'half_day':
-      return scheduledHours / 2;
-    case 'custom_hours':
-      return Math.min(customHours ?? 0, scheduledHours);
+      return safeScheduled / 2;
+    case 'custom_hours': {
+      const safe = isFinite(customHours ?? 0) ? (customHours ?? 0) : 0;
+      return Math.min(Math.max(0, safe), safeScheduled);
+    }
     default:
-      return scheduledHours;
+      return safeScheduled;
   }
 }
 
@@ -84,22 +87,24 @@ export function getAbsenceHoursForDate(
   absences: Array<{ absenceDate: string; absenceHours?: number; customHours?: number; isHalfDay?: boolean }>,
   scheduledHours: number
 ): number {
+  if (!dateStr || !Array.isArray(absences)) return 0;
+  const safeScheduled = isFinite(scheduledHours) && scheduledHours > 0 ? scheduledHours : 0;
   const absence = absences.find(a => a.absenceDate === dateStr);
   if (!absence) return 0;
 
   // Use stored absenceHours if available (new format)
-  if (absence.absenceHours !== undefined && absence.absenceHours > 0) {
+  if (absence.absenceHours !== undefined && isFinite(absence.absenceHours) && absence.absenceHours > 0) {
     return absence.absenceHours;
   }
 
   // Fall back to legacy format
-  if (absence.customHours !== undefined && absence.customHours > 0) {
+  if (absence.customHours !== undefined && isFinite(absence.customHours) && absence.customHours > 0) {
     return absence.customHours;
   }
   if (absence.isHalfDay) {
-    return scheduledHours / 2;
+    return safeScheduled / 2;
   }
-  return scheduledHours;
+  return safeScheduled;
 }
 
 /**
@@ -143,41 +148,47 @@ export function migrateLegacyAbsence(
   absence: any,
   schedule: Schedule
 ): any {
-  // Already migrated
-  if (absence.duration && absence.absenceHours !== undefined && absence.dayFraction !== undefined) {
+  try {
+    // Already migrated
+    if (absence.duration && absence.absenceHours !== undefined && absence.dayFraction !== undefined) {
+      return absence;
+    }
+
+    const date = new Date(absence.absenceDate);
+    const scheduledHours = getScheduledHoursForDate(date, schedule);
+
+    // Determine duration type from legacy fields
+    let duration: AbsenceDuration;
+    let absenceHours: number;
+
+    if (absence.isHalfDay) {
+      duration = 'half_day';
+      absenceHours = absence.customHours !== undefined && absence.customHours > 0
+        ? absence.customHours
+        : scheduledHours / 2;
+    } else if (absence.customHours !== undefined && absence.customHours > 0 && absence.customHours !== scheduledHours) {
+      duration = 'custom_hours';
+      absenceHours = absence.customHours;
+    } else {
+      duration = 'full_day';
+      absenceHours = absence.customHours !== undefined && absence.customHours > 0
+        ? absence.customHours
+        : scheduledHours;
+    }
+
+    const safeScheduled = isFinite(scheduledHours) && scheduledHours > 0 ? scheduledHours : absenceHours;
+    const dayFraction = calculateDayFraction(absenceHours, safeScheduled);
+
+    return {
+      ...absence,
+      duration,
+      absenceHours,
+      scheduledHoursSnapshot: scheduledHours,
+      dayFraction,
+      updatedAt: absence.updatedAt || absence.createdAt,
+    };
+  } catch (err) {
+    // Never crash — return original record on any error
     return absence;
   }
-
-  const date = new Date(absence.absenceDate);
-  const scheduledHours = getScheduledHoursForDate(date, schedule);
-
-  // Determine duration type from legacy fields
-  let duration: AbsenceDuration;
-  let absenceHours: number;
-
-  if (absence.isHalfDay) {
-    duration = 'half_day';
-    absenceHours = absence.customHours !== undefined && absence.customHours > 0
-      ? absence.customHours
-      : scheduledHours / 2;
-  } else if (absence.customHours !== undefined && absence.customHours > 0 && absence.customHours !== scheduledHours) {
-    duration = 'custom_hours';
-    absenceHours = absence.customHours;
-  } else {
-    duration = 'full_day';
-    absenceHours = absence.customHours !== undefined && absence.customHours > 0
-      ? absence.customHours
-      : scheduledHours;
-  }
-
-  const dayFraction = calculateDayFraction(absenceHours, scheduledHours > 0 ? scheduledHours : absenceHours);
-
-  return {
-    ...absence,
-    duration,
-    absenceHours,
-    scheduledHoursSnapshot: scheduledHours,
-    dayFraction,
-    updatedAt: absence.updatedAt || absence.createdAt,
-  };
 }

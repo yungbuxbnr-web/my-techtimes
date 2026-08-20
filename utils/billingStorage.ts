@@ -1,5 +1,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normaliseBillingStatus } from './billingEngine';
 
 const BILLING_KEYS = {
   RECORDS: '@techtimes_billing_records',
@@ -12,7 +13,7 @@ export interface BillingRecord {
   jobId: string;
 
   workStatus: 'open' | 'in_progress' | 'work_complete';
-  billingStatus: 'unbilled' | 'ready_to_bill' | 'billed' | 'legacy_unknown';
+  billingStatus: 'open' | 'unbilled' | 'ready_to_bill' | 'billed' | 'legacy_unknown';
 
   billedAW: number;
   billedHours: number;
@@ -147,17 +148,19 @@ export const billingStorage = {
         const newRecord: BillingRecord = {
           id: generateId(),
           jobId: job.id,
-          workStatus: 'open',
-          billingStatus: 'legacy_unknown',
+          workStatus: 'work_complete',
+          billingStatus: 'billed',
           billedAW: job.aw,
           billedHours: (job.aw * 5) / 60,
+          billedDate: job.createdAt.split('T')[0],
           wipNumber: job.wipNumber,
           vehicleReg: job.vehicleReg,
           workDate: job.createdAt.split('T')[0],
           createdAt: now,
           updatedAt: now,
           revision: 1,
-        };
+          // migrationSource: 'legacy_default_billed',
+        } as BillingRecord;
         newRecords.push(newRecord);
         created++;
       }
@@ -170,6 +173,41 @@ export const billingStorage = {
     }
 
     return created;
+  },
+
+  async ensureBillingRecordForJob(
+    job: { id: string; wipNumber: string; vehicleReg: string; createdAt: string; aw: number },
+    isFinished: boolean
+  ): Promise<BillingRecord> {
+    const existing = await billingStorage.getRecordForJob(job.id);
+    if (existing) return existing;
+
+    const now = new Date().toISOString();
+    if (isFinished) {
+      return billingStorage.createRecord({
+        jobId: job.id,
+        workStatus: 'work_complete',
+        billingStatus: 'billed',
+        billedAW: job.aw,
+        billedHours: (job.aw * 5) / 60,
+        billedDate: job.createdAt.split('T')[0],
+        billedAt: now,
+        wipNumber: job.wipNumber,
+        vehicleReg: job.vehicleReg,
+        workDate: job.createdAt.split('T')[0],
+      });
+    } else {
+      return billingStorage.createRecord({
+        jobId: job.id,
+        workStatus: 'open',
+        billingStatus: 'open',
+        billedAW: 0,
+        billedHours: 0,
+        wipNumber: job.wipNumber,
+        vehicleReg: job.vehicleReg,
+        workDate: job.createdAt.split('T')[0],
+      });
+    }
   },
 
   async getHistory(billingRecordId: string): Promise<BillingHistoryEntry[]> {
@@ -329,17 +367,23 @@ export const billingStorage = {
       const billing = recordsByJobId.get(job.id);
       if (!billing) continue;
 
-      if (billing.billingStatus === 'billed') {
+      const normalised = normaliseBillingStatus(billing.billingStatus);
+      if (normalised === 'billed') {
         billedAW += job.aw;
         jobsBilled++;
-      } else if (billing.billingStatus === 'ready_to_bill') {
-        readyToBillAW += job.aw;
-        jobsReady++;
-      } else if (billing.billingStatus === 'unbilled') {
-        openAW += job.aw;
-        jobsOpen++;
-      } else if (billing.billingStatus === 'legacy_unknown') {
-        jobsLegacy++;
+        // Track legacy separately for display purposes
+        if (billing.billingStatus === 'legacy_unknown') {
+          jobsLegacy++;
+        }
+      } else {
+        // open / unbilled / ready_to_bill
+        if (billing.billingStatus === 'ready_to_bill') {
+          readyToBillAW += job.aw;
+          jobsReady++;
+        } else {
+          openAW += job.aw;
+          jobsOpen++;
+        }
       }
     }
 

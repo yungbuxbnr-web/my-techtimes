@@ -19,6 +19,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
 import { billingStorage, BillingRecord } from '@/utils/billingStorage';
+import { normaliseBillingStatus } from '@/utils/billingEngine';
 import AppBackground from '@/components/AppBackground';
 import * as Haptics from 'expo-haptics';
 
@@ -134,15 +135,22 @@ function getJobDateForViewBy(
 // ── Status chip helper (outside component so BillingJobRow can use it) ───────
 
 function getStatusChipStyle(billing: BillingRecord, theme: any) {
-  switch (billing.billingStatus) {
-    case 'billed': return { bg: theme.chartGreen, label: 'Billed' };
-    case 'ready_to_bill': return { bg: theme.chartYellow, label: 'Ready' };
-    case 'legacy_unknown': return { bg: theme.textSecondary, label: 'Legacy' };
-    default:
-      return billing.workStatus === 'in_progress'
-        ? { bg: theme.chartYellow, label: 'In Progress' }
-        : { bg: theme.chartRed, label: 'Open' };
+  const normalised = normaliseBillingStatus(billing.billingStatus);
+  if (normalised === 'billed') {
+    // Show 'Legacy' label for legacy_unknown, 'Billed' for everything else billed
+    if (billing.billingStatus === 'legacy_unknown') {
+      return { bg: theme.textSecondary, label: 'Legacy' };
+    }
+    return { bg: theme.chartGreen, label: 'Billed' };
   }
+  // open statuses
+  if (billing.billingStatus === 'ready_to_bill') {
+    return { bg: theme.chartYellow, label: 'Ready' };
+  }
+  if (billing.workStatus === 'in_progress') {
+    return { bg: theme.chartYellow, label: 'In Progress' };
+  }
+  return { bg: theme.chartRed, label: 'Open' };
 }
 
 // ── Swipeable job row component ───────────────────────────────────────────────
@@ -177,7 +185,7 @@ function BillingJobRow({
         translateX.setValue(Math.max(-100, Math.min(80, gs.dx)));
       },
       onPanResponderRelease: (_, gs) => {
-        if (gs.dx > 60 && billing.billingStatus === 'ready_to_bill') {
+        if (gs.dx > 60 && normaliseBillingStatus(billing.billingStatus) === 'open') {
           console.log('BillingScreen: Swipe right — mark billed for job:', job.wipNumber);
           RNAnimated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
           onMarkBilled();
@@ -332,14 +340,14 @@ export default function BillingScreen() {
     const recordedAW = allPeriodItems.reduce((s, { job }) => s + job.aw, 0);
     const recordedHours = (recordedAW * 5) / 60;
 
-    const billedItems = allPeriodItems.filter(({ billing }) => billing.billingStatus === 'billed');
+    const billedItems = allPeriodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
     const billedHours = billedItems.reduce((s, { billing }) => s + billing.billedHours, 0);
 
     const readyItems = allPeriodItems.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
     const readyHours = readyItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
 
     const openItems = allPeriodItems.filter(({ billing }) =>
-      billing.billingStatus === 'unbilled' || billing.billingStatus === 'legacy_unknown'
+      normaliseBillingStatus(billing.billingStatus) === 'open' && billing.billingStatus !== 'ready_to_bill'
     );
     const openHours = openItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
 
@@ -377,14 +385,14 @@ export default function BillingScreen() {
 
     let filtered = periodItems;
     if (activeTab === 'open') {
-      filtered = periodItems.filter(({ billing }) =>
-        billing.billingStatus === 'unbilled' && billing.workStatus === 'open'
-      );
+      // Show all open-normalised jobs (unbilled, open, in_progress, ready_to_bill)
+      filtered = periodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'open');
     } else if (activeTab === 'ready') {
       filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
     } else if (activeTab === 'billed') {
-      filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'billed');
+      filtered = periodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
     } else if (activeTab === 'legacy') {
+      // Legacy tab still shows legacy_unknown specifically for manual resolution
       filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'legacy_unknown');
     }
 
@@ -483,7 +491,8 @@ export default function BillingScreen() {
           onPress: async () => {
             console.log('BillingScreen: Confirmed reopen billing for job:', job.wipNumber);
             await billingStorage.updateRecord(billing.id, {
-              billingStatus: 'ready_to_bill',
+              billingStatus: 'open',
+              workStatus: 'open',
               billedAt: undefined,
               billedDate: undefined,
             });
@@ -555,7 +564,9 @@ export default function BillingScreen() {
       return;
     }
 
-    if (billing.billingStatus === 'billed') {
+    const normalised = normaliseBillingStatus(billing.billingStatus);
+
+    if (normalised === 'billed') {
       Alert.alert(
         `Billed — ${job.wipNumber}`,
         `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\nAW: ${billing.billedAW}\nHours: ${billing.billedHours.toFixed(2)}h\nBilled: ${billing.billedDate || 'Unknown'}`,
@@ -580,7 +591,7 @@ export default function BillingScreen() {
       return;
     }
 
-    // open / unbilled
+    // open / unbilled / in_progress
     Alert.alert(
       `Open — ${job.wipNumber}`,
       `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\nAW: ${job.aw}\nHours: ${((job.aw * 5) / 60).toFixed(2)}h`,
@@ -605,7 +616,7 @@ export default function BillingScreen() {
             });
           },
         },
-        { text: 'Mark Work Complete', onPress: () => handleMarkWorkComplete(job, billing) },
+        { text: 'Mark Closed / Billed', onPress: () => handleMarkBilled(job, billing) },
       ]
     );
   };
