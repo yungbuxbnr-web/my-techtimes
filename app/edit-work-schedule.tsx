@@ -380,7 +380,7 @@ export default function EditWorkScheduleScreen() {
         nextWorkingSaturday: nextWorkingSaturday ? nextWorkingSaturday.toISOString() : undefined,
         excludeBankHolidays,
       };
-      await api.updateSchedule(updatedSchedule);
+      await api.updateSchedule(updatedSchedule as Partial<import('@/utils/offlineStorage').Schedule>);
 
       // Auto-recalculate monthly target from new schedule
       const { calcDailyHoursFromSchedule, countWorkingDaysInMonth } = await import('@/utils/jobCalculations');

@@ -15,6 +15,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
 
+const getCurrentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
 export default function TimeLoggedDetailsScreen() {
   const { theme } = useThemeContext();
   const router = useRouter();
@@ -31,11 +36,6 @@ export default function TimeLoggedDetailsScreen() {
     loadTimeDetails();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
-
-  const getCurrentMonth = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  };
 
   const getWeekNumber = (date: Date): number => {
     const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);

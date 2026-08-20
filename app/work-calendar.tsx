@@ -21,7 +21,7 @@ interface DayInfo {
   date: Date;
   dateString: string;
   isWorkingDay: boolean;
-  absenceType: 'holiday' | 'sickness' | 'training' | null;
+  absenceType: 'holiday' | 'sickness' | 'training' | 'absence' | 'overtime' | 'compensation' | null;
   absenceId?: string;
   isBankHoliday?: boolean;
   bankHolidayTitle?: string;

@@ -187,7 +187,7 @@ ${analysis.suggestions.join('\n\n')}
           ),
         }}
       />
-      <AppBackground overlayStrength={overlayStrength}>
+      <AppBackground>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.container}

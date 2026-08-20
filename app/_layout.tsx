@@ -55,7 +55,7 @@ function RootLayoutContent() {
   const { isAuthenticated, logout } = useAuth();
   const [isReady, setIsReady] = useState(false);
   const [backPressCount, setBackPressCount] = useState(0);
-  const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const backPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const lastRouteRef = useRef<string | null>(null);
   const hasNavigatedRef = useRef(false);
@@ -303,7 +303,7 @@ function RootLayoutContent() {
       activityLogger.debug('APP_LIFECYCLE', 'Android back button pressed', { count: backPressCount + 1 });
       
       // Check if we're on a screen that can go back
-      const canGoBack = segments.length > 1 || (segments[0] !== '(tabs)' && segments[0] !== 'index');
+      const canGoBack = segments.length > 1 || segments[0] !== '(tabs)';
       
       if (canGoBack && backPressCount === 0) {
         // First press - go back

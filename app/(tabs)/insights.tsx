@@ -153,8 +153,8 @@ export default function InsightsScreen() {
           const minutes = jobTime.getMinutes();
           const timeInMinutes = hours * 60 + minutes;
           
-          const startParts = schedule.startTime.split(':');
-          const endParts = schedule.endTime.split(':');
+          const startParts = (schedule.startTime || '07:00').split(':');
+          const endParts = (schedule.endTime || '18:00').split(':');
           const startMinutes = parseInt(startParts[0]) * 60 + parseInt(startParts[1]);
           const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
           
@@ -497,7 +497,7 @@ export default function InsightsScreen() {
             ios_icon_name="bolt.fill"
             android_material_icon_name="flash-on"
             size={24}
-            color={theme.chartOrange}
+            color={theme.warning}
           />
           <Text style={[styles.kpiValue, { color: theme.text }]}>{totalAw}</Text>
           <Text style={[styles.kpiLabel, { color: theme.textSecondary }]}>Total AW</Text>
@@ -527,7 +527,7 @@ export default function InsightsScreen() {
             ios_icon_name="chart.line.uptrend.xyaxis"
             android_material_icon_name="trending-up"
             size={24}
-            color={theme.chartBlue}
+            color={theme.primary}
           />
           <Text style={[styles.kpiValue, { color: theme.text }]}>
             {averageAw.toFixed(1)}
@@ -579,7 +579,7 @@ export default function InsightsScreen() {
               ios_icon_name="tag.slash"
               android_material_icon_name="label-off"
               size={20}
-              color={theme.chartOrange}
+              color={theme.warning}
             />
             <Text style={[styles.drillButtonText, { color: theme.text }]}>No Tags</Text>
           </TouchableOpacity>
@@ -600,9 +600,9 @@ export default function InsightsScreen() {
           <TouchableOpacity
             style={[styles.drillButton, { backgroundColor: theme.card }]}
             onPress={() => handleDrilldown('Comeback Jobs', (job) => 
-              job.notes?.toLowerCase().includes('come back') || 
-              job.notes?.toLowerCase().includes('comeback') ||
-              job.notes?.toLowerCase().includes('recheck')
+              (job.notes?.toLowerCase().includes('come back') ?? false) || 
+              (job.notes?.toLowerCase().includes('comeback') ?? false) ||
+              (job.notes?.toLowerCase().includes('recheck') ?? false)
             )}
           >
             <IconSymbol
@@ -885,7 +885,7 @@ export default function InsightsScreen() {
               ios_icon_name="target"
               android_material_icon_name="track-changes"
               size={24}
-              color={theme.chartOrange}
+              color={theme.warning}
             />
             <View style={{ flex: 1 }}>
               <Text style={[styles.goalValue, { color: theme.text }]}>
@@ -904,7 +904,7 @@ export default function InsightsScreen() {
               ios_icon_name="speedometer"
               android_material_icon_name="speed"
               size={24}
-              color={theme.chartBlue}
+              color={theme.primary}
             />
             <View style={{ flex: 1 }}>
               <Text style={[styles.goalValue, { color: theme.text }]}>
@@ -1006,7 +1006,7 @@ export default function InsightsScreen() {
           >
             <IconSymbol
               ios_icon_name="chart.bar"
-              android_material_icon_name={tab.icon}
+              android_material_icon_name={tab.icon as any}
               size={18}
               color={activeSubTab === tab.id ? '#ffffff' : theme.text}
             />

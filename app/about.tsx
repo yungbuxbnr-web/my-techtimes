@@ -534,7 +534,7 @@ export default function AboutScreen() {
         >
           <IconSymbol
             ios_icon_name="arrow.down.doc.fill"
-            android_material_icon_name="picture_as_pdf"
+            android_material_icon_name="picture-as-pdf"
             size={20}
             color="#fff"
           />

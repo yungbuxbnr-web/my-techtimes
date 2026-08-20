@@ -15,6 +15,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { formatTime, formatDecimalHours } from '@/utils/jobCalculations';
 
+const getCurrentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
 export default function TotalAwsDetailsScreen() {
   const { theme } = useThemeContext();
   const router = useRouter();
@@ -33,11 +38,6 @@ export default function TotalAwsDetailsScreen() {
     loadAwDetails();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
-
-  const getCurrentMonth = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  };
 
   const loadAwDetails = async () => {
     try {

@@ -209,6 +209,9 @@ export default function CalendarScreen() {
           <View style={styles.circleContainer}>
             <CircularProgress
               percentage={dayData.efficiency}
+              progress={dayData.efficiency}
+              title="Efficiency"
+              value={`${Math.round(dayData.efficiency)}%`}
               size={140}
               strokeWidth={14}
               color={getEfficiencyColor(dayData.efficiency)}
@@ -223,6 +226,9 @@ export default function CalendarScreen() {
           <View style={styles.circleContainer}>
             <CircularProgress
               percentage={dayData.progress}
+              progress={dayData.progress}
+              title="Progress"
+              value={`${Math.round(dayData.progress)}%`}
               size={140}
               strokeWidth={14}
               color={getProgressColor()}
@@ -322,6 +328,9 @@ export default function CalendarScreen() {
                   <View style={styles.miniCircleContainer}>
                     <CircularProgress
                       percentage={dayData.efficiency}
+                      progress={dayData.efficiency}
+                      title=""
+                      value=""
                       size={50}
                       strokeWidth={5}
                       color={getEfficiencyColor(dayData.efficiency)}
@@ -331,6 +340,9 @@ export default function CalendarScreen() {
                   <View style={styles.miniCircleContainer}>
                     <CircularProgress
                       percentage={dayData.progress}
+                      progress={dayData.progress}
+                      title=""
+                      value=""
                       size={40}
                       strokeWidth={4}
                       color={getProgressColor()}
@@ -396,6 +408,9 @@ export default function CalendarScreen() {
           <View style={styles.monthCircleContainer}>
             <CircularProgress
               percentage={monthEfficiency}
+              progress={monthEfficiency}
+              title="Efficiency"
+              value={`${Math.round(monthEfficiency)}%`}
               size={100}
               strokeWidth={10}
               color={getEfficiencyColor(monthEfficiency)}
@@ -407,6 +422,9 @@ export default function CalendarScreen() {
           <View style={styles.monthCircleContainer}>
             <CircularProgress
               percentage={monthProgress}
+              progress={monthProgress}
+              title="Progress"
+              value={`${Math.round(monthProgress)}%`}
               size={80}
               strokeWidth={8}
               color={getProgressColor()}
@@ -448,6 +466,9 @@ export default function CalendarScreen() {
                   <View style={styles.tinyCircleOuter}>
                     <CircularProgress
                       percentage={dayData.efficiency}
+                      progress={dayData.efficiency}
+                      title=""
+                      value=""
                       size={24}
                       strokeWidth={3}
                       color={getEfficiencyColor(dayData.efficiency)}
@@ -457,6 +478,9 @@ export default function CalendarScreen() {
                   <View style={styles.tinyCircleInner}>
                     <CircularProgress
                       percentage={dayData.progress}
+                      progress={dayData.progress}
+                      title=""
+                      value=""
                       size={18}
                       strokeWidth={2.5}
                       color={getProgressColor()}
@@ -530,6 +554,9 @@ export default function CalendarScreen() {
                 <View style={styles.yearMonthCircle}>
                   <CircularProgress
                     percentage={clampedEfficiency}
+                    progress={clampedEfficiency}
+                    title=""
+                    value=""
                     size={60}
                     strokeWidth={6}
                     color={getEfficiencyColor(clampedEfficiency)}

@@ -1876,12 +1876,14 @@ export default function SettingsScreen() {
             </Text>
             
             <View style={styles.exportTypeContainer}>
-              {[
-                { id: 'daily', label: 'Daily', icon: 'calendar-today' },
-                { id: 'weekly', label: 'Weekly', icon: 'date-range' },
-                { id: 'monthly', label: 'Monthly', icon: 'event' },
-                { id: 'all', label: 'All Time', icon: 'history' },
-              ].map((type) => (
+              {(
+                [
+                  { id: 'daily', label: 'Daily', icon: 'calendar-today' },
+                  { id: 'weekly', label: 'Weekly', icon: 'date-range' },
+                  { id: 'monthly', label: 'Monthly', icon: 'event' },
+                  { id: 'all', label: 'All Time', icon: 'history' },
+                ] as { id: string; label: string; icon: import('@expo/vector-icons/MaterialIcons').MaterialIconsProps['name'] }[]
+              ).map((type) => (
                 <TouchableOpacity
                   key={type.id}
                   style={[

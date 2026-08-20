@@ -152,7 +152,7 @@ export default function NotificationSettingsScreen() {
         vibrationPattern,
       };
 
-      await sendTestNotification(settings);
+      await sendTestNotification(settings as import('@/utils/offlineStorage').NotificationSettings);
       Alert.alert('Test Sent', 'A test notification has been sent with your current settings.');
     } catch (error) {
       console.error('NotificationSettingsScreen: Error sending test notification:', error);
@@ -215,7 +215,7 @@ export default function NotificationSettingsScreen() {
       };
 
       console.log('NotificationSettingsScreen: Saving settings:', settingsToSave);
-      await offlineStorage.updateNotificationSettings(settingsToSave);
+      await offlineStorage.updateNotificationSettings(settingsToSave as import('@/utils/offlineStorage').NotificationSettings);
       console.log('NotificationSettingsScreen: Settings saved to storage');
 
       console.log('NotificationSettingsScreen: Rescheduling notifications');

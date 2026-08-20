@@ -42,7 +42,7 @@ const safeHaptics = {
 };
 
 type PeriodMode = 'day' | 'week' | 'month' | 'year' | 'entire';
-type TabKey = 'all' | 'open' | 'ready' | 'billed' | 'legacy';
+type TabKey = 'all' | 'open' | 'billed';
 type SubTab = 'overview' | 'records' | 'trends' | 'reports' | 'backup';
 
 // ── Period boundary helpers ──────────────────────────────────────────────────
@@ -144,16 +144,9 @@ function getJobDateForViewBy(
 function getStatusChipStyle(billing: BillingRecord, theme: any) {
   const normalised = normaliseBillingStatus(billing.billingStatus);
   if (normalised === 'billed') {
-    // Show 'Legacy' label for legacy_unknown, 'Billed' for everything else billed
-    if (billing.billingStatus === 'legacy_unknown') {
-      return { bg: theme.textSecondary, label: 'Legacy' };
-    }
     return { bg: theme.chartGreen, label: 'Billed' };
   }
   // open statuses
-  if (billing.billingStatus === 'ready_to_bill') {
-    return { bg: theme.chartYellow, label: 'Ready' };
-  }
   if (billing.workStatus === 'in_progress') {
     return { bg: theme.chartYellow, label: 'In Progress' };
   }
@@ -450,8 +443,8 @@ function ReportsSubTab({
   periodMode: PeriodMode;
   periodLabel: string;
   periodStats: {
-    recordedHours: number; billedHours: number; openHours: number; readyHours: number;
-    jobsRecorded: number; jobsBilled: number; jobsOpen: number; jobsReady: number;
+    recordedHours: number; billedHours: number; openHours: number;
+    jobsRecorded: number; jobsBilled: number; jobsOpen: number;
     recordedAW: number; unbilledHours: number;
   };
   unbilledHours: number;
@@ -525,7 +518,7 @@ function ReportsSubTab({
                 <div class="stat-card">
                   <div class="value">${unbilledHours.toFixed(1)}h</div>
                   <div class="label">Total Unbilled</div>
-                  <div class="sub">Open + Ready to Bill</div>
+                  <div class="sub">All open jobs</div>
                 </div>
               </div>
             </div>
@@ -538,9 +531,9 @@ function ReportsSubTab({
                   <div class="sub">Billed ÷ Recorded</div>
                 </div>
                 <div class="stat-card">
-                  <div class="value">${periodStats.jobsReady}</div>
-                  <div class="label">Ready to Bill</div>
-                  <div class="sub">${periodStats.readyHours.toFixed(1)}h pending</div>
+                  <div class="value">${periodStats.jobsOpen}</div>
+                  <div class="label">Open Jobs</div>
+                  <div class="sub">${periodStats.openHours.toFixed(1)}h pending</div>
                 </div>
               </div>
             </div>
@@ -635,8 +628,8 @@ function TrendsSubTab({
   selectedDate: Date;
   periodStats: {
     recordedHours: number; billedHours: number; openHours: number;
-    jobsRecorded: number; readyHours: number; jobsBilled: number;
-    jobsOpen: number; jobsReady: number; recordedAW: number;
+    jobsRecorded: number; jobsBilled: number;
+    jobsOpen: number; recordedAW: number;
     unbilledHours: number;
   };
   jobs: Job[];
@@ -667,7 +660,7 @@ function TrendsSubTab({
     const billedItems = allPeriodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
     const billedHours = billedItems.reduce((s, { billing }) => s + billing.billedHours, 0);
     const openItems = allPeriodItems.filter(({ billing }) =>
-      normaliseBillingStatus(billing.billingStatus) === 'open' && billing.billingStatus !== 'ready_to_bill'
+      normaliseBillingStatus(billing.billingStatus) === 'open'
     );
     const openHours = openItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
     return { recordedHours, billedHours, openHours, jobsRecorded: allPeriodItems.length };
@@ -829,26 +822,23 @@ export default function BillingScreen() {
     const billedItems = allPeriodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
     const billedHours = billedItems.reduce((s, { billing }) => s + billing.billedHours, 0);
 
-    const readyItems = allPeriodItems.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
-    const readyHours = readyItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
-
     const openItems = allPeriodItems.filter(({ billing }) =>
-      normaliseBillingStatus(billing.billingStatus) === 'open' && billing.billingStatus !== 'ready_to_bill'
+      normaliseBillingStatus(billing.billingStatus) === 'open'
     );
     const openHours = openItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
 
-    const unbilledHours = readyHours + openHours;
+    const unbilledHours = openHours;
 
     return {
       recordedAW,
       recordedHours,
       billedHours,
-      readyHours,
+      readyHours: 0,
       openHours,
       unbilledHours,
       jobsRecorded: allPeriodItems.length,
       jobsBilled: billedItems.length,
-      jobsReady: readyItems.length,
+      jobsReady: 0,
       jobsOpen: openItems.length,
     };
   }, [jobs, billingRecords, periodMode, selectedDate, viewBy]);
@@ -871,15 +861,9 @@ export default function BillingScreen() {
 
     let filtered = periodItems;
     if (activeTab === 'open') {
-      // Show all open-normalised jobs (unbilled, open, in_progress, ready_to_bill)
       filtered = periodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'open');
-    } else if (activeTab === 'ready') {
-      filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'ready_to_bill');
     } else if (activeTab === 'billed') {
       filtered = periodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
-    } else if (activeTab === 'legacy') {
-      // Legacy tab still shows legacy_unknown specifically for manual resolution
-      filtered = periodItems.filter(({ billing }) => billing.billingStatus === 'legacy_unknown');
     }
 
     if (searchQuery.trim()) {
@@ -902,7 +886,7 @@ export default function BillingScreen() {
     console.log('BillingScreen: Marking work complete for job:', job.wipNumber);
     await billingStorage.updateRecord(billing.id, {
       workStatus: 'work_complete',
-      billingStatus: 'ready_to_bill',
+      billingStatus: 'open',
       workCompletedAt: new Date().toISOString(),
     });
     await billingStorage.addHistoryEntry({
@@ -998,28 +982,17 @@ export default function BillingScreen() {
   const handleLegacyAction = (job: Job, billing: BillingRecord) => {
     console.log('BillingScreen: Legacy action tapped for job:', job.wipNumber);
     Alert.alert(
-      `Legacy Job — ${job.wipNumber}`,
-      'Set billing status for this job:',
+      `Migrate Legacy Job — ${job.wipNumber}`,
+      'This job has a legacy status. Set its billing status:',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Mark as Open',
           onPress: async () => {
-            console.log('BillingScreen: Legacy job marked as Open:', job.wipNumber);
+            console.log('BillingScreen: Legacy job migrated to Open:', job.wipNumber);
             await billingStorage.updateRecord(billing.id, {
-              billingStatus: 'unbilled',
+              billingStatus: 'open',
               workStatus: 'open',
-            });
-            await loadData();
-          },
-        },
-        {
-          text: 'Mark as Ready to Bill',
-          onPress: async () => {
-            console.log('BillingScreen: Legacy job marked as Ready to Bill:', job.wipNumber);
-            await billingStorage.updateRecord(billing.id, {
-              billingStatus: 'ready_to_bill',
-              workStatus: 'work_complete',
             });
             await loadData();
           },
@@ -1027,7 +1000,7 @@ export default function BillingScreen() {
         {
           text: 'Mark as Billed',
           onPress: async () => {
-            console.log('BillingScreen: Legacy job marked as Billed:', job.wipNumber);
+            console.log('BillingScreen: Legacy job migrated to Billed:', job.wipNumber);
             const now = new Date().toISOString();
             await billingStorage.updateRecord(billing.id, {
               billingStatus: 'billed',
@@ -1045,11 +1018,6 @@ export default function BillingScreen() {
     console.log('BillingScreen: Job action tapped for job:', job.wipNumber, 'status:', billing.billingStatus);
     safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (billing.billingStatus === 'legacy_unknown') {
-      handleLegacyAction(job, billing);
-      return;
-    }
-
     const normalised = normaliseBillingStatus(billing.billingStatus);
 
     if (normalised === 'billed') {
@@ -1064,20 +1032,7 @@ export default function BillingScreen() {
       return;
     }
 
-    if (billing.billingStatus === 'ready_to_bill') {
-      Alert.alert(
-        `Ready to Bill — ${job.wipNumber}`,
-        `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\nAW: ${job.aw}\nHours: ${((job.aw * 5) / 60).toFixed(2)}h`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Return to In Progress', onPress: () => handleReturnToInProgress(job, billing) },
-          { text: 'Mark Closed / Billed', onPress: () => handleMarkBilled(job, billing) },
-        ]
-      );
-      return;
-    }
-
-    // open / unbilled / in_progress
+    // open / unbilled / in_progress / work_complete
     Alert.alert(
       `Open — ${job.wipNumber}`,
       `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\nAW: ${job.aw}\nHours: ${((job.aw * 5) / 60).toFixed(2)}h`,
@@ -1163,12 +1118,11 @@ export default function BillingScreen() {
 
   // ── Derived values ────────────────────────────────────────────────────────
 
-  const readyCount = periodStats.jobsReady;
   const unbilledHours = periodStats.unbilledHours;
 
   let healthStatus = 'All caught up';
   let healthColor = theme.chartGreen;
-  if (readyCount > 0) { healthStatus = 'Jobs awaiting closure'; healthColor = theme.chartYellow; }
+  if (periodStats.jobsOpen > 0) { healthStatus = 'Jobs awaiting closure'; healthColor = theme.chartYellow; }
   if (unbilledHours > 10) { healthStatus = 'Attention — high unbilled hours'; healthColor = theme.chartRed; }
 
   const selectedBillingHours = useMemo(() => {
@@ -1185,9 +1139,7 @@ export default function BillingScreen() {
   const TABS: { key: TabKey; label: string }[] = [
     { key: 'all', label: 'ALL' },
     { key: 'open', label: 'OPEN' },
-    { key: 'ready', label: 'READY' },
     { key: 'billed', label: 'BILLED' },
-    { key: 'legacy', label: 'LEGACY' },
   ];
 
   const periodLabel = getPeriodLabel(periodMode, selectedDate);
@@ -1382,15 +1334,6 @@ export default function BillingScreen() {
           <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Billed</Text>
           <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
             {periodStats.jobsBilled} jobs
-          </Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>
-          <Text style={[styles.summaryValue, { color: theme.chartYellow }]}>
-            {periodStats.readyHours.toFixed(1)}h
-          </Text>
-          <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Ready to Bill</Text>
-          <Text style={[styles.summaryCount, { color: theme.textSecondary }]}>
-            {periodStats.jobsReady} jobs
           </Text>
         </View>
         <View style={[styles.summaryCard, { backgroundColor: theme.card }]}>

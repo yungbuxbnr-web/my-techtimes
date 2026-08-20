@@ -15,6 +15,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { formatDecimalHours } from '@/utils/jobCalculations';
 
+function getCurrentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function HoursRemainingDetailsScreen() {
   const { theme } = useThemeContext();
   const router = useRouter();
@@ -34,11 +39,6 @@ export default function HoursRemainingDetailsScreen() {
     loadRemainingDetails();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
-
-  const getCurrentMonth = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  };
 
   const loadRemainingDetails = async () => {
     try {

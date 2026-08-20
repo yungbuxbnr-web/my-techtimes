@@ -15,6 +15,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { formatTime } from '@/utils/jobCalculations';
 
+function getCurrentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function JobsDoneDetailsScreen() {
   const { theme } = useThemeContext();
   const router = useRouter();
@@ -32,11 +37,6 @@ export default function JobsDoneDetailsScreen() {
     loadJobsDetails();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
-
-  const getCurrentMonth = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  };
 
   const loadJobsDetails = async () => {
     try {
