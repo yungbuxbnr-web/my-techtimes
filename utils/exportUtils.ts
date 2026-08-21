@@ -6,6 +6,8 @@ import { Platform } from 'react-native';
 import { Job } from './api';
 import { awToMinutes, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from './jobCalculations';
 import { offlineStorage, Schedule } from './offlineStorage';
+import { billingStorage } from './billingStorage';
+import { normaliseBillingStatus, awToHours } from './billingEngine';
 
 export interface ExportOptions {
   type: 'daily' | 'weekly' | 'monthly' | 'all';
@@ -148,11 +150,12 @@ function vhcCell(status?: string): string {
 
 // ── Efficiency Graph card ─────────────────────────────────────────────────────
 
-function efficiencyGraphCard(stats: PeriodStats): string {
+function efficiencyGraphCard(stats: PeriodStats, billedHours?: number): string {
   const barPct = Math.min(Math.max(stats.efficiency, 0), 100).toFixed(1);
   const soldHoursDisplay = stats.soldHours.toFixed(2) + 'h';
   const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
   const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(1) + '%' : '—';
+  const billedHoursDisplay = billedHours !== undefined ? billedHours.toFixed(2) + 'h' : '—';
 
   return `
     <div style="background:#EEF4FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;margin-bottom:16px;">
@@ -171,6 +174,9 @@ function efficiencyGraphCard(stats: PeriodStats): string {
       </div>
       <div style="font-size:12px;color:#374151;line-height:2;">
         Efficiency: <span style="color:#EAB308;font-weight:700;">${efficiencyDisplay}</span>
+      </div>
+      <div style="font-size:12px;color:#374151;line-height:2;">
+        Total Invoiced: <span style="color:#16A34A;font-weight:700;">${billedHoursDisplay}</span>
       </div>
     </div>
   `;
@@ -213,8 +219,8 @@ function performanceMetricsCard(stats: PeriodStats): string {
 
 // ── Summary dashboard (efficiency + metrics) ──────────────────────────────────
 
-function summaryDashboard(stats: PeriodStats): string {
-  return efficiencyGraphCard(stats) + performanceMetricsCard(stats);
+function summaryDashboard(stats: PeriodStats, billedHours?: number): string {
+  return efficiencyGraphCard(stats, billedHours) + performanceMetricsCard(stats);
 }
 
 // ── Table header row ──────────────────────────────────────────────────────────
@@ -228,17 +234,18 @@ function tableHeaderRow(): string {
         <th style="${TH}width:9%;">WIP<br/>NUMBER</th>
         <th style="${TH}width:12%;">VEHICLE REG</th>
         <th style="${TH}width:10%;">VHC</th>
-        <th style="${TH}width:34%;">JOB DESCRIPTION</th>
+        <th style="${TH}width:28%;">JOB DESCRIPTION</th>
         <th style="${TH}width:7%;text-align:center;">AWS</th>
         <th style="${TH}width:9%;text-align:center;">TIME</th>
-        <th style="${TH}width:14%;border-right:none;text-align:center;">DATE &amp;<br/>TIME</th>
+        <th style="${TH}width:12%;text-align:center;">DATE &amp;<br/>TIME</th>
+        <th style="${TH}width:10%;border-right:none;text-align:center;">STATUS</th>
       </tr>
     </thead>`;
 }
 
 // ── Single job row ────────────────────────────────────────────────────────────
 
-function jobRow(job: Job, isEven: boolean): string {
+function jobRow(job: Job, isEven: boolean, billingRecord?: any): string {
   const rowBg = isEven ? '#FFFFFF' : '#F9FAFB';
   const TD = `padding:9px 10px;font-size:11px;color:#374151;vertical-align:middle;border-right:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;`;
   const jobMinutes = awToMinutes(Number(job.aw) || 0);
@@ -247,6 +254,10 @@ function jobRow(job: Job, isEven: boolean): string {
   const dateTimeStr = fmtJobDateTime(job.createdAt);
   const datePart = dateTimeStr.split(' ')[0];
   const timePart = dateTimeStr.split(' ')[1];
+  const status = billingRecord ? normaliseBillingStatus(billingRecord.billingStatus) : 'open';
+  const statusBadge = status === 'billed'
+    ? `<span style="background:#16A34A;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">INVOICED</span>`
+    : `<span style="background:#DC2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">OPEN</span>`;
   return `
     <tr style="background:${rowBg};">
       <td style="${TD}font-weight:700;color:#2563EB;">${job.wipNumber}</td>
@@ -255,16 +266,17 @@ function jobRow(job: Job, isEven: boolean): string {
       <td style="${TD}line-height:1.5;">${notes}</td>
       <td style="${TD}font-weight:700;color:#2563EB;text-align:center;font-size:13px;">${job.aw}</td>
       <td style="${TD}text-align:center;">${timeFormatted}</td>
-      <td style="${TD}border-right:none;text-align:center;font-size:11px;color:#374151;">${datePart}<br/><span style="color:#6B7280;">${timePart}</span></td>
+      <td style="${TD}text-align:center;font-size:11px;color:#374151;">${datePart}<br/><span style="color:#6B7280;">${timePart}</span></td>
+      <td style="${TD}border-right:none;text-align:center;">${statusBadge}</td>
     </tr>
   `;
 }
 
 // ── Week group (header + rows) ────────────────────────────────────────────────
 
-function weekGroupHtml(weekStart: Date, weekEnd: Date, jobs: Job[]): string {
+function weekGroupHtml(weekStart: Date, weekEnd: Date, jobs: Job[], billingByJobId: Map<string, any>): string {
   const label = `Week of ${fmtDateShort(weekStart.toISOString())} – ${fmtDateShort(weekEnd.toISOString())}`;
-  const rows = jobs.map((job, i) => jobRow(job, i % 2 === 0)).join('');
+  const rows = jobs.map((job, i) => jobRow(job, i % 2 === 0, billingByJobId.get(job.id))).join('');
   return `
     <div style="margin-bottom:4px;margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:#2563EB;padding:6px 0 4px;border-bottom:1px solid #BFDBFE;margin-bottom:0;">${label}</div>
@@ -278,7 +290,7 @@ function weekGroupHtml(weekStart: Date, weekEnd: Date, jobs: Job[]): string {
 
 // ── Month section ─────────────────────────────────────────────────────────────
 
-function monthSectionHtml(yearMonth: string, jobs: Job[]): string {
+function monthSectionHtml(yearMonth: string, jobs: Job[], billingByJobId: Map<string, any>): string {
   const monthLabel = fmtMonthLabel(yearMonth);
 
   // Group by week
@@ -300,7 +312,7 @@ function monthSectionHtml(yearMonth: string, jobs: Job[]): string {
     const wkStart = new Date(wkKey);
     const wkEnd = new Date(wkStart);
     wkEnd.setDate(wkStart.getDate() + 6);
-    return weekGroupHtml(wkStart, wkEnd, wkJobs);
+    return weekGroupHtml(wkStart, wkEnd, wkJobs, billingByJobId);
   }).join('');
 
   return `
@@ -313,11 +325,19 @@ function monthSectionHtml(yearMonth: string, jobs: Job[]): string {
 
 // ── Year section ──────────────────────────────────────────────────────────────
 
-function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule): string {
+function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule, billingByJobId: Map<string, any>): string {
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31);
   const availHours = calcAvailableHoursForPeriod(yearStart, yearEnd, schedule);
   const stats = calcPeriodStats(jobs, availHours);
+
+  const yearBilledHours = jobs.reduce((sum, j) => {
+    const rec = billingByJobId.get(j.id);
+    if (rec && normaliseBillingStatus(rec.billingStatus) === 'billed') {
+      return sum + (rec.billedHours ?? awToHours(j.aw ?? 0));
+    }
+    return sum;
+  }, 0);
 
   // Group by month
   const monthMap = new Map<string, Job[]>();
@@ -328,15 +348,187 @@ function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule): string 
   });
 
   const sortedMonths = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
-  const monthsHtml = sortedMonths.map(ym => monthSectionHtml(ym, monthMap.get(ym)!)).join('');
+  const monthsHtml = sortedMonths.map(ym => monthSectionHtml(ym, monthMap.get(ym)!, billingByJobId)).join('');
 
   return `
     <div style="margin-top:32px;margin-bottom:8px;border-top:3px solid #1565C0;padding-top:16px;">
       <div style="font-size:20px;font-weight:800;color:#1565C0;margin-bottom:16px;">Year: ${year}</div>
       <div style="font-size:13px;font-weight:600;color:#1565C0;margin-bottom:12px;">Year Summary</div>
-      ${summaryDashboard(stats)}
+      ${summaryDashboard(stats, yearBilledHours)}
     </div>
     ${monthsHtml}
+  `;
+}
+
+// ── Pie chart SVG ─────────────────────────────────────────────────────────────
+
+function buildPieChartSVG(invoicedHours: number, openHours: number, totalSoldHours: number, availableHours: number): string {
+  const total = Math.max(availableHours, totalSoldHours, 0.01);
+  const invoicedPct = Math.min(invoicedHours / total, 1);
+  const openPct = Math.min(openHours / total, 1 - invoicedPct);
+  const unusedPct = Math.max(0, 1 - invoicedPct - openPct);
+
+  const C = 2 * Math.PI * 80; // circumference ≈ 502.65
+
+  const invoicedDash = invoicedPct * C;
+  const invoicedGap = C - invoicedDash;
+
+  const openDash = openPct * C;
+  const openGap = C - openDash;
+
+  const unusedDash = unusedPct * C;
+  const unusedGap = C - unusedDash;
+
+  const invoicedLabel = (invoicedPct * 100).toFixed(1) + '%';
+  const openLabel = (openPct * 100).toFixed(1) + '%';
+  const unusedLabel = (unusedPct * 100).toFixed(1) + '%';
+  const unusedActual = Math.max(0, availableHours - totalSoldHours);
+  const totalSoldDisplay = totalSoldHours.toFixed(1) + 'h';
+
+  return `
+    <div style="margin-top:32px;text-align:center;">
+      <div style="font-size:14px;font-weight:700;color:#1565C0;margin-bottom:16px;">Hours Distribution</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap;">
+        <svg width="200" height="200" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="80" fill="none" stroke="#E5E7EB" stroke-width="32"/>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="#16A34A" stroke-width="32"
+            stroke-dasharray="${invoicedDash.toFixed(2)} ${invoicedGap.toFixed(2)}"
+            stroke-dashoffset="${(C * 0.25).toFixed(2)}"
+            transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="#DC2626" stroke-width="32"
+            stroke-dasharray="${openDash.toFixed(2)} ${openGap.toFixed(2)}"
+            stroke-dashoffset="${(C * 0.25 - invoicedDash).toFixed(2)}"
+            transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="#D1D5DB" stroke-width="32"
+            stroke-dasharray="${unusedDash.toFixed(2)} ${unusedGap.toFixed(2)}"
+            stroke-dashoffset="${(C * 0.25 - invoicedDash - openDash).toFixed(2)}"
+            transform="rotate(-90 100 100)"/>
+          <text x="100" y="95" text-anchor="middle" font-size="13" font-weight="700" fill="#1565C0">${totalSoldDisplay}</text>
+          <text x="100" y="112" text-anchor="middle" font-size="9" fill="#6B7280">SOLD</text>
+        </svg>
+        <div style="text-align:left;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="width:16px;height:16px;border-radius:3px;background:#16A34A;flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#374151;">Invoiced / Closed</div>
+              <div style="font-size:11px;color:#6B7280;">${invoicedHours.toFixed(2)}h &nbsp; ${invoicedLabel}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="width:16px;height:16px;border-radius:3px;background:#DC2626;flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#374151;">Open / Awaiting</div>
+              <div style="font-size:11px;color:#6B7280;">${openHours.toFixed(2)}h &nbsp; ${openLabel}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:16px;height:16px;border-radius:3px;background:#D1D5DB;flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#374151;">Available (Unused)</div>
+              <div style="font-size:11px;color:#6B7280;">${unusedActual.toFixed(2)}h &nbsp; ${unusedLabel}</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid #E5E7EB;">
+            <div style="font-size:11px;color:#6B7280;">Available Hours: <strong>${availableHours.toFixed(2)}h</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Closure summary page ──────────────────────────────────────────────────────
+
+function buildClosureSummaryPage(
+  closedJobs: Job[],
+  openJobs: Job[],
+  billingByJobId: Map<string, any>,
+  availableHours: number,
+  totalSoldHours: number
+): string {
+  const totalClosedHours = closedJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
+  const totalOpenHours = openJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
+
+  // Use billedHours snapshot for invoiced hours (more accurate)
+  const billedSnapshotHours = closedJobs.reduce((sum, j) => {
+    const rec = billingByJobId.get(j.id);
+    return sum + (rec?.billedHours ?? awToHours(j.aw ?? 0));
+  }, 0);
+
+  const closedRowsHtml = closedJobs.map((job, i) => {
+    const bg = i % 2 === 0 ? '#fff' : '#F0FDF4';
+    const hrs = awToHours(job.aw ?? 0).toFixed(2) + 'h';
+    return `<tr style="background:${bg};">
+      <td style="padding:6px 8px;font-size:11px;color:#2563EB;font-weight:700;border-bottom:1px solid #E5E7EB;">${job.wipNumber}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#374151;border-bottom:1px solid #E5E7EB;">${job.vehicleReg}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #E5E7EB;">${hrs}</td>
+    </tr>`;
+  }).join('');
+
+  const openRowsHtml = openJobs.map((job, i) => {
+    const bg = i % 2 === 0 ? '#fff' : '#FFF5F5';
+    const hrs = awToHours(job.aw ?? 0).toFixed(2) + 'h';
+    return `<tr style="background:${bg};">
+      <td style="padding:6px 8px;font-size:11px;color:#2563EB;font-weight:700;border-bottom:1px solid #E5E7EB;">${job.wipNumber}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#374151;border-bottom:1px solid #E5E7EB;">${job.vehicleReg}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #E5E7EB;">${hrs}</td>
+    </tr>`;
+  }).join('');
+
+  const pieChartSVG = buildPieChartSVG(billedSnapshotHours, totalOpenHours, totalSoldHours, availableHours);
+
+  return `
+    <div class="page-break"></div>
+    <div style="padding:0;">
+      <div style="text-align:center;font-size:16px;font-weight:700;color:#1565C0;margin-bottom:20px;padding-top:8px;">
+        Job Closure Summary
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="background:#16A34A;color:#fff;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-align:center;">
+            CLOSED / INVOICED JOBS (${closedJobs.length})
+          </div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;">
+            <thead>
+              <tr>
+                <th style="background:#D1FAE5;color:#065F46;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #A7F3D0;">WIP</th>
+                <th style="background:#D1FAE5;color:#065F46;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #A7F3D0;">REG</th>
+                <th style="background:#D1FAE5;color:#065F46;padding:7px 8px;font-size:10px;font-weight:700;text-align:right;border-bottom:1px solid #A7F3D0;">HOURS</th>
+              </tr>
+            </thead>
+            <tbody>${closedRowsHtml}</tbody>
+            <tfoot>
+              <tr style="background:#D1FAE5;">
+                <td colspan="2" style="padding:8px;font-size:11px;font-weight:700;color:#065F46;border-top:2px solid #16A34A;">TOTAL</td>
+                <td style="padding:8px;font-size:12px;font-weight:700;color:#065F46;text-align:right;border-top:2px solid #16A34A;">${totalClosedHours.toFixed(2)}h</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div style="flex:1;">
+          <div style="background:#DC2626;color:#fff;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-align:center;">
+            OPEN / AWAITING JOBS (${openJobs.length})
+          </div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;">
+            <thead>
+              <tr>
+                <th style="background:#FEE2E2;color:#7F1D1D;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #FECACA;">WIP</th>
+                <th style="background:#FEE2E2;color:#7F1D1D;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #FECACA;">REG</th>
+                <th style="background:#FEE2E2;color:#7F1D1D;padding:7px 8px;font-size:10px;font-weight:700;text-align:right;border-bottom:1px solid #FECACA;">HOURS</th>
+              </tr>
+            </thead>
+            <tbody>${openRowsHtml}</tbody>
+            <tfoot>
+              <tr style="background:#FEE2E2;">
+                <td colspan="2" style="padding:8px;font-size:11px;font-weight:700;color:#7F1D1D;border-top:2px solid #DC2626;">TOTAL</td>
+                <td style="padding:8px;font-size:12px;font-weight:700;color:#7F1D1D;text-align:right;border-top:2px solid #DC2626;">${totalOpenHours.toFixed(2)}h</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      ${pieChartSVG}
+    </div>
   `;
 }
 
@@ -350,6 +542,11 @@ async function generatePdfHtml(
   console.log('ExportUtils: Generating PDF HTML for', options.type, 'export with', jobs.length, 'jobs');
 
   const schedule = await offlineStorage.getSchedule();
+
+  // Load billing records and build lookup map
+  const billingRecords = await billingStorage.getAllRecords();
+  console.log('ExportUtils: Loaded', billingRecords.length, 'billing records');
+  const billingByJobId = new Map(billingRecords.map((r: any) => [r.jobId, r]));
 
   const generatedDate = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
@@ -382,6 +579,23 @@ async function generatePdfHtml(
   }
   const overallStats = calcPeriodStats(sortedJobs, availableHours);
 
+  // ── Compute closed/open job lists for this period ──
+  const closedJobs = sortedJobs.filter(job => {
+    const rec = billingByJobId.get(job.id);
+    return rec && normaliseBillingStatus(rec.billingStatus) === 'billed';
+  });
+  const openJobs = sortedJobs.filter(job => {
+    const rec = billingByJobId.get(job.id);
+    return !rec || normaliseBillingStatus(rec.billingStatus) === 'open';
+  });
+  console.log('ExportUtils: Closed jobs:', closedJobs.length, 'Open jobs:', openJobs.length);
+
+  // Billed hours from billing snapshots (more accurate than awToHours)
+  const billedSnapshotHours = closedJobs.reduce((sum, j) => {
+    const rec = billingByJobId.get(j.id);
+    return sum + (rec?.billedHours ?? awToHours(j.aw ?? 0));
+  }, 0);
+
   // ── Build body content ──
   let bodyContent = '';
 
@@ -389,7 +603,7 @@ async function generatePdfHtml(
     // Grand overall summary
     bodyContent += `
       <div style="font-size:13px;font-weight:600;color:#1565C0;margin-bottom:12px;">Overall Summary</div>
-      ${summaryDashboard(overallStats)}
+      ${summaryDashboard(overallStats, billedSnapshotHours)}
     `;
 
     // Section title
@@ -409,12 +623,12 @@ async function generatePdfHtml(
 
     const sortedYears = Array.from(yearMap.keys()).sort((a, b) => b - a);
     sortedYears.forEach(yr => {
-      bodyContent += yearSectionHtml(yr, yearMap.get(yr)!, schedule);
+      bodyContent += yearSectionHtml(yr, yearMap.get(yr)!, schedule, billingByJobId);
     });
 
   } else {
     // Non-entire exports: summary + flat table
-    bodyContent += summaryDashboard(overallStats);
+    bodyContent += summaryDashboard(overallStats, billedSnapshotHours);
 
     bodyContent += `
       <div style="margin-bottom:12px;margin-top:8px;">
@@ -432,7 +646,7 @@ async function generatePdfHtml(
           ${tableHeaderRow()}
           <tbody>`;
       }
-      tableRows += jobRow(job, i % 2 === 0);
+      tableRows += jobRow(job, i % 2 === 0, billingByJobId.get(job.id));
     });
 
     bodyContent += `
@@ -442,6 +656,15 @@ async function generatePdfHtml(
       </table>
     `;
   }
+
+  // ── Append closure summary page (all export types) ──
+  bodyContent += buildClosureSummaryPage(
+    closedJobs,
+    openJobs,
+    billingByJobId,
+    availableHours,
+    overallStats.soldHours
+  );
 
   const html = `<!DOCTYPE html>
 <html>
@@ -457,9 +680,11 @@ async function generatePdfHtml(
       line-height: 1.5;
     }
     table { border-collapse: collapse; width: 100%; }
+    .page-break { page-break-before: always; break-before: page; margin-top: 32px; }
     @media print {
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; }
+      .page-break { page-break-before: always; break-before: page; }
     }
   </style>
 </head>
