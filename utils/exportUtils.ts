@@ -133,19 +133,14 @@ function fmtMonthLabel(yearMonth: string): string {
   return new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-// ── VHC dot + label ───────────────────────────────────────────────────────────
+// ── VHC badge ─────────────────────────────────────────────────────────────────
 
 function vhcCell(status?: string): string {
   const s = (status || 'NONE').toUpperCase();
-  let dotColor = '#9CA3AF';
-  let label = 'N/A';
-  if (s === 'RED')    { dotColor = '#EF4444'; label = 'Red'; }
-  if (s === 'ORANGE' || s === 'AMBER') { dotColor = '#F97316'; label = 'Orange'; }
-  if (s === 'GREEN')  { dotColor = '#22C55E'; label = 'Green'; }
-  return `<span style="display:inline-flex;align-items:center;gap:4px;">
-    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span>
-    <span style="color:#374151;font-size:11px;">${label}</span>
-  </span>`;
+  if (s === 'RED')    return `<span class="tt-badge tt-badge-red">RED</span>`;
+  if (s === 'ORANGE' || s === 'AMBER') return `<span class="tt-badge tt-badge-amber">AMBER</span>`;
+  if (s === 'GREEN')  return `<span class="tt-badge tt-badge-green">GREEN</span>`;
+  return `<span class="tt-badge tt-badge-none">N/A</span>`;
 }
 
 // ── Efficiency Graph card ─────────────────────────────────────────────────────
@@ -155,28 +150,29 @@ function efficiencyGraphCard(stats: PeriodStats, billedHours?: number): string {
   const soldHoursDisplay = stats.soldHours.toFixed(2) + 'h';
   const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
   const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(1) + '%' : '—';
-  const billedHoursDisplay = billedHours !== undefined ? billedHours.toFixed(2) + 'h' : '—';
+  const billedDisplay = billedHours !== undefined ? billedHours.toFixed(2) + 'h' : null;
 
   return `
-    <div style="background:#EEF4FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;margin-bottom:16px;">
-      <div style="text-align:center;font-size:16px;font-weight:700;color:#1565C0;margin-bottom:16px;">Efficiency Graph</div>
-      <div style="background:#E5E7EB;border-radius:999px;height:28px;width:100%;position:relative;overflow:hidden;margin-bottom:12px;">
-        <div style="background:#F59E0B;height:100%;border-radius:999px;width:${barPct}%;position:absolute;top:0;left:0;"></div>
-        <div style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
-          <span style="font-size:13px;font-weight:700;color:#1C1917;z-index:1;">${barPct}%</span>
+    <div class="tt-summary-panel avoid-break">
+      <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:14px;">Efficiency Overview</div>
+      <div class="tt-metric-grid">
+        <div class="tt-metric-card">
+          <div class="tt-metric-value">${soldHoursDisplay}</div>
+          <div class="tt-metric-label">Sold Hours</div>
         </div>
-      </div>
-      <div style="font-size:12px;color:#374151;line-height:2;">
-        Sold Hours: <span style="color:#06B6D4;font-weight:700;">${soldHoursDisplay}</span>
-      </div>
-      <div style="font-size:12px;color:#374151;line-height:2;">
-        Available Hours: <span style="color:#06B6D4;font-weight:700;">${availHoursDisplay}</span>
-      </div>
-      <div style="font-size:12px;color:#374151;line-height:2;">
-        Efficiency: <span style="color:#EAB308;font-weight:700;">${efficiencyDisplay}</span>
-      </div>
-      <div style="font-size:12px;color:#374151;line-height:2;">
-        Total Invoiced: <span style="color:#16A34A;font-weight:700;">${billedHoursDisplay}</span>
+        <div class="tt-metric-card">
+          <div class="tt-metric-value">${availHoursDisplay}</div>
+          <div class="tt-metric-label">Available Hours</div>
+        </div>
+        <div class="tt-metric-card ${stats.efficiency >= 80 ? 'tt-metric-green' : stats.efficiency >= 50 ? 'tt-metric-amber' : 'tt-metric-red'}">
+          <div class="tt-metric-value">${efficiencyDisplay}</div>
+          <div class="tt-metric-label">Efficiency</div>
+          <div class="tt-eff-bar-wrap"><div class="tt-eff-bar-fill" style="width:${barPct}%;"></div></div>
+        </div>
+        ${billedDisplay ? `<div class="tt-metric-card tt-metric-green">
+          <div class="tt-metric-value">${billedDisplay}</div>
+          <div class="tt-metric-label">Total Invoiced</div>
+        </div>` : ''}
       </div>
     </div>
   `;
@@ -190,27 +186,27 @@ function performanceMetricsCard(stats: PeriodStats): string {
   const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(0) + '%' : '—';
   const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
 
-  const metricCard = (value: string, label: string, subtitle: string) => `
-    <div style="flex:1;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:16px 12px;text-align:center;margin:4px;">
-      <div style="font-size:22px;font-weight:700;color:#16A34A;margin-bottom:4px;">${value}</div>
-      <div style="font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;margin-bottom:3px;">${label}</div>
-      <div style="font-size:9px;color:#9CA3AF;">${subtitle}</div>
-    </div>
-  `;
-
   return `
-    <div style="background:#EEF4FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
-      <div style="text-align:center;font-size:16px;font-weight:700;color:#1565C0;margin-bottom:16px;">&#128202; Performance Metrics</div>
-      <div style="display:flex;gap:0;margin-bottom:0;">
-        <div style="display:flex;flex-direction:column;flex:1;gap:0;">
-          <div style="display:flex;gap:0;margin-bottom:0;">
-            ${metricCard(utilizationDisplay, 'UTILIZATION', 'Out of ' + (stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—') + ' available')}
-            ${metricCard(awPerHourDisplay, 'AWS PER HOUR', 'Average productivity')}
-          </div>
-          <div style="display:flex;gap:0;">
-            ${metricCard(efficiencyDisplay, 'EFFICIENCY', 'Since first entry')}
-            ${metricCard(availHoursDisplay, 'AVAILABLE HOURS', 'From first entry')}
-          </div>
+    <div class="tt-summary-panel avoid-break" style="margin-top:0;">
+      <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:14px;">Performance Metrics</div>
+      <div class="tt-metric-grid">
+        <div class="tt-metric-card">
+          <div class="tt-metric-value">${utilizationDisplay}</div>
+          <div class="tt-metric-label">Utilization</div>
+          <div class="tt-metric-sub">of ${availHoursDisplay} available</div>
+        </div>
+        <div class="tt-metric-card">
+          <div class="tt-metric-value">${awPerHourDisplay}</div>
+          <div class="tt-metric-label">AW per Hour</div>
+          <div class="tt-metric-sub">Average productivity</div>
+        </div>
+        <div class="tt-metric-card">
+          <div class="tt-metric-value">${efficiencyDisplay}</div>
+          <div class="tt-metric-label">Efficiency</div>
+        </div>
+        <div class="tt-metric-card">
+          <div class="tt-metric-value">${stats.jobCount}</div>
+          <div class="tt-metric-label">Total Jobs</div>
         </div>
       </div>
     </div>
@@ -225,29 +221,26 @@ function summaryDashboard(stats: PeriodStats, billedHours?: number): string {
 
 // ── Table header row ──────────────────────────────────────────────────────────
 
-const TH = `background:#1565C0;color:#FFFFFF;padding:10px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;border-right:1px solid #1E40AF;`;
-
 function tableHeaderRow(): string {
   return `
     <thead>
       <tr>
-        <th style="${TH}width:9%;">WIP<br/>NUMBER</th>
-        <th style="${TH}width:12%;">VEHICLE REG</th>
-        <th style="${TH}width:10%;">VHC</th>
-        <th style="${TH}width:28%;">JOB DESCRIPTION</th>
-        <th style="${TH}width:7%;text-align:center;">AWS</th>
-        <th style="${TH}width:9%;text-align:center;">TIME</th>
-        <th style="${TH}width:12%;text-align:center;">DATE &amp;<br/>TIME</th>
-        <th style="${TH}width:10%;border-right:none;text-align:center;">STATUS</th>
+        <th style="width:9%;">WIP</th>
+        <th style="width:12%;">Vehicle Reg</th>
+        <th style="width:10%;">VHC</th>
+        <th style="width:27%;">Job Notes</th>
+        <th style="width:7%;text-align:center;">AW</th>
+        <th style="width:9%;text-align:center;">Time</th>
+        <th style="width:12%;text-align:center;">Date</th>
+        <th style="width:10%;text-align:center;">Status</th>
       </tr>
     </thead>`;
 }
 
 // ── Single job row ────────────────────────────────────────────────────────────
 
-function jobRow(job: Job, isEven: boolean, billingRecord?: any): string {
-  const rowBg = isEven ? '#FFFFFF' : '#F9FAFB';
-  const TD = `padding:9px 10px;font-size:11px;color:#374151;vertical-align:middle;border-right:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;`;
+function jobRow(job: Job, _isEven: boolean, billingRecord?: any): string {
+  const TD = `padding:8px 10px;font-size:11px;color:#1C2B3A;vertical-align:middle;border-bottom:1px solid #E5E7EB;`;
   const jobMinutes = awToMinutes(Number(job.aw) || 0);
   const timeFormatted = fmtTime(jobMinutes);
   const notes = job.notes ? job.notes.trim() : '';
@@ -256,18 +249,18 @@ function jobRow(job: Job, isEven: boolean, billingRecord?: any): string {
   const timePart = dateTimeStr.split(' ')[1];
   const status = billingRecord ? normaliseBillingStatus(billingRecord.billingStatus) : 'open';
   const statusBadge = status === 'billed'
-    ? `<span style="background:#16A34A;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">INVOICED</span>`
-    : `<span style="background:#DC2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">OPEN</span>`;
+    ? `<span class="tt-badge tt-badge-invoiced">INVOICED</span>`
+    : `<span class="tt-badge tt-badge-open">OPEN</span>`;
   return `
-    <tr style="background:${rowBg};">
+    <tr>
       <td style="${TD}font-weight:700;color:#2563EB;">${job.wipNumber}</td>
-      <td style="${TD}font-weight:500;">${job.vehicleReg}</td>
+      <td style="${TD}">${job.vehicleReg}</td>
       <td style="${TD}">${vhcCell(job.vhcStatus)}</td>
       <td style="${TD}line-height:1.5;">${notes}</td>
-      <td style="${TD}font-weight:700;color:#2563EB;text-align:center;font-size:13px;">${job.aw}</td>
+      <td style="${TD}font-weight:700;color:#2563EB;text-align:center;">${job.aw}</td>
       <td style="${TD}text-align:center;">${timeFormatted}</td>
-      <td style="${TD}text-align:center;font-size:11px;color:#374151;">${datePart}<br/><span style="color:#6B7280;">${timePart}</span></td>
-      <td style="${TD}border-right:none;text-align:center;">${statusBadge}</td>
+      <td style="${TD}text-align:center;">${datePart}<br/><span style="color:#6B7280;">${timePart}</span></td>
+      <td style="${TD}text-align:center;">${statusBadge}</td>
     </tr>
   `;
 }
@@ -442,92 +435,73 @@ function buildPieChartSVG(invoicedHours: number, openHours: number, totalSoldHou
 function buildClosureSummaryPage(
   closedJobs: Job[],
   openJobs: Job[],
-  billingByJobId: Map<string, any>,
+  totalClosedHours: number,
+  totalOpenHours: number,
   availableHours: number,
   totalSoldHours: number
 ): string {
-  const totalClosedHours = closedJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
-  const totalOpenHours = openJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
-
-  // Use billedHours snapshot for invoiced hours (more accurate)
-  const billedSnapshotHours = closedJobs.reduce((sum, j) => {
-    const rec = billingByJobId.get(j.id);
-    return sum + (rec?.billedHours ?? awToHours(j.aw ?? 0));
-  }, 0);
-
-  const closedRowsHtml = closedJobs.map((job, i) => {
-    const bg = i % 2 === 0 ? '#fff' : '#F0FDF4';
+  const closedRows = closedJobs.map(job => {
     const hrs = awToHours(job.aw ?? 0).toFixed(2) + 'h';
-    return `<tr style="background:${bg};">
-      <td style="padding:6px 8px;font-size:11px;color:#2563EB;font-weight:700;border-bottom:1px solid #E5E7EB;">${job.wipNumber}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#374151;border-bottom:1px solid #E5E7EB;">${job.vehicleReg}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #E5E7EB;">${hrs}</td>
+    return `<tr>
+      <td style="font-weight:700;color:#2563EB;">${job.wipNumber}</td>
+      <td>${job.vehicleReg}</td>
+      <td style="text-align:right;">${hrs}</td>
     </tr>`;
   }).join('');
 
-  const openRowsHtml = openJobs.map((job, i) => {
-    const bg = i % 2 === 0 ? '#fff' : '#FFF5F5';
+  const openRows = openJobs.map(job => {
     const hrs = awToHours(job.aw ?? 0).toFixed(2) + 'h';
-    return `<tr style="background:${bg};">
-      <td style="padding:6px 8px;font-size:11px;color:#2563EB;font-weight:700;border-bottom:1px solid #E5E7EB;">${job.wipNumber}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#374151;border-bottom:1px solid #E5E7EB;">${job.vehicleReg}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #E5E7EB;">${hrs}</td>
+    return `<tr>
+      <td style="font-weight:700;color:#2563EB;">${job.wipNumber}</td>
+      <td>${job.vehicleReg}</td>
+      <td style="text-align:right;">${hrs}</td>
     </tr>`;
   }).join('');
 
-  const pieChartSVG = buildPieChartSVG(billedSnapshotHours, totalOpenHours, totalSoldHours, availableHours);
+  const pie = buildPieChartSVG(totalClosedHours, totalOpenHours, totalSoldHours, availableHours);
 
   return `
     <div class="page-break"></div>
-    <div style="padding:0;">
-      <div style="text-align:center;font-size:16px;font-weight:700;color:#1565C0;margin-bottom:20px;padding-top:8px;">
-        Job Closure Summary
-      </div>
-      <div style="display:flex;gap:16px;align-items:flex-start;">
-        <div style="flex:1;">
-          <div style="background:#16A34A;color:#fff;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-align:center;">
-            CLOSED / INVOICED JOBS (${closedJobs.length})
-          </div>
-          <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;">
-            <thead>
-              <tr>
-                <th style="background:#D1FAE5;color:#065F46;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #A7F3D0;">WIP</th>
-                <th style="background:#D1FAE5;color:#065F46;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #A7F3D0;">REG</th>
-                <th style="background:#D1FAE5;color:#065F46;padding:7px 8px;font-size:10px;font-weight:700;text-align:right;border-bottom:1px solid #A7F3D0;">HOURS</th>
-              </tr>
-            </thead>
-            <tbody>${closedRowsHtml}</tbody>
-            <tfoot>
-              <tr style="background:#D1FAE5;">
-                <td colspan="2" style="padding:8px;font-size:11px;font-weight:700;color:#065F46;border-top:2px solid #16A34A;">TOTAL</td>
-                <td style="padding:8px;font-size:12px;font-weight:700;color:#065F46;text-align:right;border-top:2px solid #16A34A;">${totalClosedHours.toFixed(2)}h</td>
-              </tr>
-            </tfoot>
-          </table>
+    <div class="tt-section">Invoiced &amp; Open Job Breakdown</div>
+    <div style="display:flex;gap:16px;align-items:flex-start;margin-top:12px;">
+      <div style="flex:1;">
+        <div class="tt-closure-col-header tt-closure-col-header-invoiced">
+          INVOICED / CLOSED (${closedJobs.length})
         </div>
-        <div style="flex:1;">
-          <div style="background:#DC2626;color:#fff;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-align:center;">
-            OPEN / AWAITING JOBS (${openJobs.length})
-          </div>
-          <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;">
-            <thead>
-              <tr>
-                <th style="background:#FEE2E2;color:#7F1D1D;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #FECACA;">WIP</th>
-                <th style="background:#FEE2E2;color:#7F1D1D;padding:7px 8px;font-size:10px;font-weight:700;text-align:left;border-bottom:1px solid #FECACA;">REG</th>
-                <th style="background:#FEE2E2;color:#7F1D1D;padding:7px 8px;font-size:10px;font-weight:700;text-align:right;border-bottom:1px solid #FECACA;">HOURS</th>
-              </tr>
-            </thead>
-            <tbody>${openRowsHtml}</tbody>
-            <tfoot>
-              <tr style="background:#FEE2E2;">
-                <td colspan="2" style="padding:8px;font-size:11px;font-weight:700;color:#7F1D1D;border-top:2px solid #DC2626;">TOTAL</td>
-                <td style="padding:8px;font-size:12px;font-weight:700;color:#7F1D1D;text-align:right;border-top:2px solid #DC2626;">${totalOpenHours.toFixed(2)}h</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <table>
+          <thead><tr>
+            <th style="background:#15803D;">WIP</th>
+            <th style="background:#15803D;">Reg</th>
+            <th style="background:#15803D;text-align:right;">Hours</th>
+          </tr></thead>
+          <tbody>${closedRows || '<tr><td colspan="3" style="text-align:center;color:#9CA3AF;font-style:italic;">No invoiced jobs</td></tr>'}</tbody>
+          <tfoot><tr style="background:#F0FDF4;">
+            <td colspan="2" style="font-weight:700;color:#15803D;border-top:2px solid #15803D;">TOTAL</td>
+            <td style="font-weight:700;color:#15803D;text-align:right;border-top:2px solid #15803D;">${totalClosedHours.toFixed(2)}h</td>
+          </tr></tfoot>
+        </table>
       </div>
-      ${pieChartSVG}
+      <div style="flex:1;">
+        <div class="tt-closure-col-header tt-closure-col-header-open">
+          OPEN / AWAITING (${openJobs.length})
+        </div>
+        <table>
+          <thead><tr>
+            <th style="background:#B91C1C;">WIP</th>
+            <th style="background:#B91C1C;">Reg</th>
+            <th style="background:#B91C1C;text-align:right;">Hours</th>
+          </tr></thead>
+          <tbody>${openRows || '<tr><td colspan="3" style="text-align:center;color:#9CA3AF;font-style:italic;">No open jobs</td></tr>'}</tbody>
+          <tfoot><tr style="background:#FFF5F5;">
+            <td colspan="2" style="font-weight:700;color:#B91C1C;border-top:2px solid #B91C1C;">TOTAL</td>
+            <td style="font-weight:700;color:#B91C1C;text-align:right;border-top:2px solid #B91C1C;">${totalOpenHours.toFixed(2)}h</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="tt-chart-container" style="margin-top:20px;">
+      <div class="tt-chart-title">Available Hours Utilisation</div>
+      ${pie}
     </div>
   `;
 }
@@ -602,16 +576,12 @@ async function generatePdfHtml(
   if (options.type === 'all') {
     // Grand overall summary
     bodyContent += `
-      <div style="font-size:13px;font-weight:600;color:#1565C0;margin-bottom:12px;">Overall Summary</div>
+      <div class="tt-section">Performance Summary</div>
       ${summaryDashboard(overallStats, billedSnapshotHours)}
     `;
 
     // Section title
-    bodyContent += `
-      <div style="margin-bottom:12px;margin-top:8px;">
-        <div style="font-size:18px;font-weight:700;color:#1565C0;">&#128295; Detailed Job Records</div>
-      </div>
-    `;
+    bodyContent += `<div class="tt-section">Detailed Job Records</div>`;
 
     // Group by year
     const yearMap = new Map<number, Job[]>();
@@ -630,11 +600,7 @@ async function generatePdfHtml(
     // Non-entire exports: summary + flat table
     bodyContent += summaryDashboard(overallStats, billedSnapshotHours);
 
-    bodyContent += `
-      <div style="margin-bottom:12px;margin-top:8px;">
-        <div style="font-size:18px;font-weight:700;color:#1565C0;">&#128295; Detailed Job Records</div>
-      </div>
-    `;
+    bodyContent += `<div class="tt-section">Detailed Job Records</div>`;
 
     // Build flat table with repeated header every 20 rows
     const ROWS_PER_GROUP = 20;
@@ -658,10 +624,16 @@ async function generatePdfHtml(
   }
 
   // ── Append closure summary page (all export types) ──
+  const totalClosedHours = closedJobs.reduce((sum, j) => {
+    const rec = billingByJobId.get(j.id);
+    return sum + (rec?.billedHours ?? awToHours(j.aw ?? 0));
+  }, 0);
+  const totalOpenHours = openJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
   bodyContent += buildClosureSummaryPage(
     closedJobs,
     openJobs,
-    billingByJobId,
+    totalClosedHours,
+    totalOpenHours,
     availableHours,
     overallStats.soldHours
   );
@@ -672,39 +644,142 @@ async function generatePdfHtml(
   <meta charset="utf-8">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { margin: 14mm 16mm; size: A4 portrait; }
     body {
-      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      font-family: -apple-system, 'Helvetica Neue', Arial, Helvetica, sans-serif;
       background: #FFFFFF;
-      color: #374151;
+      color: #1C2B3A;
       font-size: 12px;
-      line-height: 1.5;
+      line-height: 1.55;
     }
-    table { border-collapse: collapse; width: 100%; }
-    .page-break { page-break-before: always; break-before: page; margin-top: 32px; }
+    /* ── Typography ── */
+    h1 { font-size: 26px; font-weight: 800; color: #1565C0; letter-spacing: -0.5px; line-height: 1.1; }
+    h2 { font-size: 16px; font-weight: 700; color: #1565C0; margin-bottom: 10px; }
+    h3 { font-size: 13px; font-weight: 700; color: #1565C0; margin-bottom: 6px; }
+    /* ── Page header ── */
+    .tt-page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 10px; margin-bottom: 20px;
+      border-bottom: 2px solid #BFDBFE;
+    }
+    .tt-brand { font-size: 10px; font-weight: 800; letter-spacing: 4px; color: #2563EB; text-transform: uppercase; }
+    .tt-report-title { font-size: 22px; font-weight: 800; color: #1565C0; letter-spacing: -0.3px; }
+    .tt-period { font-size: 12px; color: #6B7280; font-weight: 500; margin-top: 2px; }
+    /* ── Section heading ── */
+    .tt-section {
+      margin: 24px 0 10px;
+      padding: 8px 12px;
+      background: #EFF6FF;
+      border-left: 4px solid #2563EB;
+      border-radius: 0 6px 6px 0;
+      font-size: 13px; font-weight: 700; color: #1E40AF;
+      page-break-after: avoid;
+    }
+    /* ── Metric grid ── */
+    .tt-metric-grid {
+      display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0;
+    }
+    .tt-metric-card {
+      flex: 1; min-width: 110px; max-width: 160px;
+      background: #F0F7FF; border: 1px solid #BFDBFE; border-radius: 8px;
+      padding: 14px 10px; text-align: center;
+      page-break-inside: avoid;
+    }
+    .tt-metric-value { font-size: 22px; font-weight: 800; color: #1565C0; line-height: 1.1; }
+    .tt-metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #6B7280; margin-top: 4px; }
+    .tt-metric-sub { font-size: 9px; color: #9CA3AF; margin-top: 2px; }
+    .tt-metric-green .tt-metric-value { color: #15803D; }
+    .tt-metric-green { background: #F0FDF4; border-color: #BBF7D0; }
+    .tt-metric-amber .tt-metric-value { color: #B45309; }
+    .tt-metric-amber { background: #FFFBEB; border-color: #FDE68A; }
+    .tt-metric-red .tt-metric-value { color: #B91C1C; }
+    .tt-metric-red { background: #FFF5F5; border-color: #FECACA; }
+    /* ── Efficiency bar ── */
+    .tt-eff-bar-wrap { background: #E5E7EB; border-radius: 999px; height: 10px; overflow: hidden; margin-top: 6px; }
+    .tt-eff-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #2563EB, #60A5FA); }
+    /* ── Summary panel ── */
+    .tt-summary-panel {
+      background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px;
+      padding: 18px 20px; margin: 14px 0;
+    }
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+    th {
+      background: #1565C0; color: #FFFFFF;
+      padding: 9px 10px; text-align: left;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
+      border-right: 1px solid #1E40AF;
+    }
+    th:last-child { border-right: none; }
+    td {
+      padding: 8px 10px; font-size: 11px; color: #1C2B3A;
+      border-bottom: 1px solid #E5E7EB; vertical-align: middle;
+    }
+    tr:nth-child(even) td { background: #F8FAFF; }
+    tr { page-break-inside: avoid; }
+    /* ── Status badges ── */
+    .tt-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .tt-badge-invoiced { background: #15803D; color: #fff; }
+    .tt-badge-open { background: #B91C1C; color: #fff; }
+    .tt-badge-green { background: #15803D; color: #fff; }
+    .tt-badge-amber { background: #B45309; color: #fff; }
+    .tt-badge-red { background: #B91C1C; color: #fff; }
+    .tt-badge-none { background: #6B7280; color: #fff; }
+    /* ── Footer ── */
+    .tt-footer {
+      border-top: 1px solid #BFDBFE; text-align: center;
+      padding: 10px 0; margin-top: 28px;
+      font-size: 9px; color: #9CA3AF; letter-spacing: 0.5px;
+    }
+    /* ── Closure summary page ── */
+    .tt-closure-col-header {
+      padding: 8px 12px; border-radius: 6px 6px 0 0;
+      font-size: 11px; font-weight: 700; text-align: center; color: #fff;
+    }
+    .tt-closure-col-header-invoiced { background: #15803D; }
+    .tt-closure-col-header-open { background: #B91C1C; }
+    .tt-closure-tfoot td { font-weight: 700; border-top: 2px solid currentColor; }
+    /* ── Chart container ── */
+    .tt-chart-container {
+      background: #F8FAFF; border: 1px solid #BFDBFE; border-radius: 10px;
+      padding: 20px; margin: 16px 0; text-align: center;
+    }
+    .tt-chart-title { font-size: 13px; font-weight: 700; color: #1565C0; margin-bottom: 16px; }
+    /* ── Page break helpers ── */
+    .page-break { page-break-after: always; }
+    .avoid-break { page-break-inside: avoid; }
+    /* ── Print ── */
     @media print {
-      thead { display: table-header-group; }
-      tr { page-break-inside: avoid; }
-      .page-break { page-break-before: always; break-before: page; }
+      .tt-page-header { position: running(header); }
+      .tt-footer { position: running(footer); }
     }
   </style>
 </head>
-<body style="padding:24px 28px;">
+<body style="padding:20px 24px;">
 
   <!-- ═══ HEADER ═══ -->
-  <div style="text-align:center;padding:20px 0 16px;border-bottom:2px solid #BFDBFE;margin-bottom:24px;">
-    <div style="font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#2563EB;margin-bottom:6px;">TECH TIMES</div>
-    <div style="font-size:24px;font-weight:800;color:#1565C0;letter-spacing:-0.5px;line-height:1.1;margin-bottom:6px;">${reportType}</div>
-    <div style="font-size:12px;color:#6B7280;font-weight:500;">${technicianName} &nbsp;·&nbsp; ${periodLabel}</div>
+  <div class="tt-page-header">
+    <div>
+      <div class="tt-brand">T E C H &nbsp; T I M E S</div>
+      <div class="tt-report-title">${reportType}</div>
+      <div class="tt-period">${technicianName} &nbsp;&middot;&nbsp; ${periodLabel}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#9CA3AF;">
+      Generated<br/>${generatedDate}
+    </div>
   </div>
 
   <!-- ═══ BODY ═══ -->
   ${bodyContent}
 
   <!-- ═══ FOOTER ═══ -->
-  <div style="border-top:1px solid #BFDBFE;text-align:center;padding:12px 0;margin-top:24px;">
-    <span style="font-size:10px;color:#9CA3AF;letter-spacing:0.5px;">
-      TECH TIMES &nbsp;•&nbsp; Generated on ${generatedDate}
-    </span>
+  <div class="tt-footer">
+    TECH TIMES &nbsp;&bull;&nbsp; Created by BNR &nbsp;&bull;&nbsp; Generated ${generatedDate}
   </div>
 
 </body>

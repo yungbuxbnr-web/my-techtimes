@@ -14,6 +14,7 @@ export type DateMode = 'work_date' | 'billing_date';
 export type DetailLevel = 'summary' | 'standard' | 'full';
 
 export type PDFTheme =
+  | 'tech_times_standard'
   | 'tech_times_glass'
   | 'midnight_performance'
   | 'carbon_workshop'
@@ -138,7 +139,7 @@ export function getDefaultReportOptions(): ReportOptions {
     period: 'month',
     dateMode: 'work_date',
     detailLevel: 'standard',
-    theme: 'tech_times_glass',
+    theme: 'tech_times_standard',
     includeSections: {
       summary: true,
       availability: true,
@@ -393,6 +394,36 @@ function getThemeCSS(theme: PDFTheme): string {
   `;
 
   switch (theme) {
+    case 'tech_times_standard':
+      return `
+        @page { margin: 14mm 16mm; size: A4 portrait; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9px; color: #9CA3AF; } }
+        body { background: #FFFFFF; color: #1C2B3A; font-family: -apple-system, 'Helvetica Neue', Arial, Helvetica, sans-serif; }
+        .card { background: #F0F7FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 18px 20px; margin: 14px 0; }
+        .accent { color: #1565C0; }
+        .accent-bg { background: #1565C0; }
+        h1 { font-size: 26px; font-weight: 800; color: #1565C0; }
+        h2 { font-size: 16px; font-weight: 700; color: #1565C0; margin-bottom: 10px; }
+        h3 { font-size: 13px; font-weight: 700; color: #1565C0; margin-bottom: 6px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #1565C0; color: #FFFFFF; padding: 9px 10px; text-align: left; font-size: 9px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; border-right: 1px solid #1E40AF; }
+        th:last-child { border-right: none; }
+        td { padding: 8px 10px; font-size: 11px; color: #1C2B3A; border-bottom: 1px solid #E5E7EB; vertical-align: middle; }
+        tr:nth-child(even) td { background: #F8FAFF; }
+        tr { page-break-inside: avoid; }
+        .cover { background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); }
+        .stat-value { color: #1565C0; font-size: 24px; font-weight: 800; }
+        .stat-label { color: #6B7280; font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 4px; }
+        .badge-billed { background: #15803D; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+        .badge-open { background: #B91C1C; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+        .footer { color: #9CA3AF; font-size: 9px; text-align: center; margin-top: 28px; border-top: 1px solid #BFDBFE; padding-top: 10px; }
+        .section-header { background: #EFF6FF; padding: 8px 12px; border-left: 4px solid #2563EB; border-radius: 0 6px 6px 0; margin: 24px 0 10px; font-size: 13px; font-weight: 700; color: #1E40AF; }
+        .metric-card { background: #F0F7FF; border: 1px solid #BFDBFE; border-radius: 8px; }
+        .efficiency-bar { background: #E5E7EB; }
+        .efficiency-fill { background: linear-gradient(90deg, #2563EB, #60A5FA); }
+        .page-header { border-bottom: 2px solid #BFDBFE; }
+        .page-footer { border-top: 1px solid #BFDBFE; color: #9CA3AF; }
+        ${commonExtras}
+      `;
     case 'tech_times_glass':
       return `
         @page { margin: 15mm; size: A4 portrait; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 10px; color: #888; } }
@@ -675,6 +706,7 @@ export function generatePDFHTML(data: ReportData, options: ReportOptions): strin
 
   // ── Cover Page ──────────────────────────────────────────────────────────────
   if (options.coverPage) {
+    const coverTextColor = options.theme === 'tech_times_standard' || options.theme === 'executive_light' || options.theme === 'minimal_print' ? '#1565C0' : 'inherit';
     const techLine = options.showTechnicianName && options.technicianName
       ? `<div style="margin-top: 32px; font-size: 14px; opacity: 0.6;">Prepared for: ${options.technicianName}</div>`
       : '';
@@ -683,7 +715,7 @@ export function generatePDFHTML(data: ReportData, options: ReportOptions): strin
       : '';
     sections.push(`
       <div class="cover" style="min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 60px 40px;">
-        <div style="font-size: 52px; font-weight: 900; letter-spacing: 6px;" class="accent">TECH TIMES</div>
+        <div style="font-size: 52px; font-weight: 900; letter-spacing: 6px; color: ${coverTextColor};" class="accent">TECH TIMES</div>
         <div style="font-size: 13px; margin-top: 6px; opacity: 0.5; letter-spacing: 2px;">TECHNICIAN PERFORMANCE SYSTEM</div>
         <div style="width: 60px; height: 3px; margin: 24px auto;" class="accent-bg"></div>
         <div style="font-size: 26px; font-weight: 700; margin-top: 8px;">${rptLabel}</div>
