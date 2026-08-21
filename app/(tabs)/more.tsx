@@ -171,8 +171,16 @@ export default function MoreScreen() {
       ],
     },
     {
-      title: 'Data',
+      title: 'Reports & Analysis',
       items: [
+        {
+          icon_ios: 'doc.richtext.fill',
+          icon_android: 'picture-as-pdf',
+          label: 'PDF & Report Centre',
+          subtitle: 'Performance, billing, job PDFs, technical evidence packs and custom reports',
+          route: '/report-builder',
+          color: '#DC2626',
+        },
         {
           icon_ios: 'checkmark.shield.fill',
           icon_android: 'verified',
