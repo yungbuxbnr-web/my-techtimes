@@ -1,421 +1,354 @@
 
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
-  withSequence,
+  withSpring,
   withDelay,
+  withSequence,
   runOnJS,
   Easing,
-  withRepeat,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { Svg, Path, Circle, Rect, Line } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SW, height: SH } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onComplete: () => void;
+  mode?: 'full' | 'quick' | 'off';
+  reduceMotion?: boolean;
 }
 
-// Animated rotating gear
-function AnimatedGear({ delay = 0, size = 80, x = 0, y = 0 }: { delay?: number; size?: number; x?: number; y?: number }) {
-  const rotation = useSharedValue(0);
-  const scale = useSharedValue(0);
+export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }: SplashScreenProps) {
+  const insets = useSafeAreaInsets();
+  const isMounted = useRef(true);
 
-  useEffect(() => {
-    // Scale in
-    scale.value = withDelay(
-      delay,
-      withSpring(1, {
-        damping: 10,
-        stiffness: 100,
-      })
-    );
-
-    // Continuous rotation
-    rotation.value = withDelay(
-      delay + 300,
-      withRepeat(
-        withTiming(360, {
-          duration: 3000,
-          easing: Easing.linear,
-        }),
-        -1,
-        false
-      )
-    );
-
-    return () => {
-      cancelAnimation(rotation);
-      cancelAnimation(scale);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: x },
-        { translateY: y },
-        { rotate: `${rotation.value}deg` },
-        { scale: scale.value },
-      ],
-    };
-  });
-
-  return (
-    <Animated.View style={[{ width: size, height: size, position: 'absolute' }, animatedStyle]}>
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        {/* Gear teeth */}
-        <Path
-          d="M50 10 L55 15 L55 25 L45 25 L45 15 Z
-             M75 15 L80 20 L75 30 L65 25 Z
-             M90 40 L90 50 L80 50 L80 40 Z
-             M75 70 L80 80 L70 80 L65 75 Z
-             M50 90 L55 85 L55 75 L45 75 L45 85 Z
-             M25 70 L30 80 L20 80 L15 75 Z
-             M10 40 L10 50 L20 50 L20 40 Z
-             M25 15 L30 20 L25 30 L15 25 Z"
-          fill="#FF6B35"
-          stroke="#D84315"
-          strokeWidth="1"
-        />
-        {/* Center circle */}
-        <Circle cx="50" cy="50" r="25" fill="#FF6B35" stroke="#D84315" strokeWidth="2" />
-        <Circle cx="50" cy="50" r="15" fill="#2c2c2c" stroke="#D84315" strokeWidth="2" />
-        <Circle cx="50" cy="50" r="8" fill="#FF6B35" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// Animated wrench that swings in
-function AnimatedWrench({ delay = 0 }: { delay?: number }) {
-  const rotation = useSharedValue(-90);
-  const translateY = useSharedValue(-100);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    opacity.value = withDelay(delay, withTiming(1, { duration: 200 }));
-    
-    translateY.value = withDelay(
-      delay,
-      withSpring(0, {
-        damping: 8,
-        stiffness: 80,
-      })
-    );
-
-    rotation.value = withDelay(
-      delay,
-      withSequence(
-        withSpring(15, { damping: 8 }),
-        withSpring(-10, { damping: 8 }),
-        withSpring(5, { damping: 8 }),
-        withSpring(0, { damping: 10 })
-      )
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateY: translateY.value },
-        { rotate: `${rotation.value}deg` },
-      ],
-      opacity: opacity.value,
-    };
-  });
-
-  return (
-    <Animated.View style={[{ width: 60, height: 60, position: 'absolute', left: -80, top: -20 }, animatedStyle]}>
-      <Svg width="60" height="60" viewBox="0 0 60 60">
-        <Path
-          d="M20 10 L20 35 L25 40 L30 35 L30 10 Z"
-          fill="#2196F3"
-          stroke="#1565C0"
-          strokeWidth="2"
-        />
-        <Circle cx="25" cy="8" r="8" fill="#2196F3" stroke="#1565C0" strokeWidth="2" />
-        <Circle cx="25" cy="8" r="4" fill="none" stroke="#1565C0" strokeWidth="2" />
-        <Path
-          d="M22 40 L22 50 L28 50 L28 40 Z"
-          fill="#2196F3"
-          stroke="#1565C0"
-          strokeWidth="2"
-        />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// Animated screwdriver
-function AnimatedScrewdriver({ delay = 0 }: { delay?: number }) {
-  const translateX = useSharedValue(100);
-  const rotation = useSharedValue(45);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    opacity.value = withDelay(delay, withTiming(1, { duration: 200 }));
-    
-    translateX.value = withDelay(
-      delay,
-      withSpring(0, {
-        damping: 8,
-        stiffness: 80,
-      })
-    );
-
-    rotation.value = withDelay(
-      delay,
-      withSequence(
-        withSpring(-15, { damping: 8 }),
-        withSpring(10, { damping: 8 }),
-        withSpring(-5, { damping: 8 }),
-        withSpring(0, { damping: 10 })
-      )
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { rotate: `${rotation.value}deg` },
-      ],
-      opacity: opacity.value,
-    };
-  });
-
-  return (
-    <Animated.View style={[{ width: 60, height: 60, position: 'absolute', right: -80, top: -20 }, animatedStyle]}>
-      <Svg width="60" height="60" viewBox="0 0 60 60">
-        <Rect x="22" y="5" width="6" height="30" rx="1" fill="#FFC107" stroke="#F57C00" strokeWidth="1.5" />
-        <Path
-          d="M20 35 L20 50 L30 50 L30 35 Z"
-          fill="#D84315"
-          stroke="#BF360C"
-          strokeWidth="1.5"
-        />
-        <Rect x="23" y="48" width="4" height="8" fill="#BF360C" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// Animated spark particles
-function AnimatedSpark({ delay = 0, x = 0, y = 0 }: { delay?: number; x?: number; y?: number }) {
-  const scale = useSharedValue(0);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    scale.value = withDelay(
-      delay,
-      withSequence(
-        withTiming(1.5, { duration: 200 }),
-        withTiming(0, { duration: 300 })
-      )
-    );
-
-    opacity.value = withDelay(
-      delay,
-      withSequence(
-        withTiming(1, { duration: 100 }),
-        withTiming(0, { duration: 400 })
-      )
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: x },
-        { translateY: y },
-        { scale: scale.value },
-      ],
-      opacity: opacity.value,
-    };
-  });
-
-  return (
-    <Animated.View style={[{ width: 20, height: 20, position: 'absolute' }, animatedStyle]}>
-      <Svg width="20" height="20" viewBox="0 0 20 20">
-        <Circle cx="10" cy="10" r="3" fill="#FFD700" />
-        <Line x1="10" y1="2" x2="10" y2="6" stroke="#FFD700" strokeWidth="2" />
-        <Line x1="10" y1="14" x2="10" y2="18" stroke="#FFD700" strokeWidth="2" />
-        <Line x1="2" y1="10" x2="6" y2="10" stroke="#FFD700" strokeWidth="2" />
-        <Line x1="14" y1="10" x2="18" y2="10" stroke="#FFD700" strokeWidth="2" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// Animated piston
-function AnimatedPiston({ delay = 0 }: { delay?: number }) {
-  const translateY = useSharedValue(0);
-  const scale = useSharedValue(0);
-
-  useEffect(() => {
-    scale.value = withDelay(
-      delay,
-      withSpring(1, {
-        damping: 10,
-        stiffness: 100,
-      })
-    );
-
-    translateY.value = withDelay(
-      delay + 500,
-      withRepeat(
-        withSequence(
-          withTiming(-15, { duration: 400, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0, { duration: 400, easing: Easing.inOut(Easing.ease) })
-        ),
-        -1,
-        false
-      )
-    );
-
-    return () => {
-      cancelAnimation(translateY);
-      cancelAnimation(scale);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateY: translateY.value },
-        { scale: scale.value },
-      ],
-    };
-  });
-
-  return (
-    <Animated.View style={[{ width: 40, height: 80, position: 'absolute', bottom: -100 }, animatedStyle]}>
-      <Svg width="40" height="80" viewBox="0 0 40 80">
-        <Rect x="12" y="0" width="16" height="50" rx="2" fill="#9E9E9E" stroke="#616161" strokeWidth="2" />
-        <Circle cx="20" cy="55" r="12" fill="#424242" stroke="#212121" strokeWidth="2" />
-        <Circle cx="20" cy="55" r="6" fill="#9E9E9E" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-export function SplashScreen({ onComplete }: SplashScreenProps) {
+  // Shared values — full mode
+  const headlightOpacity = useSharedValue(0);
+  const headlightScale = useSharedValue(0.3);
+  const carRevealWidth = useSharedValue(0);
+  const carOpacity = useSharedValue(0);
+  const ring1Scale = useSharedValue(0);
+  const ring1Opacity = useSharedValue(0);
+  const ring2Scale = useSharedValue(0);
+  const ring2Opacity = useSharedValue(0);
+  const ring3Scale = useSharedValue(0);
+  const ring3Opacity = useSharedValue(0);
   const titleOpacity = useSharedValue(0);
-  const titleScale = useSharedValue(0.8);
+  const titleTranslateY = useSharedValue(12);
   const subtitleOpacity = useSharedValue(0);
-  const subtitleTranslateY = useSharedValue(20);
-  const fadeOut = useSharedValue(1);
-  const isMountedRef = useRef(true);
+  const creditOpacity = useSharedValue(0);
+  const streakTranslateX = useSharedValue(-SW);
+  const streakOpacity = useSharedValue(0);
+  const flashOpacity = useSharedValue(0);
+  const containerOpacity = useSharedValue(1);
+
+  const carWidth = Math.min(SW * 0.82, 500);
+  const carHeight = carWidth * (160 / 400);
 
   useEffect(() => {
-    isMountedRef.current = true;
+    isMounted.current = true;
     return () => {
-      isMountedRef.current = false;
+      isMounted.current = false;
+      cancelAnimation(headlightOpacity);
+      cancelAnimation(headlightScale);
+      cancelAnimation(carRevealWidth);
+      cancelAnimation(carOpacity);
+      cancelAnimation(ring1Scale);
+      cancelAnimation(ring1Opacity);
+      cancelAnimation(ring2Scale);
+      cancelAnimation(ring2Opacity);
+      cancelAnimation(ring3Scale);
+      cancelAnimation(ring3Opacity);
+      cancelAnimation(titleOpacity);
+      cancelAnimation(titleTranslateY);
+      cancelAnimation(subtitleOpacity);
+      cancelAnimation(creditOpacity);
+      cancelAnimation(streakTranslateX);
+      cancelAnimation(streakOpacity);
+      cancelAnimation(flashOpacity);
+      cancelAnimation(containerOpacity);
     };
-  }, []);
-
-  useEffect(() => {
-    // Animate title in (after gears and tools appear)
-    titleOpacity.value = withDelay(
-      1800,
-      withTiming(1, { duration: 600 })
-    );
-    titleScale.value = withDelay(
-      1800,
-      withSpring(1, { damping: 10, stiffness: 100 })
-    );
-
-    // Animate subtitle in
-    subtitleOpacity.value = withDelay(
-      2200,
-      withTiming(1, { duration: 600 })
-    );
-    subtitleTranslateY.value = withDelay(
-      2200,
-      withSpring(0, { damping: 12 })
-    );
-
-    const safeComplete = () => { if (isMountedRef.current) onComplete(); };
-
-    // Fade out entire splash screen
-    fadeOut.value = withDelay(
-      3800,
-      withTiming(0, { duration: 500 }, (finished) => {
-        if (finished) {
-          runOnJS(safeComplete)();
-        }
-      })
-    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const titleStyle = useAnimatedStyle(() => {
-    return {
-      opacity: titleOpacity.value,
-      transform: [{ scale: titleScale.value }],
-    };
-  });
+  useEffect(() => {
+    try {
+      const safeComplete = () => {
+        if (isMounted.current) {
+          console.log('SplashScreen: Animation complete, calling onComplete');
+          onComplete();
+        }
+      };
 
-  const subtitleStyle = useAnimatedStyle(() => {
-    return {
-      opacity: subtitleOpacity.value,
-      transform: [{ translateY: subtitleTranslateY.value }],
-    };
-  });
+      // OFF mode — immediate
+      if (mode === 'off') {
+        console.log('SplashScreen: mode=off, skipping animation');
+        safeComplete();
+        return;
+      }
 
-  const containerStyle = useAnimatedStyle(() => {
-    return {
-      opacity: fadeOut.value,
-    };
-  });
+      // QUICK mode or reduceMotion
+      if (mode === 'quick' || reduceMotion) {
+        console.log('SplashScreen: mode=quick/reduceMotion, running quick animation');
+        if (reduceMotion) {
+          // Simple cross-fade only
+          titleOpacity.value = withTiming(1, { duration: 300 });
+          subtitleOpacity.value = withDelay(200, withTiming(1, { duration: 200 }));
+          containerOpacity.value = withDelay(
+            500,
+            withTiming(0, { duration: 100 }, (finished) => {
+              if (finished) runOnJS(safeComplete)();
+            })
+          );
+        } else {
+          // Quick mode: title → subtitle → streak → fade out
+          titleOpacity.value = withTiming(1, { duration: 150 });
+          subtitleOpacity.value = withDelay(150, withTiming(1, { duration: 150 }));
+          // Light streak at 300ms
+          streakOpacity.value = withDelay(300, withTiming(1, { duration: 30 }));
+          streakTranslateX.value = withDelay(
+            300,
+            withTiming(SW, { duration: 180, easing: Easing.in(Easing.quad) })
+          );
+          flashOpacity.value = withDelay(
+            300,
+            withSequence(
+              withTiming(0.08, { duration: 90 }),
+              withTiming(0, { duration: 90 })
+            )
+          );
+          containerOpacity.value = withDelay(
+            450,
+            withTiming(0, { duration: 100 }, (finished) => {
+              if (finished) runOnJS(safeComplete)();
+            })
+          );
+        }
+        return;
+      }
+
+      // FULL mode
+      console.log('SplashScreen: mode=full, running full Ignition Sweep animation');
+
+      // Phase 2 — 0ms: Headlights emerge
+      headlightOpacity.value = withTiming(1, { duration: 150 });
+      headlightScale.value = withSpring(1, { damping: 12, stiffness: 180 });
+
+      // Phase 3 — 150ms: Car silhouette reveal
+      carOpacity.value = withDelay(150, withTiming(1, { duration: 50 }));
+      carRevealWidth.value = withDelay(
+        150,
+        withTiming(carWidth, { duration: 500, easing: Easing.out(Easing.cubic) })
+      );
+
+      // Phase 4 — 650ms: Rings appear
+      ring1Scale.value = withDelay(650, withSpring(1, { damping: 14, stiffness: 120 }));
+      ring1Opacity.value = withDelay(650, withTiming(0.6, { duration: 100 }));
+      ring2Scale.value = withDelay(730, withSpring(1, { damping: 14, stiffness: 120 }));
+      ring2Opacity.value = withDelay(730, withTiming(0.4, { duration: 100 }));
+      ring3Scale.value = withDelay(810, withSpring(1, { damping: 14, stiffness: 120 }));
+      ring3Opacity.value = withDelay(810, withTiming(0.25, { duration: 100 }));
+
+      // Phase 6 — 950ms: Title
+      titleOpacity.value = withDelay(950, withTiming(1, { duration: 250 }));
+      titleTranslateY.value = withDelay(950, withSpring(0, { damping: 14, stiffness: 120 }));
+
+      // Phase 7 — 1100ms: Subtitle
+      subtitleOpacity.value = withDelay(1100, withTiming(1, { duration: 200 }));
+
+      // Phase 8 — 1200ms: Credit
+      creditOpacity.value = withDelay(1200, withTiming(0.7, { duration: 200 }));
+
+      // Phase 9 — 1450ms: Light streak
+      streakOpacity.value = withDelay(1450, withTiming(1, { duration: 30 }));
+      streakTranslateX.value = withDelay(
+        1450,
+        withTiming(SW, { duration: 280, easing: Easing.in(Easing.quad) })
+      );
+      flashOpacity.value = withDelay(
+        1450,
+        withSequence(
+          withTiming(0.08, { duration: 140 }),
+          withTiming(0, { duration: 140 })
+        )
+      );
+
+      // Phase 10 — 1650ms: Fade out
+      containerOpacity.value = withDelay(
+        1650,
+        withTiming(0, { duration: 200 }, (finished) => {
+          if (finished) runOnJS(safeComplete)();
+        })
+      );
+    } catch (e) {
+      console.warn('IgnitionSweep: animation error, skipping', e);
+      onComplete();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Animated styles
+  const containerStyle = useAnimatedStyle(() => ({ opacity: containerOpacity.value }));
+
+  const headlightStyle = useAnimatedStyle(() => ({
+    opacity: headlightOpacity.value,
+    transform: [{ scaleX: headlightScale.value }],
+  }));
+
+  const carRevealStyle = useAnimatedStyle(() => ({
+    width: carRevealWidth.value,
+    opacity: carOpacity.value,
+  }));
+
+  const ring1Style = useAnimatedStyle(() => ({
+    opacity: ring1Opacity.value,
+    transform: [{ scale: ring1Scale.value }],
+  }));
+
+  const ring2Style = useAnimatedStyle(() => ({
+    opacity: ring2Opacity.value,
+    transform: [{ scale: ring2Scale.value }],
+  }));
+
+  const ring3Style = useAnimatedStyle(() => ({
+    opacity: ring3Opacity.value,
+    transform: [{ scale: ring3Scale.value }],
+  }));
+
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: titleOpacity.value,
+    transform: [{ translateY: titleTranslateY.value }],
+  }));
+
+  const subtitleStyle = useAnimatedStyle(() => ({ opacity: subtitleOpacity.value }));
+  const creditStyle = useAnimatedStyle(() => ({ opacity: creditOpacity.value }));
+
+  const streakStyle = useAnimatedStyle(() => ({
+    opacity: streakOpacity.value,
+    transform: [{ translateX: streakTranslateX.value }],
+  }));
+
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
+
+  const isQuick = mode === 'quick' || reduceMotion;
+  const isOff = mode === 'off';
+
+  // For off mode, render nothing (effect fires immediately)
+  if (isOff) {
+    return <View style={[styles.container, { backgroundColor: '#050d1a' }]} />;
+  }
+
+  // Car vertical centre position (relative to content area)
+  const carCentreY = SH * 0.42;
 
   return (
     <Animated.View style={[styles.container, containerStyle]}>
       <LinearGradient
-        colors={['#1a1a1a', '#2c2c2c', '#1a1a1a']}
+        colors={['#050d1a', '#0a1f3d', '#050d1a']}
+        locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
-      
-      <View style={styles.content}>
-        {/* Central gear cluster */}
-        <View style={styles.gearCluster}>
-          <AnimatedGear delay={200} size={100} x={0} y={0} />
-          <AnimatedGear delay={400} size={70} x={60} y={-30} />
-          <AnimatedGear delay={600} size={60} x={-50} y={40} />
-          
-          {/* Tools */}
-          <AnimatedWrench delay={800} />
-          <AnimatedScrewdriver delay={1000} />
-          
-          {/* Piston */}
-          <AnimatedPiston delay={1200} />
-          
-          {/* Sparks */}
-          <AnimatedSpark delay={1400} x={-40} y={-50} />
-          <AnimatedSpark delay={1500} x={50} y={-40} />
-          <AnimatedSpark delay={1600} x={0} y={60} />
+
+      {/* Rings — behind car */}
+      {!isQuick && (
+        <View style={[styles.ringsContainer, { top: carCentreY - 95 - 10 }]}>
+          <Animated.View style={[styles.ringWrapper, ring3Style]}>
+            <Svg width={190} height={190} viewBox="0 0 190 190">
+              <Circle
+                cx="95"
+                cy="95"
+                r="95"
+                stroke="#b3e5fc"
+                strokeWidth="0.8"
+                fill="none"
+              />
+            </Svg>
+          </Animated.View>
+          <Animated.View style={[styles.ringWrapper, ring2Style]}>
+            <Svg width={150} height={150} viewBox="0 0 150 150">
+              <Circle
+                cx="75"
+                cy="75"
+                r="75"
+                stroke="#81d4fa"
+                strokeWidth="1"
+                fill="none"
+              />
+            </Svg>
+          </Animated.View>
+          <Animated.View style={[styles.ringWrapper, ring1Style]}>
+            <Svg width={110} height={110} viewBox="0 0 110 110">
+              <Circle
+                cx="55"
+                cy="55"
+                r="55"
+                stroke="#4fc3f7"
+                strokeWidth="1"
+                fill="none"
+              />
+            </Svg>
+          </Animated.View>
         </View>
-        
-        <Animated.View style={[styles.titleContainer, titleStyle]}>
-          <Text style={styles.title}>TechTimes</Text>
-        </Animated.View>
-        
-        <Animated.View style={subtitleStyle}>
-          <Text style={styles.subtitle}>Vehicle Technician Job Tracker</Text>
-        </Animated.View>
+      )}
+
+      {/* Headlights */}
+      {!isQuick && (
+        <View style={[styles.headlightsContainer, { top: carCentreY - 20 }]}>
+          <Animated.View style={[styles.headlightLeft, headlightStyle]} />
+          <Animated.View style={[styles.headlightLeftGlow, headlightStyle]} />
+          <Animated.View style={[styles.headlightRight, headlightStyle]} />
+          <Animated.View style={[styles.headlightRightGlow, headlightStyle]} />
+        </View>
+      )}
+
+      {/* Car silhouette */}
+      {!isQuick && (
+        <View style={[styles.carContainer, { top: carCentreY - carHeight / 2 }]}>
+          <Animated.View style={[{ height: carHeight, overflow: 'hidden' }, carRevealStyle]}>
+            <Svg
+              width={carWidth}
+              height={carHeight}
+              viewBox="0 0 400 160"
+            >
+              <Path
+                d="M 20,120 L 20,110 Q 20,100 30,100 L 80,100 Q 100,60 130,50 L 200,42 L 270,42 Q 300,42 320,55 L 360,100 L 370,100 Q 380,100 380,110 L 380,120 L 340,120 Q 340,140 320,140 Q 300,140 300,120 L 100,120 Q 100,140 80,140 Q 60,140 60,120 Z"
+                stroke="#4fc3f7"
+                strokeWidth="1.5"
+                fill="none"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </Svg>
+          </Animated.View>
+        </View>
+      )}
+
+      {/* Text content */}
+      <View style={[styles.textContainer, { top: isQuick ? SH * 0.42 : carCentreY + carHeight / 2 + 30 }]}>
+        <Animated.Text style={[styles.title, titleStyle]}>
+          TECH TIMES
+        </Animated.Text>
+        <Animated.Text style={[styles.subtitle, subtitleStyle]}>
+          Workshop Performance &amp; Productivity
+        </Animated.Text>
+        {!isQuick && (
+          <Animated.Text style={[styles.credit, creditStyle]}>
+            Created by BNR
+          </Animated.Text>
+        )}
       </View>
+
+      {/* Light streak */}
+      <Animated.View style={[styles.streak, { top: isQuick ? SH * 0.42 : carCentreY }, streakStyle]} />
+
+      {/* Flash overlay */}
+      <Animated.View style={[StyleSheet.absoluteFill, styles.flash, flashStyle]} />
     </Animated.View>
   );
 }
@@ -428,35 +361,104 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 10000,
+    backgroundColor: '#050d1a',
   },
-  content: {
-    flex: 1,
+  ringsContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  ringWrapper: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headlightsContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  headlightLeft: {
+    width: 60,
+    height: 2,
+    backgroundColor: '#4fc3f7',
+    marginRight: 30,
+    borderRadius: 1,
+  },
+  headlightLeftGlow: {
+    position: 'absolute',
+    width: 80,
+    height: 6,
+    backgroundColor: '#4fc3f7',
+    opacity: 0.15,
+    marginRight: 30,
+    borderRadius: 3,
+    left: SW / 2 - 110,
+  },
+  headlightRight: {
+    width: 60,
+    height: 2,
+    backgroundColor: '#4fc3f7',
+    marginLeft: 30,
+    borderRadius: 1,
+  },
+  headlightRightGlow: {
+    position: 'absolute',
+    width: 80,
+    height: 6,
+    backgroundColor: '#4fc3f7',
+    opacity: 0.15,
+    marginLeft: 30,
+    borderRadius: 3,
+    right: SW / 2 - 110,
+  },
+  carContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
   },
-  gearCluster: {
-    width: 200,
-    height: 200,
-    justifyContent: 'center',
+  textContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    marginBottom: 40,
-  },
-  titleContainer: {
-    marginTop: 20,
   },
   title: {
-    fontSize: 48,
-    fontWeight: 'bold',
+    fontSize: 38,
+    fontWeight: '900',
+    letterSpacing: 6,
     color: '#ffffff',
-    letterSpacing: 2,
-    textShadowColor: '#FF6B35',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#cccccc',
+    fontSize: 13,
+    color: '#7ab8d4',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  credit: {
+    fontSize: 11,
+    color: '#4a7a94',
     letterSpacing: 1,
-    marginTop: 12,
+    textAlign: 'center',
+    marginTop: 14,
+  },
+  streak: {
+    position: 'absolute',
+    left: -SW,
+    width: SW,
+    height: 1.5,
+    backgroundColor: '#ffffff',
+  },
+  flash: {
+    backgroundColor: '#ffffff',
+    zIndex: 9999,
   },
 });

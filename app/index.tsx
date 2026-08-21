@@ -4,11 +4,27 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { SplashScreen } from '@/components/SplashScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Index() {
   const { isAuthenticated, setupComplete, loading } = useAuth();
   const [splashDone, setSplashDone] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [animMode, setAnimMode] = useState<'full' | 'quick' | 'off'>('full');
+  const [animModeLoaded, setAnimModeLoaded] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@techtimes_startup_animation').then(val => {
+      if (val === 'quick' || val === 'off' || val === 'full') {
+        console.log('Index: Loaded startup animation mode:', val);
+        setAnimMode(val);
+      }
+      setAnimModeLoaded(true);
+    }).catch(() => {
+      console.warn('Index: Failed to load startup animation mode, defaulting to full');
+      setAnimModeLoaded(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (!loading) {
@@ -21,9 +37,14 @@ export default function Index() {
     setSplashDone(true);
   };
 
+  // Wait for animation mode to load (near-instant)
+  if (!animModeLoaded) {
+    return <View style={{ flex: 1, backgroundColor: '#050d1a' }} />;
+  }
+
   // Show splash until animation completes
   if (!splashDone) {
-    return <SplashScreen onComplete={handleSplashComplete} />;
+    return <SplashScreen onComplete={handleSplashComplete} mode={animMode} />;
   }
 
   // Splash done but auth still loading

@@ -84,6 +84,7 @@ export default function SettingsScreen() {
   const [liveWidgetEnabled, setLiveWidgetEnabled] = useState(true);
   const [isManualTarget, setIsManualTarget] = useState(false);
   const [manualTargetInput, setManualTargetInput] = useState('');
+  const [startupAnimMode, setStartupAnimMode] = useState<'full' | 'quick' | 'off'>('full');
 
   const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
@@ -201,6 +202,11 @@ export default function SettingsScreen() {
   const loadSettings = async () => {
     console.log('SettingsScreen: Loading settings');
     try {
+      const savedAnim = await AsyncStorage.getItem('@techtimes_startup_animation');
+      if (savedAnim === 'full' || savedAnim === 'quick' || savedAnim === 'off') {
+        setStartupAnimMode(savedAnim);
+      }
+
       const profile = await api.getTechnicianProfile();
       const settings = await api.getSettings();
       
@@ -1213,7 +1219,44 @@ export default function SettingsScreen() {
               trackColor={{ false: theme.border, true: theme.primary }}
             />
           </View>
-          
+
+          <View style={[styles.settingRow, { borderTopWidth: 0.5, borderTopColor: theme.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Startup Animation</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+                Ignition Sweep on app launch
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
+            {(['full', 'quick', 'off'] as const).map(opt => {
+              const isSelected = startupAnimMode === opt;
+              const optLabel = opt.toUpperCase();
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: isSelected ? theme.primary : theme.border,
+                    backgroundColor: isSelected ? theme.primary + '20' : 'transparent',
+                  }}
+                  onPress={async () => {
+                    console.log('Settings: Startup animation mode changed to', opt);
+                    setStartupAnimMode(opt);
+                    await AsyncStorage.setItem('@techtimes_startup_animation', opt);
+                  }}
+                >
+                  <Text style={{ color: isSelected ? theme.primary : theme.textSecondary, fontSize: 13, fontWeight: '600' }}>
+                    {optLabel}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           <Text style={[styles.label, { color: theme.textSecondary, marginTop: 16 }]}>
             Background Overlay Strength
           </Text>
