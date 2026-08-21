@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,12 @@ import {
   buildReportData,
   generatePDFHTML,
   generateTechnicalEvidencePackHTML,
+  generateJobRecordHTML,
+  generateVehicleHistoryHTML,
+  generateVHCReportHTML,
+  generatePeriodComparisonHTML,
+  generateDataAuditHTML,
+  getPDFFilename,
   ReportOptions,
   PDFTheme,
   DetailLevel,
@@ -105,6 +111,7 @@ export default function ReportBuilderScreen() {
   const [templateName, setTemplateName] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generatingType, setGeneratingType] = useState('');
+  const [generatingProgress, setGeneratingProgress] = useState('');
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
 
@@ -165,9 +172,10 @@ export default function ReportBuilderScreen() {
   };
 
   const generateReport = async (reportOptions: ReportOptions, label: string) => {
-    console.log('ReportBuilderScreen: Generating report —', label, '| period:', reportOptions.period, '| theme:', reportOptions.theme);
+    console.log('ReportBuilderScreen: generateReport — label:', label, '| period:', reportOptions.period, '| theme:', reportOptions.theme, '| reportType:', reportOptions.reportType);
     setGenerating(true);
     setGeneratingType(label);
+    setGeneratingProgress('Loading data...');
     try {
       const [jobs, records, schedule, absences] = await Promise.all([
         api.getAllJobs(),
@@ -176,32 +184,85 @@ export default function ReportBuilderScreen() {
         api.getAbsences(new Date().toISOString().slice(0, 7)),
       ]);
       console.log('ReportBuilderScreen: Data loaded — jobs:', jobs.length, '| records:', records.length);
+
+      setGeneratingProgress('Building report...');
       const data = await buildReportData(reportOptions, jobs, records, schedule, absences);
-      const html = generatePDFHTML(data, reportOptions);
+
+      setGeneratingProgress('Generating PDF...');
+      let html = '';
+      const rType = reportOptions.reportType ?? 'custom';
+
+      if (rType === 'job_record') {
+        console.log('ReportBuilderScreen: Using generateJobRecordHTML');
+        html = generateJobRecordHTML(jobs[0] ?? {}, records[0] ?? null, {
+          theme: reportOptions.theme,
+          detailLevel: reportOptions.detailLevel,
+          includeImages: reportOptions.includeImages !== 'none',
+          showTechnicianName: reportOptions.showTechnicianName,
+          technicianName: reportOptions.technicianName,
+        });
+      } else if (rType === 'vehicle_history') {
+        console.log('ReportBuilderScreen: Using generateVehicleHistoryHTML');
+        if (data.vehicleHistory) {
+          html = generateVehicleHistoryHTML(data.vehicleHistory, {
+            theme: reportOptions.theme,
+            detailLevel: reportOptions.detailLevel,
+          });
+        } else {
+          html = generatePDFHTML(data, reportOptions);
+        }
+      } else if (rType === 'vhc') {
+        console.log('ReportBuilderScreen: Using generateVHCReportHTML');
+        html = generateVHCReportHTML(data, reportOptions);
+      } else if (rType === 'period_comparison') {
+        console.log('ReportBuilderScreen: Using generatePeriodComparisonHTML');
+        html = generatePeriodComparisonHTML(data, reportOptions);
+      } else if (rType === 'data_audit') {
+        console.log('ReportBuilderScreen: Using generateDataAuditHTML');
+        html = generateDataAuditHTML(data, reportOptions);
+      } else if (rType === 'technical_evidence') {
+        console.log('ReportBuilderScreen: Using generateTechnicalEvidencePackHTML');
+        html = await generateTechnicalEvidencePackHTML(jobs[0] ?? {}, records[0] ?? null, null, {
+          theme: reportOptions.theme,
+          includeImages: reportOptions.includeImages !== 'none',
+        });
+      } else {
+        console.log('ReportBuilderScreen: Using generatePDFHTML (default)');
+        html = generatePDFHTML(data, reportOptions);
+      }
+
       console.log('ReportBuilderScreen: HTML generated — length:', html.length);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       console.log('ReportBuilderScreen: PDF created at', uri);
+
+      setGeneratingProgress('Sharing...');
+      const filename = getPDFFilename(rType, data.period, jobs[0]);
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Share ${label}` });
-        console.log('ReportBuilderScreen: PDF shared successfully');
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Share ${filename}` });
+        console.log('ReportBuilderScreen: PDF shared successfully —', filename);
       } else {
         Alert.alert('PDF Generated', `Saved to: ${uri}`);
       }
+
+      setGeneratingProgress('Complete');
     } catch (err: any) {
       console.error('ReportBuilderScreen: Generate failed', err);
       Alert.alert('Generation Failed', err?.message ?? 'Could not generate report.');
     } finally {
       setGenerating(false);
       setGeneratingType('');
+      setGeneratingProgress('');
     }
   };
 
-  const handleQuickReport = (period: ReportPeriod, label: string) => {
-    console.log('ReportBuilderScreen: Quick report tapped —', label, '| period:', period);
+  const handleQuickReport = (period: ReportPeriod, label: string, reportType: string) => {
+    console.log('ReportBuilderScreen: Quick report tapped —', label, '| period:', period, '| reportType:', reportType);
     const opts: ReportOptions = {
       ...getDefaultReportOptions(),
       period,
+      reportType,
+      detailLevel: period === 'day' ? 'summary' : period === 'week' ? 'standard' : 'full',
     };
     generateReport(opts, label);
   };
@@ -215,19 +276,36 @@ export default function ReportBuilderScreen() {
       const absences = await api.getAbsences(monthStr);
       const schedule = await api.getSchedule();
       const data = await buildReportData(options, jobs, records, schedule, absences);
+
+      const dailyRowCount = data.dailyRows?.length ?? 0;
       const approxPages = Math.max(1, Math.round(
-        (data.billedJobs.length + data.openJobs.length) / 20 + 2
+        (options.coverPage ? 1 : 0) +
+        (options.includeSections.summary ? 1 : 0) +
+        (options.includeSections.availability ? 1 : 0) +
+        (options.includeSections.dailyPerformance ? Math.ceil(dailyRowCount / 30) : 0) +
+        (options.includeSections.billedJobsTable ? Math.ceil(data.billedJobs.length / 25) : 0) +
+        (options.includeSections.openJobsTable ? Math.ceil(data.openJobs.length / 25) : 0) +
+        (options.includeSections.billingClosure ? 1 : 0) +
+        (options.signatureSection ? 1 : 0)
       ));
+      const approxSizeKB = approxPages * 45;
+
+      const imagesLabel = options.includeImages === 'none' ? 'None' : options.includeImages === 'key' ? 'Key' : 'All';
+
       setPreviewData({
+        reportType: options.reportType ?? 'custom',
         period: data.period.label,
         theme: THEMES.find(t => t.value === options.theme)?.label ?? options.theme,
         detail: options.detailLevel,
         totalJobs: data.billing.totalJobs,
         billedJobs: data.billing.billedJobs,
         openJobs: data.billing.openJobs,
+        images: imagesLabel,
         approxPages,
+        approxSizeKB,
       });
       setPreviewVisible(true);
+      console.log('ReportBuilderScreen: Preview built — approxPages:', approxPages, '| approxSizeKB:', approxSizeKB);
     } catch (err: any) {
       console.error('ReportBuilderScreen: Preview failed', err);
       Alert.alert('Preview Failed', err?.message ?? 'Could not build preview.');
@@ -299,20 +377,25 @@ export default function ReportBuilderScreen() {
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>QUICK REPORTS</Text>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {[
-            { label: 'Daily Performance', period: 'day' as ReportPeriod },
-            { label: 'Weekly Performance', period: 'week' as ReportPeriod },
-            { label: 'Monthly Performance', period: 'month' as ReportPeriod },
-            { label: 'Yearly Performance', period: 'year' as ReportPeriod },
+            { label: 'Daily Performance', period: 'day' as ReportPeriod, reportType: 'daily_performance' },
+            { label: 'Weekly Performance', period: 'week' as ReportPeriod, reportType: 'weekly_performance' },
+            { label: 'Monthly Performance', period: 'month' as ReportPeriod, reportType: 'monthly_performance' },
+            { label: 'Yearly Performance', period: 'year' as ReportPeriod, reportType: 'yearly_performance' },
           ].map((item, idx, arr) => (
             <TouchableOpacity
               key={item.label}
               style={[styles.reportRow, idx < arr.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }]}
-              onPress={() => handleQuickReport(item.period, item.label)}
+              onPress={() => handleQuickReport(item.period, item.label, item.reportType)}
             >
               <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={18} color={theme.primary} />
               <Text style={[styles.reportRowLabel, { color: theme.text }]}>{item.label}</Text>
               {generating && generatingType === item.label
-                ? <ActivityIndicator size="small" color={theme.primary} />
+                ? (
+                  <View style={styles.progressRow}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    {generatingProgress ? <Text style={[styles.progressText, { color: theme.textSecondary }]}>{generatingProgress}</Text> : null}
+                  </View>
+                )
                 : <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={14} color={theme.textSecondary} />
               }
             </TouchableOpacity>
@@ -323,20 +406,25 @@ export default function ReportBuilderScreen() {
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>OPERATIONAL REPORTS</Text>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {[
-            { label: 'Billing & Job Closure', period: 'month' as ReportPeriod },
-            { label: 'Open Jobs', period: 'entire' as ReportPeriod },
-            { label: 'VHC Report', period: 'month' as ReportPeriod },
-            { label: 'Vehicle History', period: 'entire' as ReportPeriod },
+            { label: 'Billing & Job Closure', period: 'month' as ReportPeriod, reportType: 'billing' },
+            { label: 'Open Jobs', period: 'entire' as ReportPeriod, reportType: 'open_jobs' },
+            { label: 'VHC Report', period: 'month' as ReportPeriod, reportType: 'vhc' },
+            { label: 'Vehicle History', period: 'entire' as ReportPeriod, reportType: 'vehicle_history' },
           ].map((item, idx, arr) => (
             <TouchableOpacity
               key={item.label}
               style={[styles.reportRow, idx < arr.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }]}
-              onPress={() => handleQuickReport(item.period, item.label)}
+              onPress={() => handleQuickReport(item.period, item.label, item.reportType)}
             >
               <IconSymbol ios_icon_name="chart.bar.fill" android_material_icon_name="bar-chart" size={18} color={theme.chartGreen} />
               <Text style={[styles.reportRowLabel, { color: theme.text }]}>{item.label}</Text>
               {generating && generatingType === item.label
-                ? <ActivityIndicator size="small" color={theme.primary} />
+                ? (
+                  <View style={styles.progressRow}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    {generatingProgress ? <Text style={[styles.progressText, { color: theme.textSecondary }]}>{generatingProgress}</Text> : null}
+                  </View>
+                )
                 : <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={14} color={theme.textSecondary} />
               }
             </TouchableOpacity>
@@ -347,18 +435,23 @@ export default function ReportBuilderScreen() {
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>TECHNICAL REPORTS</Text>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {[
-            { label: 'Job Record PDF', period: 'month' as ReportPeriod },
-            { label: 'Technical Evidence Pack', period: 'day' as ReportPeriod },
+            { label: 'Job Record PDF', period: 'month' as ReportPeriod, reportType: 'job_record' },
+            { label: 'Technical Evidence Pack', period: 'day' as ReportPeriod, reportType: 'technical_evidence' },
           ].map((item, idx, arr) => (
             <TouchableOpacity
               key={item.label}
               style={[styles.reportRow, idx < arr.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }]}
-              onPress={() => handleQuickReport(item.period, item.label)}
+              onPress={() => handleQuickReport(item.period, item.label, item.reportType)}
             >
               <IconSymbol ios_icon_name="wrench.fill" android_material_icon_name="build" size={18} color={theme.chartYellow} />
               <Text style={[styles.reportRowLabel, { color: theme.text }]}>{item.label}</Text>
               {generating && generatingType === item.label
-                ? <ActivityIndicator size="small" color={theme.primary} />
+                ? (
+                  <View style={styles.progressRow}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    {generatingProgress ? <Text style={[styles.progressText, { color: theme.textSecondary }]}>{generatingProgress}</Text> : null}
+                  </View>
+                )
                 : <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={14} color={theme.textSecondary} />
               }
             </TouchableOpacity>
@@ -369,18 +462,23 @@ export default function ReportBuilderScreen() {
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ANALYSIS</Text>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {[
-            { label: 'Period Comparison', period: 'month' as ReportPeriod },
-            { label: 'Data Audit / Reconciliation', period: 'entire' as ReportPeriod },
+            { label: 'Period Comparison', period: 'month' as ReportPeriod, reportType: 'period_comparison' },
+            { label: 'Data Audit / Reconciliation', period: 'entire' as ReportPeriod, reportType: 'data_audit' },
           ].map((item, idx, arr) => (
             <TouchableOpacity
               key={item.label}
               style={[styles.reportRow, idx < arr.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }]}
-              onPress={() => handleQuickReport(item.period, item.label)}
+              onPress={() => handleQuickReport(item.period, item.label, item.reportType)}
             >
               <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.accent} />
               <Text style={[styles.reportRowLabel, { color: theme.text }]}>{item.label}</Text>
               {generating && generatingType === item.label
-                ? <ActivityIndicator size="small" color={theme.primary} />
+                ? (
+                  <View style={styles.progressRow}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    {generatingProgress ? <Text style={[styles.progressText, { color: theme.textSecondary }]}>{generatingProgress}</Text> : null}
+                  </View>
+                )
                 : <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={14} color={theme.textSecondary} />
               }
             </TouchableOpacity>
@@ -546,18 +644,35 @@ export default function ReportBuilderScreen() {
               { key: 'pageNumbers' as const, label: 'Page Numbers' },
               { key: 'branding' as const, label: 'Branding' },
               { key: 'signatureSection' as const, label: 'Signature Section' },
+              { key: 'showTechnicianName' as const, label: 'Show Technician Name' },
+              { key: 'showCreatedBy' as const, label: 'Show Created By (BNR)' },
+              { key: 'showGenerationDate' as const, label: 'Show Generation Date' },
             ]).map(opt => (
-              <View key={opt.key} style={[styles.toggleRow, { borderBottomColor: theme.border }]}>
-                <Text style={[styles.toggleLabel, { color: theme.text }]}>{opt.label}</Text>
-                <Switch
-                  value={options[opt.key] as boolean}
-                  onValueChange={val => {
-                    console.log('ReportBuilderScreen: Toggle option —', opt.key, val);
-                    updateOption(opt.key, val);
-                  }}
-                  trackColor={{ false: theme.border, true: theme.primary }}
-                  thumbColor="#fff"
-                />
+              <View key={opt.key}>
+                <View style={[styles.toggleRow, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.toggleLabel, { color: theme.text }]}>{opt.label}</Text>
+                  <Switch
+                    value={options[opt.key] as boolean}
+                    onValueChange={val => {
+                      console.log('ReportBuilderScreen: Toggle option —', opt.key, val);
+                      updateOption(opt.key, val);
+                    }}
+                    trackColor={{ false: theme.border, true: theme.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+                {opt.key === 'showTechnicianName' && options.showTechnicianName && (
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border, marginTop: 8, marginBottom: 4 }]}
+                    placeholder="Technician name..."
+                    placeholderTextColor={theme.textSecondary}
+                    value={options.technicianName ?? ''}
+                    onChangeText={val => {
+                      console.log('ReportBuilderScreen: Technician name changed —', val);
+                      updateOption('technicianName', val);
+                    }}
+                  />
+                )}
               </View>
             ))}
 
@@ -565,6 +680,10 @@ export default function ReportBuilderScreen() {
             {previewVisible && previewData && (
               <View style={[styles.previewCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
                 <Text style={[styles.previewTitle, { color: theme.text }]}>Report Preview</Text>
+                <View style={styles.previewRow}>
+                  <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Report Type:</Text>
+                  <Text style={[styles.previewValue, { color: theme.text }]}>{previewData.reportType}</Text>
+                </View>
                 <View style={styles.previewRow}>
                   <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Period:</Text>
                   <Text style={[styles.previewValue, { color: theme.text }]}>{previewData.period}</Text>
@@ -584,8 +703,16 @@ export default function ReportBuilderScreen() {
                   </Text>
                 </View>
                 <View style={styles.previewRow}>
+                  <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Images:</Text>
+                  <Text style={[styles.previewValue, { color: theme.text }]}>{previewData.images}</Text>
+                </View>
+                <View style={styles.previewRow}>
                   <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Approx Pages:</Text>
                   <Text style={[styles.previewValue, { color: theme.text }]}>{previewData.approxPages}</Text>
+                </View>
+                <View style={styles.previewRow}>
+                  <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Approx Size:</Text>
+                  <Text style={[styles.previewValue, { color: theme.text }]}>{previewData.approxSizeKB} KB</Text>
                 </View>
               </View>
             )}
@@ -611,13 +738,18 @@ export default function ReportBuilderScreen() {
             <TouchableOpacity
               style={[styles.generateBtn, { backgroundColor: theme.primary }]}
               onPress={() => {
-                console.log('ReportBuilderScreen: Generate PDF pressed — period:', options.period, '| theme:', options.theme);
+                console.log('ReportBuilderScreen: Generate PDF pressed — period:', options.period, '| theme:', options.theme, '| reportType:', options.reportType);
                 generateReport(options, 'Custom Report');
               }}
               disabled={generating}
             >
               {generating && generatingType === 'Custom Report'
-                ? <ActivityIndicator color="#fff" />
+                ? (
+                  <View style={styles.progressRow}>
+                    <ActivityIndicator color="#fff" />
+                    {generatingProgress ? <Text style={[styles.progressText, { color: '#fff' }]}>{generatingProgress}</Text> : null}
+                  </View>
+                )
                 : <Text style={styles.generateBtnText}>Generate PDF</Text>
               }
             </TouchableOpacity>
@@ -692,6 +824,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   reportRowLabel: { flex: 1, fontSize: 15 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressText: { fontSize: 12 },
   templateCard: {
     flexDirection: 'row',
     alignItems: 'center',
