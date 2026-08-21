@@ -80,6 +80,8 @@ export default function DashboardScreen() {
   const [todayAbsences, setTodayAbsences] = useState<any[]>([]);
   const [showLiveTracker, setShowLiveTracker] = useState(false);
   const [billingStats, setBillingStats] = useState<any>(null);
+  const [allJobs, setAllJobs] = useState<any[]>([]);
+  const [allBillingRecords, setAllBillingRecords] = useState<any[]>([]);
   const [fabOpen, setFabOpen] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
 
@@ -130,9 +132,13 @@ export default function DashboardScreen() {
       // FIX 8: use ref so this callback doesn't need selectedMonth in its deps
       await loadCalendarData(schedule, selectedMonthRef.current);
 
-      // Load billing stats
+      // Load billing stats + raw jobs/records for DashboardAnalytics
       try {
         const allJobsForBilling = await api.getAllJobs();
+        const allBillingRecs = await billingStorage.getAllRecords();
+        setAllJobs(allJobsForBilling);
+        setAllBillingRecords(allBillingRecs);
+        console.log('DashboardScreen: Loaded', allJobsForBilling.length, 'jobs and', allBillingRecs.length, 'billing records for analytics');
         const bStats = await billingStorage.getBillingStats(
           allJobsForBilling.map(j => ({ id: j.id, aw: j.aw, createdAt: j.createdAt }))
         );
@@ -1121,6 +1127,8 @@ export default function DashboardScreen() {
 
             {/* Analytics Dashboard */}
             <DashboardAnalytics
+              jobs={allJobs}
+              billingRecords={allBillingRecords}
               billingStats={billingStats}
               todayStats={todayStats}
               monthlyStats={monthlyStats}

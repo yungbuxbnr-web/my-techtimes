@@ -17,6 +17,8 @@ import { formatTime } from '@/utils/jobCalculations';
 import { buildWorkScheduleInput, getNetElapsedWorkingMinutes, getWorkingProgress, getNetScheduledHours } from '@/utils/workTimeEngine';
 import CircularProgress from '@/components/CircularProgress';
 import AppBackground from '@/components/AppBackground';
+import { billingStorage } from '@/utils/billingStorage';
+import { getBillingPosition, resolvePeriodFilter } from '@/utils/billingEngine';
 
 export default function HomeScreen() {
   const { theme } = useThemeContext();
@@ -26,6 +28,7 @@ export default function HomeScreen() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [workSchedule, setWorkSchedule] = useState({ startTime: '07:00', endTime: '18:00', dailyWorkingHours: 8.5, lunchStartTime: '12:00', lunchEndTime: '12:30' });
   const [liveAvailableHours, setLiveAvailableHours] = useState(0);
+  const [billingPos, setBillingPos] = useState({ recordedHours: 0, billedHours: 0, openHours: 0, billingConversion: 0 });
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -35,6 +38,26 @@ export default function HomeScreen() {
       console.log('HomeScreen: Dashboard data loaded:', data);
     } catch (error) {
       console.error('HomeScreen: Error loading dashboard:', error);
+    }
+  }, []);
+
+  const loadBillingPosition = useCallback(async () => {
+    try {
+      console.log('HomeScreen: Loading billing position for today');
+      const [jobs, records] = await Promise.all([
+        api.getAllJobs(),
+        billingStorage.getAllRecords(),
+      ]);
+      const pos = getBillingPosition(jobs, records, resolvePeriodFilter('day'));
+      setBillingPos({
+        recordedHours: pos.recordedHours,
+        billedHours: pos.billedHours,
+        openHours: pos.openHours,
+        billingConversion: pos.billingConversion,
+      });
+      console.log('HomeScreen: Billing position loaded — recorded:', pos.recordedHours.toFixed(2), 'billed:', pos.billedHours.toFixed(2), 'open:', pos.openHours.toFixed(2));
+    } catch (error) {
+      console.error('HomeScreen: Error loading billing position:', error);
     }
   }, []);
 
@@ -75,6 +98,7 @@ export default function HomeScreen() {
     loadDashboard();
     loadProfile();
     loadSchedule();
+    loadBillingPosition();
     
     // Update time every second
     const timer = setInterval(() => {
@@ -82,7 +106,7 @@ export default function HomeScreen() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [loadDashboard, loadProfile, loadSchedule]);
+  }, [loadDashboard, loadProfile, loadSchedule, loadBillingPosition]);
 
   useEffect(() => {
     // Calculate live available hours every second
@@ -97,9 +121,7 @@ export default function HomeScreen() {
   const onRefresh = async () => {
     console.log('HomeScreen: User refreshing dashboard');
     setRefreshing(true);
-    await loadDashboard();
-    await loadProfile();
-    await loadSchedule();
+    await Promise.all([loadDashboard(), loadProfile(), loadSchedule(), loadBillingPosition()]);
     setRefreshing(false);
   };
 
@@ -369,6 +391,38 @@ export default function HomeScreen() {
               <Text style={[styles.periodLabel, { color: theme.textSecondary }]}>Time</Text>
             </View>
           </View>
+        </View>
+
+        {/* Billing Position — Today */}
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Billing Position — Today</Text>
+          <View style={styles.billingRow}>
+            <View style={styles.billingItem}>
+              <Text style={[styles.billingValue, { color: theme.primary }]}>{billingPos.recordedHours.toFixed(1)}h</Text>
+              <Text style={[styles.billingLabel, { color: theme.textSecondary }]}>Recorded</Text>
+            </View>
+            <View style={styles.billingItem}>
+              <Text style={[styles.billingValue, { color: theme.chartGreen }]}>{billingPos.billedHours.toFixed(1)}h</Text>
+              <Text style={[styles.billingLabel, { color: theme.textSecondary }]}>Billed</Text>
+            </View>
+            <View style={styles.billingItem}>
+              <Text style={[styles.billingValue, { color: theme.chartYellow }]}>{billingPos.openHours.toFixed(1)}h</Text>
+              <Text style={[styles.billingLabel, { color: theme.textSecondary }]}>Open</Text>
+            </View>
+            <View style={styles.billingItem}>
+              <Text style={[styles.billingValue, { color: theme.accent }]}>{billingPos.billingConversion.toFixed(0)}%</Text>
+              <Text style={[styles.billingLabel, { color: theme.textSecondary }]}>Conversion</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('HomeScreen: Billing position card tapped — navigating to billing tab');
+              router.push('/(tabs)/billing' as any);
+            }}
+            style={[styles.billingCta, { borderTopColor: theme.border }]}
+          >
+            <Text style={[styles.billingCtaText, { color: theme.primary }]}>View Billing Details →</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Action Buttons */}
@@ -649,6 +703,34 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  billingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 4,
+  },
+  billingItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  billingValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  billingLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  billingCta: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    alignItems: 'center',
+  },
+  billingCtaText: {
+    fontSize: 13,
     fontWeight: '600',
   },
 });

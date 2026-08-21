@@ -7,6 +7,7 @@ import {
 import { router } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import { getBillingPosition, resolvePeriodFilter, PeriodMode } from '@/utils/billingEngine';
 
 const safeHaptics = {
   selectionAsync: async () => {
@@ -20,17 +21,8 @@ const safeHaptics = {
 };
 
 export interface DashboardAnalyticsProps {
-  billingStats: {
-    recordedHours: number;
-    billedHours: number;
-    openHours: number;
-    unbilledHours: number;
-    recordedAW: number;
-    billedAW: number;
-    jobsRecorded: number;
-    jobsBilled: number;
-    jobsOpen: number;
-  } | null;
+  jobs: any[];
+  billingRecords: any[];
   todayStats: {
     totalAw: number;
     soldHours: number;
@@ -43,9 +35,11 @@ export interface DashboardAnalyticsProps {
     efficiency: number;
     availableHours: number;
   } | null;
+  // Legacy compat — ignored, kept so callers don't break during migration
+  billingStats?: any;
 }
 
-type AnalyticsPeriod = 'day' | 'month' | 'year' | 'entire';
+type AnalyticsPeriod = PeriodMode;
 type AnalyticsSection = 'billing' | 'performance' | 'jobs' | 'insights';
 
 // ─── CIRCLE COMPONENT ────────────────────────────────────────────────────────
@@ -115,48 +109,64 @@ function CircleCard({ label, value, subValue, color, progress = 0, onPress, size
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
-export default function DashboardAnalytics({ billingStats, todayStats, monthlyStats }: DashboardAnalyticsProps) {
+export default function DashboardAnalytics({ jobs, billingRecords, todayStats, monthlyStats }: DashboardAnalyticsProps) {
   const { theme } = useThemeContext();
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('billing');
-  const [period, setPeriod] = useState<AnalyticsPeriod>('month');
+  const [period, setPeriod] = useState<AnalyticsPeriod>('day');
 
-  // ─── CALCULATIONS ──────────────────────────────────────────────────────────
+  // ─── BILLING POSITION (from real data) ─────────────────────────────────────
+
+  const billingPosition = useMemo(() => {
+    const filter = resolvePeriodFilter(period);
+    console.log('[DashboardAnalytics] Computing billingPosition — period:', period, '| jobs:', jobs.length, '| records:', billingRecords.length);
+    return getBillingPosition(jobs ?? [], billingRecords ?? [], filter);
+  }, [jobs, billingRecords, period]);
+
+  // ─── EFFICIENCY STATS (from todayStats / monthlyStats) ─────────────────────
 
   const stats = useMemo(() => {
-    const bs = billingStats;
     const ps = period === 'day' ? todayStats : monthlyStats;
 
-    const recordedHours = bs?.recordedHours ?? 0;
-    const billedHours = bs?.billedHours ?? 0;
-    const openHours = bs?.openHours ?? 0;
-    const billingConversion = recordedHours > 0 ? (billedHours / recordedHours) * 100 : 0;
-    const billingGap = recordedHours - billedHours;
+    const recordedHours = billingPosition.recordedHours;
+    const billedHours = billingPosition.billedHours;
+    const openHours = billingPosition.openHours;
+    const billingConversion = billingPosition.billingConversion;
+    const billingGap = billingPosition.billingGap;
 
     const availableHours = ps?.availableHours ?? 0;
     const soldHours = ps?.soldHours ?? 0;
-    const recordedEfficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
-    const billedEfficiency = availableHours > 0 ? (billedHours / availableHours) * 100 : 0;
+
+    // Guard against division by zero / NaN / Infinity
+    const safeAvailable = isFinite(availableHours) && availableHours > 0 ? availableHours : 0;
+    const rawRecEff = safeAvailable > 0 ? (soldHours / safeAvailable) * 100 : 0;
+    const rawBillEff = safeAvailable > 0 ? (billedHours / safeAvailable) * 100 : 0;
+
+    // Cap display at 200%
+    const recordedEfficiency = Math.min(200, isFinite(rawRecEff) ? rawRecEff : 0);
+    const billedEfficiency = Math.min(200, isFinite(rawBillEff) ? rawBillEff : 0);
     const efficiencyGap = recordedEfficiency - billedEfficiency;
 
-    const jobsRecorded = bs?.jobsRecorded ?? 0;
-    const jobsBilled = bs?.jobsBilled ?? 0;
-    const jobsOpen = bs?.jobsOpen ?? 0;
-    const closureRate = jobsRecorded > 0 ? (jobsBilled / jobsRecorded) * 100 : 0;
+    const jobsRecorded = billingPosition.totalJobs;
+    const jobsBilled = billingPosition.billedJobs;
+    const jobsOpen = billingPosition.openJobs;
+    const closureRate = billingPosition.closureRate;
 
     const avgHoursPerJob = jobsRecorded > 0 ? recordedHours / jobsRecorded : 0;
     const avgBilledHoursPerJob = jobsBilled > 0 ? billedHours / jobsBilled : 0;
 
     const potentialBilledHours = billedHours + openHours;
-    const potentialBilledEfficiency = availableHours > 0 ? (potentialBilledHours / availableHours) * 100 : 0;
+    const potentialBilledEfficiency = safeAvailable > 0
+      ? Math.min(200, (potentialBilledHours / safeAvailable) * 100)
+      : 0;
 
     return {
       recordedHours, billedHours, openHours, billingConversion, billingGap,
-      availableHours, recordedEfficiency, billedEfficiency, efficiencyGap,
+      availableHours: safeAvailable, recordedEfficiency, billedEfficiency, efficiencyGap,
       jobsRecorded, jobsBilled, jobsOpen, closureRate,
       avgHoursPerJob, avgBilledHoursPerJob,
       potentialBilledHours, potentialBilledEfficiency,
     };
-  }, [billingStats, todayStats, monthlyStats, period]);
+  }, [billingPosition, todayStats, monthlyStats, period]);
 
   // ─── SECTION CONTENT ───────────────────────────────────────────────────────
 
@@ -246,7 +256,7 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
       ? theme.chartYellow
       : theme.chartRed;
 
-  const billingConversionProgress = stats.billingConversion / 100;
+  const billingConversionProgress = Math.min(1, stats.billingConversion / 100);
 
   const recEfficiencyColor = stats.recordedEfficiency >= 100
     ? theme.chartGreen
@@ -292,6 +302,11 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
     ? 'Recorded = Billed + Open ✓'
     : `Reconciliation gap: ${Math.abs(stats.billingGap - stats.openHours).toFixed(1)}h`;
 
+  // Summary bar counts
+  const allCount = stats.jobsRecorded;
+  const closedCount = stats.jobsBilled;
+  const openCount = stats.jobsOpen;
+
   const renderBillingSection = () => (
     <View style={styles.sectionContent}>
       <View style={styles.circlesGrid}>
@@ -324,6 +339,41 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
           onPress={() => handleCircleTap('conversion')}
         />
       </View>
+      {/* ALL / CLOSED / OPEN summary bar */}
+      <View style={[styles.summaryBar, { backgroundColor: theme.background }]}>
+        <TouchableOpacity
+          style={styles.summaryBarItem}
+          onPress={() => {
+            console.log('[DashboardAnalytics] Summary bar ALL pressed — navigating to billing tab');
+            router.push('/(tabs)/billing' as any);
+          }}
+        >
+          <Text style={[styles.summaryBarCount, { color: theme.primary }]}>{allCount}</Text>
+          <Text style={[styles.summaryBarLabel, { color: theme.textSecondary }]}>ALL</Text>
+        </TouchableOpacity>
+        <View style={[styles.summaryBarDivider, { backgroundColor: theme.border }]} />
+        <TouchableOpacity
+          style={styles.summaryBarItem}
+          onPress={() => {
+            console.log('[DashboardAnalytics] Summary bar CLOSED pressed — navigating to billing tab');
+            router.push('/(tabs)/billing' as any);
+          }}
+        >
+          <Text style={[styles.summaryBarCount, { color: theme.chartGreen }]}>{closedCount}</Text>
+          <Text style={[styles.summaryBarLabel, { color: theme.textSecondary }]}>CLOSED</Text>
+        </TouchableOpacity>
+        <View style={[styles.summaryBarDivider, { backgroundColor: theme.border }]} />
+        <TouchableOpacity
+          style={styles.summaryBarItem}
+          onPress={() => {
+            console.log('[DashboardAnalytics] Summary bar OPEN pressed — navigating to billing tab');
+            router.push('/(tabs)/billing' as any);
+          }}
+        >
+          <Text style={[styles.summaryBarCount, { color: openCount > 0 ? theme.chartRed : theme.chartGreen }]}>{openCount}</Text>
+          <Text style={[styles.summaryBarLabel, { color: theme.textSecondary }]}>OPEN</Text>
+        </TouchableOpacity>
+      </View>
       <View style={[styles.quickStatus, { backgroundColor: theme.background }]}>
         <TouchableOpacity onPress={() => {
           console.log('[DashboardAnalytics] Quick status pressed — navigating to billing tab');
@@ -344,14 +394,14 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
           label="Recorded Efficiency"
           value={`${stats.recordedEfficiency.toFixed(0)}%`}
           color={recEfficiencyColor}
-          progress={Math.min(1, stats.recordedEfficiency / 120)}
+          progress={Math.min(1, stats.recordedEfficiency / 200)}
           onPress={() => handleCircleTap('rec_efficiency')}
         />
         <CircleCard
           label="Billed Efficiency"
           value={`${stats.billedEfficiency.toFixed(0)}%`}
           color={billedEfficiencyColor}
-          progress={Math.min(1, stats.billedEfficiency / 120)}
+          progress={Math.min(1, stats.billedEfficiency / 200)}
           onPress={() => handleCircleTap('billed_efficiency')}
         />
         <CircleCard
@@ -367,7 +417,7 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
           value={`${stats.potentialBilledEfficiency.toFixed(0)}%`}
           subValue="if all billed"
           color={theme.primary}
-          progress={Math.min(1, stats.potentialBilledEfficiency / 120)}
+          progress={Math.min(1, stats.potentialBilledEfficiency / 200)}
           onPress={() => handleCircleTap('potential')}
         />
       </View>
@@ -410,7 +460,7 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
           label="Closure Rate"
           value={`${stats.closureRate.toFixed(0)}%`}
           color={closureRateColor}
-          progress={stats.closureRate / 100}
+          progress={Math.min(1, stats.closureRate / 100)}
           onPress={() => handleCircleTap('closure')}
         />
       </View>
@@ -477,7 +527,7 @@ export default function DashboardAnalytics({ billingStats, todayStats, monthlySt
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Analytics</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodRow}>
-          {(['day', 'month', 'year', 'entire'] as AnalyticsPeriod[]).map(p => {
+          {(['day', 'week', 'month', 'year', 'entire'] as AnalyticsPeriod[]).map(p => {
             const isActive = period === p;
             const btnBg = isActive ? theme.primary : 'transparent';
             const btnTextColor = isActive ? '#fff' : theme.textSecondary;
@@ -631,9 +681,35 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 14,
   },
-  quickStatus: {
+  summaryBar: {
+    flexDirection: 'row',
     marginHorizontal: 16,
     marginTop: 12,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  summaryBarItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  summaryBarCount: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  summaryBarLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  summaryBarDivider: {
+    width: 1,
+    marginVertical: 8,
+  },
+  quickStatus: {
+    marginHorizontal: 16,
+    marginTop: 8,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,

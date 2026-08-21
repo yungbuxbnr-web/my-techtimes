@@ -2,6 +2,7 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { BackHandler, Alert, Platform, AppState, AppStateStatus, Linking } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/components/ToastProvider';
@@ -432,16 +433,18 @@ function RootLayoutContent() {
 
 export default function RootLayout() {
   return (
-    <ErrorBoundary>
-      <GoogleSyncProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <ToastProvider>
-              <RootLayoutContent />
-            </ToastProvider>
-          </AuthProvider>
-        </ThemeProvider>
-      </GoogleSyncProvider>
-    </ErrorBoundary>
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <GoogleSyncProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <ToastProvider>
+                <RootLayoutContent />
+              </ToastProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </GoogleSyncProvider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }

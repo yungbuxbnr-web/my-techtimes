@@ -197,3 +197,53 @@ export function buildSaturdayWorkScheduleInput(schedule: any): WorkScheduleInput
     breaks,
   };
 }
+
+// ─── Date-aware schedule functions ───────────────────────────────────────────
+
+/**
+ * Returns whether a given date is a configured working day.
+ * Uses schedule.workingDays (0=Sun,1=Mon...6=Sat). Defaults to Mon-Fri if missing.
+ * Saturday (6) is working only if schedule.saturdayWorking === true.
+ */
+export function isWorkingDay(schedule: any, date: Date): boolean {
+  const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
+  const workingDays: number[] = Array.isArray(schedule?.workingDays)
+    ? schedule.workingDays
+    : [1, 2, 3, 4, 5];
+
+  if (dayOfWeek === 6) {
+    // Saturday is only working if saturdayWorking is true AND 6 is in workingDays
+    return schedule?.saturdayWorking === true && workingDays.includes(6);
+  }
+  return workingDays.includes(dayOfWeek);
+}
+
+/**
+ * Returns the appropriate WorkScheduleInput for a given date.
+ * Uses Saturday schedule if it's Saturday and saturdayWorking is true.
+ */
+export function getScheduleInputForDate(schedule: any, date: Date): WorkScheduleInput {
+  const dayOfWeek = date.getDay();
+  if (dayOfWeek === 6 && schedule?.saturdayWorking === true) {
+    return buildSaturdayWorkScheduleInput(schedule);
+  }
+  return buildWorkScheduleInput(schedule);
+}
+
+/**
+ * Returns net scheduled minutes for a specific date.
+ * Returns 0 for non-working days.
+ */
+export function getNetScheduledMinutesForDate(schedule: any, date: Date): number {
+  if (!isWorkingDay(schedule, date)) return 0;
+  const input = getScheduleInputForDate(schedule, date);
+  return getNetScheduledMinutes(input);
+}
+
+/**
+ * Returns net scheduled hours for a specific date.
+ * Returns 0 for non-working days.
+ */
+export function getNetScheduledHoursForDate(schedule: any, date: Date): number {
+  return getNetScheduledMinutesForDate(schedule, date) / 60;
+}

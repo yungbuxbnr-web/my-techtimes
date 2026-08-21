@@ -19,7 +19,7 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
 import { billingStorage, BillingRecord } from '@/utils/billingStorage';
-import { normaliseBillingStatus } from '@/utils/billingEngine';
+import { normaliseBillingStatus, getBillingPosition, resolvePeriodFilter } from '@/utils/billingEngine';
 import AppBackground from '@/components/AppBackground';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -802,44 +802,22 @@ export default function BillingScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  // ── Period stats (computed from all period items before tab filter) ────────
+  // ── Period stats — unified via getBillingPosition ─────────────────────────
   const periodStats = useMemo(() => {
-    const recordsByJobId = new Map(billingRecords.map(r => [r.jobId, r]));
-    const bounds = getPeriodBounds(periodMode, selectedDate);
-
-    const allPeriodItems = jobs
-      .map(job => ({ job, billing: recordsByJobId.get(job.id) }))
-      .filter((item): item is { job: Job; billing: BillingRecord } => item.billing !== undefined)
-      .filter(({ job, billing }) => {
-        if (!bounds) return true;
-        const d = getJobDateForViewBy(job, billing, viewBy);
-        return d >= bounds.start && d <= bounds.end;
-      });
-
-    const recordedAW = allPeriodItems.reduce((s, { job }) => s + job.aw, 0);
-    const recordedHours = (recordedAW * 5) / 60;
-
-    const billedItems = allPeriodItems.filter(({ billing }) => normaliseBillingStatus(billing.billingStatus) === 'billed');
-    const billedHours = billedItems.reduce((s, { billing }) => s + billing.billedHours, 0);
-
-    const openItems = allPeriodItems.filter(({ billing }) =>
-      normaliseBillingStatus(billing.billingStatus) === 'open'
-    );
-    const openHours = openItems.reduce((s, { job }) => s + (job.aw * 5) / 60, 0);
-
-    const unbilledHours = openHours;
-
+    const filter = resolvePeriodFilter(periodMode, selectedDate, viewBy);
+    const pos = getBillingPosition(jobs, billingRecords, filter);
+    console.log('BillingScreen: periodStats computed — period:', periodMode, '| recorded:', pos.recordedHours.toFixed(2), '| billed:', pos.billedHours.toFixed(2), '| open:', pos.openHours.toFixed(2));
     return {
-      recordedAW,
-      recordedHours,
-      billedHours,
+      recordedAW: pos.recordedAW,
+      recordedHours: pos.recordedHours,
+      billedHours: pos.billedHours,
       readyHours: 0,
-      openHours,
-      unbilledHours,
-      jobsRecorded: allPeriodItems.length,
-      jobsBilled: billedItems.length,
+      openHours: pos.openHours,
+      unbilledHours: pos.openHours,
+      jobsRecorded: pos.totalJobs,
+      jobsBilled: pos.billedJobs,
       jobsReady: 0,
-      jobsOpen: openItems.length,
+      jobsOpen: pos.openJobs,
     };
   }, [jobs, billingRecords, periodMode, selectedDate, viewBy]);
 

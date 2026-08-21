@@ -213,3 +213,96 @@ export function getClosureRate(billedJobs: number, totalJobs: number): number {
 export function getBillingGap(recordedHours: number, billedHours: number): number {
   return recordedHours - billedHours;
 }
+
+// ── Period resolver ───────────────────────────────────────────────────────────
+
+export type PeriodMode = 'day' | 'week' | 'month' | 'year' | 'entire';
+
+/**
+ * Maps a PeriodMode to a PeriodFilter.
+ * Uses referenceDate (defaults to today) as the anchor date.
+ */
+export function resolvePeriodFilter(
+  mode: PeriodMode,
+  referenceDate?: Date,
+  viewBy?: 'work_date' | 'billing_date'
+): PeriodFilter {
+  const ref = referenceDate ?? new Date();
+  const dateISO = ref.toISOString();
+  const vb = viewBy ?? 'work_date';
+
+  if (mode === 'entire') {
+    return { type: 'entire', viewBy: vb };
+  }
+  return { type: mode, date: dateISO, viewBy: vb };
+}
+
+// ── Unified billing position ──────────────────────────────────────────────────
+
+export interface BillingPosition {
+  // Counts
+  totalJobs: number;
+  billedJobs: number;
+  openJobs: number;
+  // Recorded
+  recordedAW: number;
+  recordedHours: number;
+  // Billed
+  billedAW: number;
+  billedHours: number;
+  // Open
+  openAW: number;
+  openHours: number;
+  // Derived
+  billingConversion: number;  // billedHours / recordedHours * 100
+  closureRate: number;        // billedJobs / totalJobs * 100
+  billingGap: number;         // recordedHours - billedHours
+}
+
+/**
+ * The ONE function all screens must call for billing metrics.
+ * Uses the existing selectors already in billingEngine.ts.
+ */
+export function getBillingPosition(
+  jobs: Job[],
+  billingRecords: BillingRecord[],
+  filter: PeriodFilter
+): BillingPosition {
+  const recordedJobsList = getRecordedJobs(jobs, billingRecords, filter);
+  const billedJobsList = getBilledJobs(jobs, billingRecords, filter);
+  const openJobsList = getOpenJobs(jobs, billingRecords, filter);
+
+  const totalJobs = recordedJobsList.length;
+  const billedJobsCount = billedJobsList.length;
+  const openJobsCount = openJobsList.length;
+
+  const recAW = recordedJobsList.reduce((s, j) => s + (j.aw ?? 0), 0);
+  const recHours = recordedJobsList.reduce((s, j) => s + awToHours(j.aw ?? 0), 0);
+
+  const billAW = billedJobsList.reduce((s, { billing }) => s + (billing.billedAW ?? 0), 0);
+  const billHours = billedJobsList.reduce((s, { billing }) => s + (billing.billedHours ?? 0), 0);
+
+  const opAW = openJobsList.reduce((s, { job }) => s + (job.aw ?? 0), 0);
+  const opHours = openJobsList.reduce((s, { job }) => s + awToHours(job.aw ?? 0), 0);
+
+  const billingConversion = getBillingConversion(billHours, recHours);
+  const closureRate = getClosureRate(billedJobsCount, totalJobs);
+  const billingGapVal = getBillingGap(recHours, billHours);
+
+  console.log('[billingEngine] getBillingPosition — filter:', filter.type, '| totalJobs:', totalJobs, '| billedJobs:', billedJobsCount, '| openJobs:', openJobsCount, '| recHours:', recHours.toFixed(2), '| billHours:', billHours.toFixed(2));
+
+  return {
+    totalJobs,
+    billedJobs: billedJobsCount,
+    openJobs: openJobsCount,
+    recordedAW: recAW,
+    recordedHours: recHours,
+    billedAW: billAW,
+    billedHours: billHours,
+    openAW: opAW,
+    openHours: opHours,
+    billingConversion,
+    closureRate,
+    billingGap: billingGapVal,
+  };
+}
