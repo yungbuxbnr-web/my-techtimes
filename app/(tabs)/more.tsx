@@ -73,6 +73,35 @@ export default function MoreScreen() {
       ],
     },
     {
+      title: 'Work Control',
+      items: [
+        {
+          icon_ios: 'tray.full.fill',
+          icon_android: 'inbox',
+          label: 'Open Job Control Centre',
+          subtitle: 'Review unfinished work and Billing attention',
+          route: '/open-job-control',
+          color: '#F59E0B',
+        },
+        {
+          icon_ios: 'arrow.triangle.2.circlepath',
+          icon_android: 'sync',
+          label: 'Handover Board',
+          subtitle: 'Carry-over jobs and notes',
+          route: '/handover',
+          color: '#D97706',
+        },
+        {
+          icon_ios: 'book.closed.fill',
+          icon_android: 'menu-book',
+          label: 'Technical Cases',
+          subtitle: 'Diagnostic and repair case library',
+          route: '/technical-cases',
+          color: '#7C3AED',
+        },
+      ],
+    },
+    {
       title: 'Tools',
       items: [
         {
@@ -122,22 +151,6 @@ export default function MoreScreen() {
           subtitle: 'Speed up job entry with templates',
           route: '/job-templates',
           color: '#059669',
-        },
-        {
-          icon_ios: 'arrow.triangle.2.circlepath',
-          icon_android: 'sync',
-          label: 'Handover Board',
-          subtitle: 'Carry-over jobs and notes',
-          route: '/handover',
-          color: '#D97706',
-        },
-        {
-          icon_ios: 'book.closed.fill',
-          icon_android: 'menu-book',
-          label: 'Technical Cases',
-          subtitle: 'Diagnostic and repair case library',
-          route: '/technical-cases',
-          color: '#7C3AED',
         },
       ],
     },

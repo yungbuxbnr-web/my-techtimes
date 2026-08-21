@@ -18,7 +18,8 @@ import { buildWorkScheduleInput, getNetElapsedWorkingMinutes, getWorkingProgress
 import CircularProgress from '@/components/CircularProgress';
 import AppBackground from '@/components/AppBackground';
 import { billingStorage } from '@/utils/billingStorage';
-import { getBillingPosition, resolvePeriodFilter } from '@/utils/billingEngine';
+import { getBillingPosition, resolvePeriodFilter, getOpenJobs } from '@/utils/billingEngine';
+import { getBillingRiskForJob } from '@/utils/billingRiskEngine';
 
 export default function HomeScreen() {
   const { theme } = useThemeContext();
@@ -29,6 +30,8 @@ export default function HomeScreen() {
   const [workSchedule, setWorkSchedule] = useState({ startTime: '07:00', endTime: '18:00', dailyWorkingHours: 8.5, lunchStartTime: '12:00', lunchEndTime: '12:30' });
   const [liveAvailableHours, setLiveAvailableHours] = useState(0);
   const [billingPos, setBillingPos] = useState({ recordedHours: 0, billedHours: 0, openHours: 0, billingConversion: 0 });
+  const [attentionCount, setAttentionCount] = useState(0);
+  const [attentionReasons, setAttentionReasons] = useState<string[]>([]);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -44,11 +47,11 @@ export default function HomeScreen() {
   const loadBillingPosition = useCallback(async () => {
     try {
       console.log('HomeScreen: Loading billing position for today');
-      const [jobs, records] = await Promise.all([
+      const [allJobs, allRecords] = await Promise.all([
         api.getAllJobs(),
         billingStorage.getAllRecords(),
       ]);
-      const pos = getBillingPosition(jobs, records, resolvePeriodFilter('day'));
+      const pos = getBillingPosition(allJobs, allRecords, resolvePeriodFilter('day'));
       setBillingPos({
         recordedHours: pos.recordedHours,
         billedHours: pos.billedHours,
@@ -56,6 +59,21 @@ export default function HomeScreen() {
         billingConversion: pos.billingConversion,
       });
       console.log('HomeScreen: Billing position loaded — recorded:', pos.recordedHours.toFixed(2), 'billed:', pos.billedHours.toFixed(2), 'open:', pos.openHours.toFixed(2));
+
+      // Billing attention
+      const openJobsList = getOpenJobs(allJobs, allRecords, resolvePeriodFilter('entire'));
+      const nowTs = new Date();
+      const flagged = openJobsList.filter(({ job, billing }) => {
+        const risk = getBillingRiskForJob(job, billing, nowTs);
+        return risk.riskLevel !== 'none';
+      });
+      setAttentionCount(flagged.length);
+      const reasons = flagged.slice(0, 3).map(({ job, billing }) => {
+        const risk = getBillingRiskForJob(job, billing, nowTs);
+        return risk.reasons[0] ?? '';
+      }).filter(Boolean);
+      setAttentionReasons(reasons);
+      console.log('HomeScreen: Billing attention jobs:', flagged.length);
     } catch (error) {
       console.error('HomeScreen: Error loading billing position:', error);
     }
@@ -425,6 +443,54 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Billing Attention card */}
+        {attentionCount === 0 ? (
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <View style={styles.attentionClearRow}>
+              <IconSymbol ios_icon_name="checkmark.shield.fill" android_material_icon_name={'verified' as any} size={20} color={theme.chartGreen} />
+              <Text style={[styles.attentionClearTitle, { color: theme.chartGreen }]}>Billing Clear</Text>
+            </View>
+            <Text style={[styles.attentionClearBody, { color: theme.textSecondary }]}>No Jobs currently need Billing attention.</Text>
+          </View>
+        ) : (
+          <View style={[styles.card, { backgroundColor: theme.card, borderLeftWidth: 4, borderLeftColor: theme.chartYellow }]}>
+            <View style={styles.attentionHeaderRow}>
+              <IconSymbol ios_icon_name="exclamationmark.triangle.fill" android_material_icon_name={'warning' as any} size={18} color={theme.chartYellow} />
+              <Text style={[styles.attentionTitle, { color: theme.text }]}>Billing Attention</Text>
+            </View>
+            <Text style={[styles.attentionSubtitle, { color: theme.chartYellow }]}>
+              {attentionCount} Job{attentionCount > 1 ? 's' : ''} Need{attentionCount === 1 ? 's' : ''} Attention
+            </Text>
+            {attentionReasons.map((reason, idx) => (
+              <View key={idx} style={styles.attentionReasonRow}>
+                <View style={[styles.attentionDot, { backgroundColor: theme.chartYellow }]} />
+                <Text style={[styles.attentionReasonText, { color: theme.textSecondary }]}>{reason}</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={[styles.attentionReviewBtn, { backgroundColor: theme.chartYellow + '22', borderColor: theme.chartYellow }]}
+              onPress={() => {
+                console.log('HomeScreen: Tapped Review Jobs button — navigating to open-job-control with billing_attention filter');
+                router.push({ pathname: '/open-job-control', params: { filter: 'billing_attention' } } as any);
+              }}
+            >
+              <Text style={[styles.attentionReviewText, { color: theme.chartYellow }]}>Review Jobs</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* View Today's Summary button */}
+        <TouchableOpacity
+          style={[styles.summaryButton, { borderColor: theme.primary }]}
+          onPress={() => {
+            console.log('HomeScreen: Tapped View Today\'s Summary button');
+            router.push('/end-of-day' as any);
+          }}
+        >
+          <IconSymbol ios_icon_name="chart.bar.doc.horizontal" android_material_icon_name={'summarize' as any} size={18} color={theme.primary} />
+          <Text style={[styles.summaryButtonText, { color: theme.primary }]}>View Today's Summary</Text>
+        </TouchableOpacity>
+
         {/* Action Buttons */}
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: theme.primary }]}
@@ -731,6 +797,77 @@ const styles = StyleSheet.create({
   },
   billingCtaText: {
     fontSize: 13,
+    fontWeight: '600',
+  },
+  attentionClearRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  attentionClearTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  attentionClearBody: {
+    fontSize: 13,
+  },
+  attentionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  attentionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  attentionSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  attentionReasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+  },
+  attentionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 5,
+  },
+  attentionReasonText: {
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 18,
+  },
+  attentionReviewBtn: {
+    marginTop: 10,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attentionReviewText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  summaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginBottom: 12,
+    gap: 8,
+  },
+  summaryButtonText: {
+    fontSize: 15,
     fontWeight: '600',
   },
 });
