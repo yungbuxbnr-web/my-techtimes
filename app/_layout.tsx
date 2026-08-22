@@ -429,6 +429,7 @@ function RootLayoutContent() {
       <Stack.Screen name="user-manual" options={{ title: 'User Manual', headerShown: true }} />
       <Stack.Screen name="open-job-control" options={{ title: 'Open Job Control Centre', headerShown: true }} />
       <Stack.Screen name="end-of-day" options={{ title: "Today's Summary", headerShown: true }} />
+      <Stack.Screen name="export-data" options={{ headerShown: false }} />
     </Stack>
   );
 }

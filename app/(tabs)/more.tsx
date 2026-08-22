@@ -196,10 +196,10 @@ export default function MoreScreen() {
         },
         {
           icon_ios: 'square.and.arrow.up.fill',
-          icon_android: 'upload-file',
+          icon_android: 'ios-share',
           label: 'Export Data',
           subtitle: 'Export jobs as PDF or JSON backup',
-          route: '/(tabs)/settings?openExport=true',
+          route: '/export-data',
           color: '#2563EB',
         },
         {

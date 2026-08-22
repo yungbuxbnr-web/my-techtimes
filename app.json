@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Tech Times",
-    "slug": "tech-times",
+    "slug": "techtimespro",
     "version": "1.10.0",
     "orientation": "portrait",
     "icon": "./assets/images/e941e17d-7723-49a6-b54a-ae47846098d7.jpeg",
@@ -119,7 +119,7 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://h2yyuqv4gevzs6rgrx6w72e65xnjzdez.app.specular.dev"
+      "backendUrl": "https://prod-proj-mdcxabuvb9nfudhtdqcvv-liwg5h36mq-ey.a.run.app"
     }
   }
 }
