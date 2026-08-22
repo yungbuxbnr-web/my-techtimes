@@ -38,7 +38,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { exportToPdf, exportToJson, importFromJson, ExportOptions } from '@/utils/exportUtils';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { requestAllPermissions, checkPermissions, showPermissionsInfo } from '@/utils/permissions';
 import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
@@ -74,6 +74,13 @@ export default function SettingsScreen() {
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
+  const params = useLocalSearchParams<{ openExport?: string }>();
+  useEffect(() => {
+    if (params.openExport === 'true') {
+      console.log('[Settings] openExport param detected — opening export modal');
+      setShowExportModal(true);
+    }
+  }, [params.openExport]);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, job: null as any });
   const [isImporting, setIsImporting] = useState(false);

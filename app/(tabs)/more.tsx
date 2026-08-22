@@ -195,6 +195,14 @@ export default function MoreScreen() {
           color: '#DC2626',
         },
         {
+          icon_ios: 'square.and.arrow.up.fill',
+          icon_android: 'upload-file',
+          label: 'Export Data',
+          subtitle: 'Export jobs as PDF or JSON backup',
+          route: '/(tabs)/settings?openExport=true',
+          color: '#2563EB',
+        },
+        {
           icon_ios: 'checkmark.shield.fill',
           icon_android: 'verified',
           label: 'Data Quality',
