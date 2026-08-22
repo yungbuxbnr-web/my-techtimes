@@ -1043,45 +1043,172 @@ export default function BillingScreen() {
   const handleBulkMarkBilled = async () => {
     const count = selectedIds.size;
     if (count === 0) return;
-    console.log('BillingScreen: Bulk mark billed tapped for', count, 'jobs');
+    console.log('BillingScreen: Bulk mark invoiced tapped for', count, 'jobs');
+
+    // Compute stats for confirmation
+    let totalAW = 0;
+    let totalHours = 0;
+    let alreadyBilledCount = 0;
+    const toProcess: { billing: BillingRecord; job: Job }[] = [];
+
+    for (const billingId of selectedIds) {
+      const billing = billingRecords.find(r => r.id === billingId);
+      if (!billing) continue;
+      const job = jobs.find(j => j.id === billing.jobId);
+      if (!job) continue;
+      if (normaliseBillingStatus(billing.billingStatus) === 'billed') {
+        alreadyBilledCount++;
+      } else {
+        totalAW += job.aw;
+        totalHours += (job.aw * 5) / 60;
+        toProcess.push({ billing, job });
+      }
+    }
+
+    const processCount = toProcess.length;
+    if (processCount === 0) {
+      Alert.alert('Nothing to do', 'All selected jobs are already invoiced.');
+      return;
+    }
+
+    let message = `${processCount} Job${processCount !== 1 ? 's' : ''}\n${totalAW.toFixed(1)} AW total\n${totalHours.toFixed(2)}h recorded hours total\n\nEach Job will receive its own Billing snapshot.`;
+    if (alreadyBilledCount > 0) {
+      message += `\n\n${count} selected\n${processCount} will be marked Invoiced\n${alreadyBilledCount} are already Invoiced`;
+    }
+
     Alert.alert(
-      'Mark Selected as Billed',
-      `Mark ${count} job${count !== 1 ? 's' : ''} as Closed / Billed?`,
+      `Mark ${processCount} Job${processCount !== 1 ? 's' : ''} as Invoiced?`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark Billed',
+          text: 'Mark Invoiced',
           onPress: async () => {
-            console.log('BillingScreen: Confirmed bulk mark billed for', count, 'jobs');
+            console.log('BillingScreen: Confirmed bulk mark invoiced for', processCount, 'jobs');
             const now = new Date().toISOString();
-            for (const billingId of selectedIds) {
-              const billing = billingRecords.find(r => r.id === billingId);
-              if (!billing) continue;
-              const job = jobs.find(j => j.id === billing.jobId);
-              if (!job) continue;
-              await billingStorage.updateRecord(billingId, {
-                billingStatus: 'billed',
-                billedAW: job.aw,
-                billedHours: (job.aw * 5) / 60,
-                billedAt: now,
-                billedDate: now.split('T')[0],
-              });
-              await billingStorage.addHistoryEntry({
-                billingRecordId: billingId,
-                jobId: job.id,
-                eventType: 'marked_billed',
-                description: `Bulk marked Closed / Billed — ${((job.aw * 5) / 60).toFixed(2)}h`,
-                newAW: job.aw,
-                newHours: (job.aw * 5) / 60,
-              });
+            const today = now.split('T')[0];
+            let succeeded = 0;
+            let failed = 0;
+
+            for (const { billing, job } of toProcess) {
+              try {
+                const billedAW = billing.billedAW || job.aw;
+                const billedHours = billing.billedHours || (job.aw * 5) / 60;
+                await billingStorage.updateRecord(billing.id, {
+                  billingStatus: 'billed',
+                  workStatus: 'work_complete',
+                  billedAW,
+                  billedHours,
+                  billedAt: now,
+                  billedDate: today,
+                });
+                await billingStorage.addHistoryEntry({
+                  billingRecordId: billing.id,
+                  jobId: job.id,
+                  eventType: 'marked_billed',
+                  description: 'Bulk marked as Invoiced',
+                  newAW: billedAW,
+                  newHours: billedHours,
+                });
+                succeeded++;
+              } catch (err) {
+                console.error('BillingScreen: Bulk mark invoiced failed for job:', job.wipNumber, err);
+                failed++;
+              }
             }
+
+            console.log('BillingScreen: Bulk mark invoiced complete — succeeded:', succeeded, 'failed:', failed);
             setSelectedIds(new Set());
             setSelectionMode(false);
             await loadData();
+            if (failed > 0) {
+              Alert.alert('Bulk Update Complete', `${succeeded} job${succeeded !== 1 ? 's' : ''} updated, ${failed} failed`);
+            }
           },
         },
       ]
     );
+  };
+
+  const handleBulkMarkOpen = async () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    console.log('BillingScreen: Bulk mark open tapped for', count, 'jobs');
+
+    let alreadyOpenCount = 0;
+    const toProcess: { billing: BillingRecord; job: Job }[] = [];
+
+    for (const billingId of selectedIds) {
+      const billing = billingRecords.find(r => r.id === billingId);
+      if (!billing) continue;
+      const job = jobs.find(j => j.id === billing.jobId);
+      if (!job) continue;
+      if (normaliseBillingStatus(billing.billingStatus) === 'open') {
+        alreadyOpenCount++;
+      } else {
+        toProcess.push({ billing, job });
+      }
+    }
+
+    const processCount = toProcess.length;
+    if (processCount === 0) {
+      Alert.alert('Nothing to do', 'All selected jobs are already open.');
+      return;
+    }
+
+    let message = `Reopen ${processCount} job${processCount !== 1 ? 's' : ''} and set them back to Open?`;
+    if (alreadyOpenCount > 0) {
+      message += `\n\n${alreadyOpenCount} selected job${alreadyOpenCount !== 1 ? 's' : ''} are already open and will be skipped.`;
+    }
+
+    Alert.alert(
+      `Mark ${processCount} Job${processCount !== 1 ? 's' : ''} as Open?`,
+      message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark Open',
+          onPress: async () => {
+            console.log('BillingScreen: Confirmed bulk mark open for', processCount, 'jobs');
+            let succeeded = 0;
+            let failed = 0;
+
+            for (const { billing, job } of toProcess) {
+              try {
+                await billingStorage.updateRecord(billing.id, {
+                  billingStatus: 'open',
+                  workStatus: 'open',
+                });
+                await billingStorage.addHistoryEntry({
+                  billingRecordId: billing.id,
+                  jobId: job.id,
+                  eventType: 'billing_reopened',
+                  description: 'Bulk marked as Open',
+                });
+                succeeded++;
+              } catch (err) {
+                console.error('BillingScreen: Bulk mark open failed for job:', job.wipNumber, err);
+                failed++;
+              }
+            }
+
+            console.log('BillingScreen: Bulk mark open complete — succeeded:', succeeded, 'failed:', failed);
+            setSelectedIds(new Set());
+            setSelectionMode(false);
+            await loadData();
+            if (failed > 0) {
+              Alert.alert('Bulk Update Complete', `${succeeded} job${succeeded !== 1 ? 's' : ''} updated, ${failed} failed`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSelectAll = () => {
+    console.log('BillingScreen: Select All tapped — selecting', filteredItems.length, 'visible items');
+    const allIds = new Set(filteredItems.map(item => item.billing.id));
+    setSelectedIds(allIds);
   };
 
   const toggleSelection = (billingId: string) => {
@@ -1561,22 +1688,54 @@ export default function BillingScreen() {
         )}
 
         {/* Bulk Action Bar */}
-        {selectionMode && selectedIds.size > 0 && (
+        {selectionMode && (
           <View style={[styles.bulkBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-            <View>
-              <Text style={[styles.bulkCount, { color: theme.text }]}>
-                {selectedIds.size} selected
-              </Text>
-              <Text style={[styles.bulkHours, { color: theme.textSecondary }]}>
-                {selectedBillingHours.toFixed(2)}h
-              </Text>
+            <View style={styles.bulkBarTop}>
+              <View>
+                <Text style={[styles.bulkCount, { color: theme.text }]}>
+                  {selectedIds.size} selected
+                </Text>
+                {selectedIds.size > 0 && (
+                  <Text style={[styles.bulkHours, { color: theme.textSecondary }]}>
+                    {selectedBillingHours.toFixed(2)}h
+                  </Text>
+                )}
+              </View>
+              <View style={styles.bulkBarActions}>
+                <TouchableOpacity
+                  style={[styles.bulkBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={handleSelectAll}
+                >
+                  <Text style={[styles.bulkBtnText, { color: theme.text }]}>Select All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.bulkBtn, { backgroundColor: theme.chartRed }]}
+                  onPress={() => {
+                    console.log('BillingScreen: Cancel selection mode tapped');
+                    setSelectionMode(false);
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  <Text style={styles.bulkBtnText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <TouchableOpacity
-              style={[styles.bulkBtn, { backgroundColor: theme.chartGreen }]}
-              onPress={handleBulkMarkBilled}
-            >
-              <Text style={styles.bulkBtnText}>Mark Selected as Billed</Text>
-            </TouchableOpacity>
+            {selectedIds.size > 0 && (
+              <View style={styles.bulkBarButtons}>
+                <TouchableOpacity
+                  style={[styles.bulkActionBtn, { backgroundColor: theme.chartGreen }]}
+                  onPress={handleBulkMarkBilled}
+                >
+                  <Text style={styles.bulkBtnText}>Mark Invoiced</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.bulkActionBtn, { backgroundColor: theme.chartYellow }]}
+                  onPress={handleBulkMarkOpen}
+                >
+                  <Text style={[styles.bulkBtnText, { color: '#000000' }]}>Mark Open</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -1912,13 +2071,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    elevation: 8,
+  },
+  bulkBarTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    elevation: 8,
+    marginBottom: 10,
+  },
+  bulkBarActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  bulkBarButtons: {
+    flexDirection: 'row',
+    gap: 10,
   },
   bulkCount: {
     fontSize: 15,
@@ -1928,13 +2099,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   bulkBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 10,
+  },
+  bulkActionBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
   },
   bulkBtnText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   placeholderCard: {

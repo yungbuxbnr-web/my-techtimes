@@ -69,6 +69,7 @@ export interface Absence {
   deductionType: 'target' | 'available';
   absenceType?: 'holiday' | 'sickness' | 'training' | 'overtime' | 'compensation' | 'absence';
   note?: string;
+  absenceRangeId?: string;
   createdAt: string;
   updatedAt?: string;
 }

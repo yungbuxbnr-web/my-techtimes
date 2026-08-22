@@ -549,6 +549,7 @@ export const api = {
     deductionType: 'target' | 'available';
     absenceType?: 'holiday' | 'sickness' | 'training' | 'overtime' | 'compensation' | 'absence';
     note?: string;
+    absenceRangeId?: string;
   }): Promise<Absence> {
     console.log('API: Creating absence in local storage', absence);
     return await offlineStorage.createAbsence(absence);
