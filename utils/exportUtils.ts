@@ -143,80 +143,300 @@ function vhcCell(status?: string): string {
   return `<span class="tt-badge tt-badge-none">N/A</span>`;
 }
 
-// ── Efficiency Graph card ─────────────────────────────────────────────────────
+// ── SVG Donut chart ───────────────────────────────────────────────────────────
 
-function efficiencyGraphCard(stats: PeriodStats, billedHours?: number): string {
-  const barPct = Math.min(Math.max(stats.efficiency, 0), 100).toFixed(1);
-  const soldHoursDisplay = stats.soldHours.toFixed(2) + 'h';
-  const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
-  const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(1) + '%' : '—';
-  const billedDisplay = billedHours !== undefined ? billedHours.toFixed(2) + 'h' : null;
-
-  return `
-    <div class="tt-summary-panel avoid-break">
-      <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:14px;">Efficiency Overview</div>
-      <div class="tt-metric-grid">
-        <div class="tt-metric-card">
-          <div class="tt-metric-value">${soldHoursDisplay}</div>
-          <div class="tt-metric-label">Sold Hours</div>
-        </div>
-        <div class="tt-metric-card">
-          <div class="tt-metric-value">${availHoursDisplay}</div>
-          <div class="tt-metric-label">Available Hours</div>
-        </div>
-        <div class="tt-metric-card ${stats.efficiency >= 80 ? 'tt-metric-green' : stats.efficiency >= 50 ? 'tt-metric-amber' : 'tt-metric-red'}">
-          <div class="tt-metric-value">${efficiencyDisplay}</div>
-          <div class="tt-metric-label">Efficiency</div>
-          <div class="tt-eff-bar-wrap"><div class="tt-eff-bar-fill" style="width:${barPct}%;"></div></div>
-        </div>
-        ${billedDisplay ? `<div class="tt-metric-card tt-metric-green">
-          <div class="tt-metric-value">${billedDisplay}</div>
-          <div class="tt-metric-label">Total Invoiced</div>
-        </div>` : ''}
-      </div>
-    </div>
-  `;
+interface DonutSegment {
+  value: number;
+  color: string;
+  label: string;
+  hours: number;
 }
 
-// ── Performance Metrics card ──────────────────────────────────────────────────
+function buildDonutSVG(
+  segments: DonutSegment[],
+  total: number,
+  centerLine1: string,
+  centerLine2: string,
+  centerLine3: string,
+  size: number = 200
+): string {
+  const r = size * 0.35;
+  const cx = size / 2;
+  const cy = size / 2;
+  const strokeWidth = size * 0.14;
+  const circumference = 2 * Math.PI * r;
 
-function performanceMetricsCard(stats: PeriodStats): string {
-  const utilizationDisplay = stats.availableHours > 0 ? stats.utilization.toFixed(1) + '%' : '—';
-  const awPerHourDisplay = stats.soldHours > 0 ? stats.awPerHour.toFixed(1) : '—';
-  const efficiencyDisplay = stats.availableHours > 0 ? stats.efficiency.toFixed(0) + '%' : '—';
-  const availHoursDisplay = stats.availableHours > 0 ? stats.availableHours.toFixed(1) + 'h' : '—';
+  const safeTotal = Math.max(total, 0.001);
+  let cumulativeDash = 0;
 
-  return `
-    <div class="tt-summary-panel avoid-break" style="margin-top:0;">
-      <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:14px;">Performance Metrics</div>
-      <div class="tt-metric-grid">
-        <div class="tt-metric-card">
-          <div class="tt-metric-value">${utilizationDisplay}</div>
-          <div class="tt-metric-label">Utilization</div>
-          <div class="tt-metric-sub">of ${availHoursDisplay} available</div>
-        </div>
-        <div class="tt-metric-card">
-          <div class="tt-metric-value">${awPerHourDisplay}</div>
-          <div class="tt-metric-label">AW per Hour</div>
-          <div class="tt-metric-sub">Average productivity</div>
-        </div>
-        <div class="tt-metric-card">
-          <div class="tt-metric-value">${efficiencyDisplay}</div>
-          <div class="tt-metric-label">Efficiency</div>
-        </div>
-        <div class="tt-metric-card">
-          <div class="tt-metric-value">${stats.jobCount}</div>
-          <div class="tt-metric-label">Total Jobs</div>
-        </div>
-      </div>
-    </div>
-  `;
+  const circles = segments.map(seg => {
+    const pct = Math.min(Math.max(seg.value / safeTotal, 0), 1);
+    const dash = pct * circumference;
+    const gap = circumference - dash;
+    const offset = -cumulativeDash;
+    cumulativeDash += dash;
+    if (dash < 0.01) return '';
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${strokeWidth}"
+      stroke-dasharray="${dash.toFixed(3)} ${gap.toFixed(3)}"
+      stroke-dashoffset="${offset.toFixed(3)}"
+      transform="rotate(-90 ${cx} ${cy})"/>`;
+  }).join('');
+
+  const fs1 = size * 0.09;
+  const fs2 = size * 0.055;
+  const fs3 = size * 0.048;
+  const y1 = cy - size * 0.04;
+  const y2 = cy + size * 0.06;
+  const y3 = cy + size * 0.115;
+
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#E5E7EB" stroke-width="${strokeWidth}"/>
+    ${circles}
+    <text x="${cx}" y="${y1}" text-anchor="middle" font-size="${fs1}" font-weight="800" fill="#1565C0">${centerLine1}</text>
+    <text x="${cx}" y="${y2}" text-anchor="middle" font-size="${fs2}" fill="#6B7280">${centerLine2}</text>
+    <text x="${cx}" y="${y3}" text-anchor="middle" font-size="${fs3}" font-weight="700" fill="#1565C0">${centerLine3}</text>
+  </svg>`;
 }
 
-// ── Summary dashboard (efficiency + metrics) ──────────────────────────────────
+// ── Hours utilisation donut ───────────────────────────────────────────────────
 
-function summaryDashboard(stats: PeriodStats, billedHours?: number): string {
-  return efficiencyGraphCard(stats, billedHours) + performanceMetricsCard(stats);
+function buildHoursDonut(
+  invoicedHours: number,
+  openHours: number,
+  availableHours: number,
+  size: number = 200
+): { svg: string; overPerf: boolean; overPerfHours: number; overPerfPct: number } {
+  const soldHours = invoicedHours + openHours;
+  const overPerf = soldHours > availableHours && availableHours > 0;
+  const overPerfHours = overPerf ? soldHours - availableHours : 0;
+  const overPerfPct = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
+  const remaining = Math.max(0, availableHours - soldHours);
+  const total = Math.max(availableHours, soldHours, 0.001);
+
+  const segments: DonutSegment[] = overPerf
+    ? [
+        { value: invoicedHours, color: '#16A34A', label: 'Invoiced/Closed', hours: invoicedHours },
+        { value: openHours,     color: '#D97706', label: 'Open/Awaiting',   hours: openHours },
+      ]
+    : [
+        { value: invoicedHours, color: '#16A34A', label: 'Invoiced/Closed', hours: invoicedHours },
+        { value: openHours,     color: '#D97706', label: 'Open/Awaiting',   hours: openHours },
+        { value: remaining,     color: '#D1D5DB', label: 'Remaining',       hours: remaining },
+      ];
+
+  const utilPct = availableHours > 0 ? Math.min((soldHours / availableHours) * 100, 119) : 0;
+  const svg = buildDonutSVG(
+    segments,
+    total,
+    `${soldHours.toFixed(2)}h`,
+    `of ${availableHours.toFixed(1)}h available`,
+    `${utilPct.toFixed(1)}% utilised`,
+    size
+  );
+  return { svg, overPerf, overPerfHours, overPerfPct };
+}
+
+// ── Job closure donut ─────────────────────────────────────────────────────────
+
+function buildClosureDonut(
+  invoicedCount: number,
+  openCount: number,
+  size: number = 200
+): string {
+  const total = invoicedCount + openCount;
+  const closurePct = total > 0 ? (invoicedCount / total) * 100 : 0;
+  const segments: DonutSegment[] = [
+    { value: invoicedCount, color: '#16A34A', label: 'Invoiced/Closed', hours: invoicedCount },
+    { value: openCount,     color: '#D97706', label: 'Open/Awaiting',   hours: openCount },
+  ];
+  return buildDonutSVG(
+    segments,
+    Math.max(total, 0.001),
+    String(total),
+    'JOBS',
+    `${closurePct.toFixed(0)}% closure rate`,
+    size
+  );
+}
+
+// ── Metric card ───────────────────────────────────────────────────────────────
+
+function metricCard(
+  icon: string,
+  value: string,
+  label: string,
+  colorClass: string
+): string {
+  return `<div class="metric-card metric-${colorClass}">
+    <div class="metric-icon-wrap metric-icon-${colorClass}">${icon}</div>
+    <div class="metric-value">${value}</div>
+    <div class="metric-label">${label}</div>
+  </div>`;
+}
+
+// ── Page 1: Performance Dashboard ────────────────────────────────────────────
+
+function buildPerformanceDashboard(
+  stats: PeriodStats,
+  closedJobs: Job[],
+  openJobs: Job[],
+  billedHours: number,
+  availableHours: number,
+  periodLabel: string,
+  reportType: string,
+  technicianName: string,
+  generatedDate: string,
+  options: ExportOptions,
+  billingByJobId: Map<string, any>
+): string {
+  const soldHours = stats.soldHours;
+  const openHours = openJobs.reduce((s, j) => s + awToHours(j.aw ?? 0), 0);
+  const invoicedHours = billedHours;
+  const remaining = Math.max(0, availableHours - soldHours);
+  const recEffPct = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
+  const billedEffPct = availableHours > 0 ? (invoicedHours / availableHours) * 100 : 0;
+  const totalJobs = stats.jobCount;
+  const invoicedCount = closedJobs.length;
+  const openCount = openJobs.length;
+  const closurePct = totalJobs > 0 ? (invoicedCount / totalJobs) * 100 : 0;
+
+  // Row 1 metric cards
+  const row1 = `<div class="metric-row">
+    ${metricCard('&#9201;', availableHours.toFixed(1) + 'h', 'AVAILABLE HOURS', 'blue')}
+    ${metricCard('&#10003;', soldHours.toFixed(2) + 'h', 'SOLD HOURS', 'blue')}
+    ${metricCard('&#128196;', invoicedHours.toFixed(1) + 'h', 'INVOICED / CLOSED HOURS', 'green')}
+    ${metricCard('&#9711;', openHours.toFixed(2) + 'h', 'OPEN / AWAITING HOURS', 'orange')}
+  </div>`;
+
+  // Row 2 metric cards
+  const row2 = `<div class="metric-row">
+    ${metricCard('&#8599;', recEffPct.toFixed(1) + '%', 'RECORDED EFFICIENCY %', 'blue')}
+    ${metricCard('&#9679;', billedEffPct.toFixed(1) + '%', 'BILLED EFFICIENCY %', 'green')}
+    ${metricCard('&#9783;', String(totalJobs), 'TOTAL JOBS', 'blue')}
+    ${metricCard('&#10003;', String(invoicedCount), 'INVOICED JOBS', 'green')}
+    ${metricCard('&#9711;', String(openCount), 'OPEN JOBS', 'orange')}
+  </div>`;
+
+  // Working time table
+  let weekStartStr = '';
+  let weekEndStr = '';
+  if (options.type === 'weekly' && options.week !== undefined) {
+    // derive from jobs
+  }
+  // Derive period dates from jobs if available
+  const allJobDates = [...closedJobs, ...openJobs].map(j => new Date(j.createdAt).getTime()).filter(t => !isNaN(t));
+  const minDate = allJobDates.length > 0 ? new Date(Math.min(...allJobDates)) : null;
+  const maxDate = allJobDates.length > 0 ? new Date(Math.max(...allJobDates)) : null;
+
+  let periodRows = '';
+  if (options.type === 'weekly' && minDate && maxDate) {
+    const wRange = getWeekRange(minDate);
+    const wStartFmt = wRange.start.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const wEndFmt = wRange.end.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const wStartDay = wRange.start.toLocaleDateString('en-GB', { weekday: 'short' });
+    const wEndDay = wRange.end.toLocaleDateString('en-GB', { weekday: 'short' });
+    periodRows = `<tr><td class="wt-label">Week Start</td><td class="wt-value">${wStartFmt} (${wStartDay})</td></tr>
+      <tr><td class="wt-label">Week End</td><td class="wt-value">${wEndFmt} (${wEndDay})</td></tr>`;
+  } else if (options.type === 'monthly' && options.month) {
+    periodRows = `<tr><td class="wt-label">Month</td><td class="wt-value">${fmtMonthLabel(options.month)}</td></tr>`;
+  } else if (options.type === 'daily' && options.day) {
+    periodRows = `<tr><td class="wt-label">Day</td><td class="wt-value">${fmtDateShort(options.day)}</td></tr>`;
+  } else if (options.type === 'all') {
+    if (minDate && maxDate) {
+      periodRows = `<tr><td class="wt-label">From</td><td class="wt-value">${fmtDateShort(minDate.toISOString())}</td></tr>
+        <tr><td class="wt-label">To</td><td class="wt-value">${fmtDateShort(maxDate.toISOString())}</td></tr>`;
+    }
+  }
+
+  const workingTimeTable = `<div class="three-col-title">&#128197; WORKING TIME &amp; AVAILABILITY</div>
+    <table class="wt-table">
+      <tbody>
+        <tr><td class="wt-label">Standard Available Hours</td><td class="wt-value">${availableHours.toFixed(1)}h</td></tr>
+        <tr><td class="wt-label">Sold Hours (Recorded)</td><td class="wt-value">${soldHours.toFixed(2)}h</td></tr>
+        <tr><td class="wt-label">Invoiced / Closed Hours</td><td class="wt-value">${invoicedHours.toFixed(1)}h</td></tr>
+        <tr><td class="wt-label">Open / Awaiting Hours</td><td class="wt-value">${openHours.toFixed(2)}h</td></tr>
+        <tr><td class="wt-label">Remaining Available Hours</td><td class="wt-value">${remaining.toFixed(2)}h</td></tr>
+        <tr><td colspan="2" style="padding:4px 0;"></td></tr>
+        ${periodRows}
+      </tbody>
+    </table>`;
+
+  // Centre donut
+  const { svg: hoursDonutSvg, overPerf, overPerfHours, overPerfPct } = buildHoursDonut(invoicedHours, openHours, availableHours, 180);
+  const invPct = availableHours > 0 ? (invoicedHours / availableHours) * 100 : 0;
+  const opPct = availableHours > 0 ? (openHours / availableHours) * 100 : 0;
+  const remPct = availableHours > 0 ? (remaining / availableHours) * 100 : 0;
+
+  const hoursDonutLegend = `<div class="donut-legend">
+    <div class="legend-row">
+      <span class="legend-swatch" style="background:#16A34A;"></span>
+      <span class="legend-label">Invoiced / Closed</span>
+      <span class="legend-val">${invoicedHours.toFixed(1)}h</span>
+      <span class="legend-pct">(${invPct.toFixed(1)}%)</span>
+    </div>
+    <div class="legend-row">
+      <span class="legend-swatch" style="background:#D97706;"></span>
+      <span class="legend-label">Open / Awaiting</span>
+      <span class="legend-val">${openHours.toFixed(2)}h</span>
+      <span class="legend-pct">(${opPct.toFixed(1)}%)</span>
+    </div>
+    <div class="legend-row">
+      <span class="legend-swatch" style="background:#D1D5DB;"></span>
+      <span class="legend-label">Remaining Available</span>
+      <span class="legend-val">${remaining.toFixed(2)}h</span>
+      <span class="legend-pct">(${remPct.toFixed(1)}%)</span>
+    </div>
+    <div class="legend-footer">Whole donut = Available Hours (${availableHours.toFixed(1)}h)</div>
+  </div>`;
+
+  const overPerfCallout = overPerf ? `<div class="overperf-callout">
+    +${overPerfHours.toFixed(1)}h ABOVE AVAILABLE HOURS<br/>
+    ${overPerfPct.toFixed(1)}% EFFICIENCY
+  </div>` : '';
+
+  const centreDonut = `<div class="three-col-title">AVAILABLE HOURS UTILISATION</div>
+    <div style="text-align:center;">${hoursDonutSvg}</div>
+    ${overPerfCallout}
+    ${hoursDonutLegend}`;
+
+  // Right donut — job closure
+  const closureDonutSvg = buildClosureDonut(invoicedCount, openCount, 160);
+  const invJobPct = totalJobs > 0 ? (invoicedCount / totalJobs) * 100 : 0;
+  const opJobPct = totalJobs > 0 ? (openCount / totalJobs) * 100 : 0;
+  const closureDonutLegend = `<div class="donut-legend">
+    <div class="legend-row">
+      <span class="legend-swatch" style="background:#16A34A;"></span>
+      <span class="legend-label">Invoiced / Closed Jobs</span>
+      <span class="legend-val">${invoicedCount}</span>
+      <span class="legend-pct">(${invJobPct.toFixed(0)}%)</span>
+    </div>
+    <div class="legend-row">
+      <span class="legend-swatch" style="background:#D97706;"></span>
+      <span class="legend-label">Open / Awaiting Jobs</span>
+      <span class="legend-val">${openCount}</span>
+      <span class="legend-pct">(${opJobPct.toFixed(0)}%)</span>
+    </div>
+    <div class="legend-footer">Total Jobs: ${totalJobs}</div>
+  </div>`;
+
+  const rightDonut = `<div class="three-col-title">JOB CLOSURE POSITION</div>
+    <div style="text-align:center;">${closureDonutSvg}</div>
+    ${closureDonutLegend}`;
+
+  return `
+    <div class="dashboard-header">
+      <div class="brand-title">T E C H &nbsp; T I M E S</div>
+      <div class="report-type">${reportType}</div>
+      <div class="report-sub">${technicianName} &nbsp;&middot;&nbsp; ${periodLabel}</div>
+    </div>
+    ${row1}
+    ${row2}
+    <div class="three-col-section">
+      <div class="three-col-left">${workingTimeTable}</div>
+      <div class="three-col-centre">${centreDonut}</div>
+      <div class="three-col-right">${rightDonut}</div>
+    </div>
+  `;
 }
 
 // ── Table header row ──────────────────────────────────────────────────────────
@@ -226,13 +446,13 @@ function tableHeaderRow(): string {
     <thead>
       <tr>
         <th style="width:9%;">WIP</th>
-        <th style="width:12%;">Vehicle Reg</th>
-        <th style="width:10%;">VHC</th>
-        <th style="width:27%;">Job Notes</th>
-        <th style="width:7%;text-align:center;">AW</th>
-        <th style="width:9%;text-align:center;">Time</th>
-        <th style="width:12%;text-align:center;">Date</th>
-        <th style="width:10%;text-align:center;">Status</th>
+        <th style="width:12%;">VEHICLE REG</th>
+        <th style="width:9%;">VHC</th>
+        <th style="width:28%;">JOB DESCRIPTION</th>
+        <th style="width:6%;text-align:center;">AW</th>
+        <th style="width:9%;text-align:center;">TIME</th>
+        <th style="width:15%;text-align:center;">DATE &amp; TIME</th>
+        <th style="width:12%;text-align:center;">STATUS</th>
       </tr>
     </thead>`;
 }
@@ -240,7 +460,7 @@ function tableHeaderRow(): string {
 // ── Single job row ────────────────────────────────────────────────────────────
 
 function jobRow(job: Job, _isEven: boolean, billingRecord?: any): string {
-  const TD = `padding:8px 10px;font-size:11px;color:#1C2B3A;vertical-align:middle;border-bottom:1px solid #E5E7EB;`;
+  const TD = `padding:7px 9px;font-size:10.5px;color:#1C2B3A;vertical-align:middle;border-bottom:1px solid #E5E7EB;`;
   const jobMinutes = awToMinutes(Number(job.aw) || 0);
   const timeFormatted = fmtTime(jobMinutes);
   const notes = job.notes ? job.notes.trim() : '';
@@ -250,7 +470,7 @@ function jobRow(job: Job, _isEven: boolean, billingRecord?: any): string {
   const status = billingRecord ? normaliseBillingStatus(billingRecord.billingStatus) : 'open';
   const statusBadge = status === 'billed'
     ? `<span class="tt-badge tt-badge-invoiced">INVOICED</span>`
-    : `<span class="tt-badge tt-badge-open">OPEN</span>`;
+    : `<span class="tt-badge tt-badge-open">OPEN /<br/>AWAITING</span>`;
   return `
     <tr>
       <td style="${TD}font-weight:700;color:#2563EB;">${job.wipNumber}</td>
@@ -286,7 +506,6 @@ function weekGroupHtml(weekStart: Date, weekEnd: Date, jobs: Job[], billingByJob
 function monthSectionHtml(yearMonth: string, jobs: Job[], billingByJobId: Map<string, any>): string {
   const monthLabel = fmtMonthLabel(yearMonth);
 
-  // Group by week
   const weekMap = new Map<string, Job[]>();
   jobs.forEach(job => {
     const d = new Date(job.createdAt);
@@ -295,7 +514,6 @@ function monthSectionHtml(yearMonth: string, jobs: Job[], billingByJobId: Map<st
     weekMap.get(wk)!.push(job);
   });
 
-  // Sort weeks descending
   const sortedWeeks = Array.from(weekMap.keys()).sort((a, b) => b.localeCompare(a));
 
   const weeksHtml = sortedWeeks.map(wkKey => {
@@ -332,7 +550,24 @@ function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule, billingB
     return sum;
   }, 0);
 
-  // Group by month
+  const closedJobs = jobs.filter(j => {
+    const rec = billingByJobId.get(j.id);
+    return rec && normaliseBillingStatus(rec.billingStatus) === 'billed';
+  });
+  const openJobs = jobs.filter(j => {
+    const rec = billingByJobId.get(j.id);
+    return !rec || normaliseBillingStatus(rec.billingStatus) === 'open';
+  });
+
+  const openHours = openJobs.reduce((s, j) => s + awToHours(j.aw ?? 0), 0);
+  const { svg: donutSvg, overPerf, overPerfHours, overPerfPct } = buildHoursDonut(yearBilledHours, openHours, availHours, 160);
+  const invPct = availHours > 0 ? (yearBilledHours / availHours) * 100 : 0;
+  const opPct = availHours > 0 ? (openHours / availHours) * 100 : 0;
+  const rem = Math.max(0, availHours - stats.soldHours);
+  const remPct = availHours > 0 ? (rem / availHours) * 100 : 0;
+
+  const overPerfCallout = overPerf ? `<div class="overperf-callout">+${overPerfHours.toFixed(1)}h ABOVE AVAILABLE HOURS &nbsp; ${overPerfPct.toFixed(1)}% EFFICIENCY</div>` : '';
+
   const monthMap = new Map<string, Job[]>();
   jobs.forEach(job => {
     const ym = job.createdAt.substring(0, 7);
@@ -346,91 +581,114 @@ function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule, billingB
   return `
     <div style="margin-top:32px;margin-bottom:8px;border-top:3px solid #1565C0;padding-top:16px;">
       <div style="font-size:20px;font-weight:800;color:#1565C0;margin-bottom:16px;">Year: ${year}</div>
-      <div style="font-size:13px;font-weight:600;color:#1565C0;margin-bottom:12px;">Year Summary</div>
-      ${summaryDashboard(stats, yearBilledHours)}
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="text-align:center;">${donutSvg}${overPerfCallout}</div>
+        <div style="flex:1;min-width:180px;">
+          <div class="donut-legend">
+            <div class="legend-row"><span class="legend-swatch" style="background:#16A34A;"></span><span class="legend-label">Invoiced/Closed</span><span class="legend-val">${yearBilledHours.toFixed(1)}h</span><span class="legend-pct">(${invPct.toFixed(1)}%)</span></div>
+            <div class="legend-row"><span class="legend-swatch" style="background:#D97706;"></span><span class="legend-label">Open/Awaiting</span><span class="legend-val">${openHours.toFixed(1)}h</span><span class="legend-pct">(${opPct.toFixed(1)}%)</span></div>
+            <div class="legend-row"><span class="legend-swatch" style="background:#D1D5DB;"></span><span class="legend-label">Remaining</span><span class="legend-val">${rem.toFixed(1)}h</span><span class="legend-pct">(${remPct.toFixed(1)}%)</span></div>
+            <div class="legend-footer">Available Hours: ${availHours.toFixed(1)}h &nbsp;|&nbsp; Sold: ${stats.soldHours.toFixed(2)}h &nbsp;|&nbsp; Jobs: ${stats.jobCount} &nbsp;|&nbsp; Invoiced: ${closedJobs.length} &nbsp;|&nbsp; Open: ${openJobs.length}</div>
+          </div>
+        </div>
+      </div>
     </div>
     ${monthsHtml}
   `;
 }
 
-// ── Pie chart SVG ─────────────────────────────────────────────────────────────
+// ── Daily performance table ───────────────────────────────────────────────────
 
-function buildPieChartSVG(invoicedHours: number, openHours: number, totalSoldHours: number, availableHours: number): string {
-  const total = Math.max(availableHours, totalSoldHours, 0.01);
-  const invoicedPct = Math.min(invoicedHours / total, 1);
-  const openPct = Math.min(openHours / total, 1 - invoicedPct);
-  const unusedPct = Math.max(0, 1 - invoicedPct - openPct);
+function buildDailyPerformanceTable(
+  sortedJobs: Job[],
+  billingByJobId: Map<string, any>,
+  schedule: Schedule
+): string {
+  const dayMap = groupJobsByDay(sortedJobs);
+  const sortedDays = Array.from(dayMap.keys()).sort((a, b) => a.localeCompare(b));
 
-  const C = 2 * Math.PI * 80; // circumference ≈ 502.65
+  if (sortedDays.length === 0) return '';
 
-  const invoicedDash = invoicedPct * C;
-  const invoicedGap = C - invoicedDash;
+  let totAvail = 0, totSold = 0, totInv = 0, totOpen = 0, totClosed = 0, totOpenJobs = 0;
 
-  const openDash = openPct * C;
-  const openGap = C - openDash;
+  const rows = sortedDays.map(day => {
+    const dayJobs = dayMap.get(day)!;
+    const dayDate = new Date(day);
+    const avail = calcAvailableHoursForPeriod(dayDate, dayDate, schedule);
+    const dayStats = calcPeriodStats(dayJobs, avail);
+    const dayClosedJobs = dayJobs.filter(j => {
+      const rec = billingByJobId.get(j.id);
+      return rec && normaliseBillingStatus(rec.billingStatus) === 'billed';
+    });
+    const dayOpenJobs = dayJobs.filter(j => {
+      const rec = billingByJobId.get(j.id);
+      return !rec || normaliseBillingStatus(rec.billingStatus) === 'open';
+    });
+    const dayInv = dayClosedJobs.reduce((s, j) => {
+      const rec = billingByJobId.get(j.id);
+      return s + (rec?.billedHours ?? awToHours(j.aw ?? 0));
+    }, 0);
+    const dayOpenH = dayOpenJobs.reduce((s, j) => s + awToHours(j.aw ?? 0), 0);
+    const recEff = avail > 0 ? (dayStats.soldHours / avail) * 100 : 0;
+    const billedEff = avail > 0 ? (dayInv / avail) * 100 : 0;
 
-  const unusedDash = unusedPct * C;
-  const unusedGap = C - unusedDash;
+    totAvail += avail;
+    totSold += dayStats.soldHours;
+    totInv += dayInv;
+    totOpen += dayOpenH;
+    totClosed += dayClosedJobs.length;
+    totOpenJobs += dayOpenJobs.length;
 
-  const invoicedLabel = (invoicedPct * 100).toFixed(1) + '%';
-  const openLabel = (openPct * 100).toFixed(1) + '%';
-  const unusedLabel = (unusedPct * 100).toFixed(1) + '%';
-  const unusedActual = Math.max(0, availableHours - totalSoldHours);
-  const totalSoldDisplay = totalSoldHours.toFixed(1) + 'h';
+    const dayLabel = dayDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return `<tr>
+      <td style="font-weight:600;">${dayLabel}</td>
+      <td style="text-align:center;">${avail.toFixed(1)}h</td>
+      <td style="text-align:center;">${dayStats.soldHours.toFixed(1)}h</td>
+      <td style="text-align:center;">${dayInv.toFixed(1)}h</td>
+      <td style="text-align:center;">${dayOpenH.toFixed(1)}h</td>
+      <td style="text-align:center;">${recEff.toFixed(0)}%</td>
+      <td style="text-align:center;">${billedEff.toFixed(0)}%</td>
+      <td style="text-align:center;">${dayClosedJobs.length}</td>
+      <td style="text-align:center;">${dayOpenJobs.length}</td>
+    </tr>`;
+  }).join('');
+
+  const totRecEff = totAvail > 0 ? (totSold / totAvail) * 100 : 0;
+  const totBilledEff = totAvail > 0 ? (totInv / totAvail) * 100 : 0;
 
   return `
-    <div style="margin-top:32px;text-align:center;">
-      <div style="font-size:14px;font-weight:700;color:#1565C0;margin-bottom:16px;">Hours Distribution</div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap;">
-        <svg width="200" height="200" viewBox="0 0 200 200">
-          <circle cx="100" cy="100" r="80" fill="none" stroke="#E5E7EB" stroke-width="32"/>
-          <circle cx="100" cy="100" r="80" fill="none" stroke="#16A34A" stroke-width="32"
-            stroke-dasharray="${invoicedDash.toFixed(2)} ${invoicedGap.toFixed(2)}"
-            stroke-dashoffset="${(C * 0.25).toFixed(2)}"
-            transform="rotate(-90 100 100)"/>
-          <circle cx="100" cy="100" r="80" fill="none" stroke="#DC2626" stroke-width="32"
-            stroke-dasharray="${openDash.toFixed(2)} ${openGap.toFixed(2)}"
-            stroke-dashoffset="${(C * 0.25 - invoicedDash).toFixed(2)}"
-            transform="rotate(-90 100 100)"/>
-          <circle cx="100" cy="100" r="80" fill="none" stroke="#D1D5DB" stroke-width="32"
-            stroke-dasharray="${unusedDash.toFixed(2)} ${unusedGap.toFixed(2)}"
-            stroke-dashoffset="${(C * 0.25 - invoicedDash - openDash).toFixed(2)}"
-            transform="rotate(-90 100 100)"/>
-          <text x="100" y="95" text-anchor="middle" font-size="13" font-weight="700" fill="#1565C0">${totalSoldDisplay}</text>
-          <text x="100" y="112" text-anchor="middle" font-size="9" fill="#6B7280">SOLD</text>
-        </svg>
-        <div style="text-align:left;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-            <div style="width:16px;height:16px;border-radius:3px;background:#16A34A;flex-shrink:0;"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700;color:#374151;">Invoiced / Closed</div>
-              <div style="font-size:11px;color:#6B7280;">${invoicedHours.toFixed(2)}h &nbsp; ${invoicedLabel}</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-            <div style="width:16px;height:16px;border-radius:3px;background:#DC2626;flex-shrink:0;"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700;color:#374151;">Open / Awaiting</div>
-              <div style="font-size:11px;color:#6B7280;">${openHours.toFixed(2)}h &nbsp; ${openLabel}</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:16px;height:16px;border-radius:3px;background:#D1D5DB;flex-shrink:0;"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700;color:#374151;">Available (Unused)</div>
-              <div style="font-size:11px;color:#6B7280;">${unusedActual.toFixed(2)}h &nbsp; ${unusedLabel}</div>
-            </div>
-          </div>
-          <div style="margin-top:14px;padding-top:10px;border-top:1px solid #E5E7EB;">
-            <div style="font-size:11px;color:#6B7280;">Available Hours: <strong>${availableHours.toFixed(2)}h</strong></div>
-          </div>
-        </div>
-      </div>
+    <div class="page-section-heading" style="margin-top:24px;">
+      <span class="section-title">DAILY PERFORMANCE</span>
     </div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-top:8px;">
+      <thead><tr>
+        <th>DATE</th>
+        <th style="text-align:center;">AVAILABLE</th>
+        <th style="text-align:center;">SOLD</th>
+        <th style="text-align:center;">INVOICED</th>
+        <th style="text-align:center;">OPEN</th>
+        <th style="text-align:center;">REC EFF</th>
+        <th style="text-align:center;">BILLED EFF</th>
+        <th style="text-align:center;">CLOSED</th>
+        <th style="text-align:center;">OPEN</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="background:#EFF6FF;font-weight:700;">
+        <td>TOTALS</td>
+        <td style="text-align:center;">${totAvail.toFixed(1)}h</td>
+        <td style="text-align:center;">${totSold.toFixed(1)}h</td>
+        <td style="text-align:center;">${totInv.toFixed(1)}h</td>
+        <td style="text-align:center;">${totOpen.toFixed(1)}h</td>
+        <td style="text-align:center;">${totRecEff.toFixed(0)}%</td>
+        <td style="text-align:center;">${totBilledEff.toFixed(0)}%</td>
+        <td style="text-align:center;">${totClosed}</td>
+        <td style="text-align:center;">${totOpenJobs}</td>
+      </tr></tfoot>
+    </table>
   `;
 }
 
-// ── Closure summary page ──────────────────────────────────────────────────────
+// ── Page 3: Invoiced & Open Job Breakdown ─────────────────────────────────────
 
 function buildClosureSummaryPage(
   closedJobs: Job[],
@@ -458,50 +716,150 @@ function buildClosureSummaryPage(
     </tr>`;
   }).join('');
 
-  const pie = buildPieChartSVG(totalClosedHours, totalOpenHours, totalSoldHours, availableHours);
+  // Large donut for page 3
+  const { svg: donutSvg, overPerf, overPerfHours, overPerfPct } = buildHoursDonut(totalClosedHours, totalOpenHours, availableHours, 220);
+  const invPct = availableHours > 0 ? (totalClosedHours / availableHours) * 100 : 0;
+  const opPct = availableHours > 0 ? (totalOpenHours / availableHours) * 100 : 0;
+  const remaining = Math.max(0, availableHours - totalSoldHours);
+  const remPct = availableHours > 0 ? (remaining / availableHours) * 100 : 0;
+
+  const overPerfCallout = overPerf ? `<div class="overperf-callout">+${overPerfHours.toFixed(1)}h ABOVE AVAILABLE HOURS &nbsp; ${overPerfPct.toFixed(1)}% EFFICIENCY</div>` : '';
 
   return `
     <div class="page-break"></div>
-    <div class="tt-section">Invoiced &amp; Open Job Breakdown</div>
+    <div class="page-section-heading">
+      <span class="section-num">PAGE 3</span>
+      <span class="section-title">INVOICED &amp; OPEN JOB BREAKDOWN</span>
+    </div>
     <div style="display:flex;gap:16px;align-items:flex-start;margin-top:12px;">
       <div style="flex:1;">
-        <div class="tt-closure-col-header tt-closure-col-header-invoiced">
-          INVOICED / CLOSED (${closedJobs.length})
-        </div>
-        <table>
+        <div class="tt-closure-col-header tt-closure-col-header-invoiced">INVOICED / CLOSED JOBS</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #BBF7D0;">
           <thead><tr>
             <th style="background:#15803D;">WIP</th>
-            <th style="background:#15803D;">Reg</th>
-            <th style="background:#15803D;text-align:right;">Hours</th>
+            <th style="background:#15803D;">REG</th>
+            <th style="background:#15803D;text-align:right;">HOURS</th>
           </tr></thead>
-          <tbody>${closedRows || '<tr><td colspan="3" style="text-align:center;color:#9CA3AF;font-style:italic;">No invoiced jobs</td></tr>'}</tbody>
+          <tbody>${closedRows || '<tr><td colspan="3" style="text-align:center;color:#9CA3AF;font-style:italic;padding:10px;">No invoiced jobs</td></tr>'}</tbody>
           <tfoot><tr style="background:#F0FDF4;">
-            <td colspan="2" style="font-weight:700;color:#15803D;border-top:2px solid #15803D;">TOTAL</td>
-            <td style="font-weight:700;color:#15803D;text-align:right;border-top:2px solid #15803D;">${totalClosedHours.toFixed(2)}h</td>
+            <td colspan="2" style="font-weight:700;color:#15803D;border-top:2px solid #15803D;padding:8px 10px;">TOTAL</td>
+            <td style="font-weight:700;color:#15803D;text-align:right;border-top:2px solid #15803D;padding:8px 10px;">${totalClosedHours.toFixed(1)}h</td>
           </tr></tfoot>
         </table>
       </div>
       <div style="flex:1;">
-        <div class="tt-closure-col-header tt-closure-col-header-open">
-          OPEN / AWAITING (${openJobs.length})
-        </div>
-        <table>
+        <div class="tt-closure-col-header tt-closure-col-header-open">OPEN / AWAITING JOBS</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #FDE68A;">
           <thead><tr>
-            <th style="background:#B91C1C;">WIP</th>
-            <th style="background:#B91C1C;">Reg</th>
-            <th style="background:#B91C1C;text-align:right;">Hours</th>
+            <th style="background:#D97706;">WIP</th>
+            <th style="background:#D97706;">REG</th>
+            <th style="background:#D97706;text-align:right;">HOURS</th>
           </tr></thead>
-          <tbody>${openRows || '<tr><td colspan="3" style="text-align:center;color:#9CA3AF;font-style:italic;">No open jobs</td></tr>'}</tbody>
-          <tfoot><tr style="background:#FFF5F5;">
-            <td colspan="2" style="font-weight:700;color:#B91C1C;border-top:2px solid #B91C1C;">TOTAL</td>
-            <td style="font-weight:700;color:#B91C1C;text-align:right;border-top:2px solid #B91C1C;">${totalOpenHours.toFixed(2)}h</td>
+          <tbody>${openRows || '<tr><td colspan="3" style="text-align:center;color:#9CA3AF;font-style:italic;padding:10px;">No open jobs</td></tr>'}</tbody>
+          <tfoot><tr style="background:#FFFBEB;">
+            <td colspan="2" style="font-weight:700;color:#D97706;border-top:2px solid #D97706;padding:8px 10px;">TOTAL</td>
+            <td style="font-weight:700;color:#D97706;text-align:right;border-top:2px solid #D97706;padding:8px 10px;">${totalOpenHours.toFixed(2)}h</td>
           </tr></tfoot>
         </table>
       </div>
     </div>
-    <div class="tt-chart-container" style="margin-top:20px;">
-      <div class="tt-chart-title">Available Hours Utilisation</div>
-      ${pie}
+
+    <div class="page-section-heading" style="margin-top:24px;">
+      <span class="section-title">AVAILABLE HOURS UTILISATION</span>
+    </div>
+    <div style="display:flex;gap:32px;align-items:center;justify-content:center;margin-top:16px;flex-wrap:wrap;">
+      <div style="text-align:center;">${donutSvg}${overPerfCallout}</div>
+      <div>
+        <div class="donut-legend">
+          <div class="legend-row"><span class="legend-swatch" style="background:#16A34A;"></span><span class="legend-label">Invoiced / Closed</span><span class="legend-val">${totalClosedHours.toFixed(1)}h</span><span class="legend-pct">(${invPct.toFixed(1)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D97706;"></span><span class="legend-label">Open / Awaiting</span><span class="legend-val">${totalOpenHours.toFixed(2)}h</span><span class="legend-pct">(${opPct.toFixed(1)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D1D5DB;"></span><span class="legend-label">Remaining Available</span><span class="legend-val">${remaining.toFixed(2)}h</span><span class="legend-pct">(${remPct.toFixed(1)}%)</span></div>
+          <div class="legend-row" style="border-top:1px solid #E5E7EB;padding-top:6px;margin-top:4px;"><span class="legend-swatch" style="background:#1565C0;"></span><span class="legend-label">Total Available</span><span class="legend-val">${availableHours.toFixed(1)}h</span><span class="legend-pct">(100%)</span></div>
+        </div>
+        <div style="font-size:9px;color:#9CA3AF;margin-top:10px;max-width:220px;line-height:1.5;">
+          Whole donut = Available Hours &nbsp;&middot;&nbsp; Invoiced + Open = Sold Hours &nbsp;&middot;&nbsp; Remaining = Unused Available Capacity
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Page 4: Donut chart examples (ENTIRE/ALL export only) ─────────────────────
+
+function buildChartExamplesPage(
+  invoicedHours: number,
+  openHours: number,
+  availableHours: number,
+  invoicedCount: number,
+  openCount: number
+): string {
+  // Example A: Normal period
+  const { svg: svgA, overPerf: opA, overPerfHours: ophA, overPerfPct: oppA } = buildHoursDonut(invoicedHours, openHours, availableHours, 160);
+  const invPctA = availableHours > 0 ? (invoicedHours / availableHours) * 100 : 0;
+  const opPctA = availableHours > 0 ? (openHours / availableHours) * 100 : 0;
+  const remA = Math.max(0, availableHours - invoicedHours - openHours);
+  const remPctA = availableHours > 0 ? (remA / availableHours) * 100 : 0;
+
+  // Example B: Job closure
+  const svgB = buildClosureDonut(invoicedCount, openCount, 160);
+  const invJobPctB = (invoicedCount + openCount) > 0 ? (invoicedCount / (invoicedCount + openCount)) * 100 : 0;
+  const opJobPctB = (invoicedCount + openCount) > 0 ? (openCount / (invoicedCount + openCount)) * 100 : 0;
+
+  // Example C: Over-performance (sold = available * 1.19)
+  const overAvail = availableHours > 0 ? availableHours : 42;
+  const overInv = overAvail * 0.857;
+  const overOpen = overAvail * 0.333;
+  const { svg: svgC, overPerf: opC, overPerfHours: ophC, overPerfPct: oppC } = buildHoursDonut(overInv, overOpen, overAvail, 160);
+  const invPctC = overAvail > 0 ? (overInv / overAvail) * 100 : 0;
+  const opPctC = overAvail > 0 ? (overOpen / overAvail) * 100 : 0;
+  const remC = Math.max(0, overAvail - overInv - overOpen);
+  const remPctC = overAvail > 0 ? (remC / overAvail) * 100 : 0;
+
+  const overPerfCalloutA = opA ? `<div class="overperf-callout">+${ophA.toFixed(1)}h ABOVE AVAILABLE HOURS<br/>${oppA.toFixed(1)}% EFFICIENCY</div>` : '';
+  const overPerfCalloutC = `<div class="overperf-callout">+${ophC.toFixed(1)}h ABOVE AVAILABLE HOURS<br/>${oppC.toFixed(1)}% EFFICIENCY</div>`;
+
+  return `
+    <div class="page-break"></div>
+    <div class="page-section-heading">
+      <span class="section-num">PAGE 4</span>
+      <span class="section-title">PIE / DONUT CHART EXAMPLES</span>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;text-align:center;">
+        <div style="font-size:11px;font-weight:700;color:#1565C0;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Example A</div>
+        <div style="font-size:9px;color:#6B7280;margin-bottom:10px;">Normal Period Example</div>
+        ${svgA}
+        ${overPerfCalloutA}
+        <div class="donut-legend" style="text-align:left;margin-top:8px;">
+          <div class="legend-row"><span class="legend-swatch" style="background:#16A34A;"></span><span class="legend-label">Invoiced / Closed</span><span class="legend-val">${invoicedHours.toFixed(1)}h</span><span class="legend-pct">(${invPctA.toFixed(1)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D97706;"></span><span class="legend-label">Open / Awaiting</span><span class="legend-val">${openHours.toFixed(1)}h</span><span class="legend-pct">(${opPctA.toFixed(1)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D1D5DB;"></span><span class="legend-label">Remaining Available</span><span class="legend-val">${remA.toFixed(1)}h</span><span class="legend-pct">(${remPctA.toFixed(1)}%)</span></div>
+          <div class="legend-footer">Available Hours: ${availableHours.toFixed(1)}h</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:180px;text-align:center;">
+        <div style="font-size:11px;font-weight:700;color:#1565C0;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Example B</div>
+        <div style="font-size:9px;color:#6B7280;margin-bottom:10px;">Job Closure Example</div>
+        ${svgB}
+        <div class="donut-legend" style="text-align:left;margin-top:8px;">
+          <div class="legend-row"><span class="legend-swatch" style="background:#16A34A;"></span><span class="legend-label">Invoiced / Closed Jobs</span><span class="legend-val">${invoicedCount}</span><span class="legend-pct">(${invJobPctB.toFixed(0)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D97706;"></span><span class="legend-label">Open / Awaiting Jobs</span><span class="legend-val">${openCount}</span><span class="legend-pct">(${opJobPctB.toFixed(0)}%)</span></div>
+          <div class="legend-footer">Total Jobs: ${invoicedCount + openCount}</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:180px;text-align:center;">
+        <div style="font-size:11px;font-weight:700;color:#1565C0;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Example C</div>
+        <div style="font-size:9px;color:#6B7280;margin-bottom:10px;">Over-Performance Example</div>
+        ${svgC}
+        ${overPerfCalloutC}
+        <div class="donut-legend" style="text-align:left;margin-top:8px;">
+          <div class="legend-row"><span class="legend-swatch" style="background:#16A34A;"></span><span class="legend-label">Invoiced / Closed</span><span class="legend-val">${overInv.toFixed(1)}h</span><span class="legend-pct">(${invPctC.toFixed(1)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D97706;"></span><span class="legend-label">Open / Awaiting</span><span class="legend-val">${overOpen.toFixed(1)}h</span><span class="legend-pct">(${opPctC.toFixed(1)}%)</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#D1D5DB;"></span><span class="legend-label">Remaining Available</span><span class="legend-val">${remC.toFixed(1)}h</span><span class="legend-pct">(${remPctC.toFixed(1)}%)</span></div>
+          <div class="legend-footer">Available Hours: ${overAvail.toFixed(1)}h</div>
+        </div>
+        <div style="font-size:8.5px;color:#9CA3AF;margin-top:6px;line-height:1.4;">Donut still represents 100% of available capacity.<br/>Extra performance shown as a separate callout.</div>
+      </div>
     </div>
   `;
 }
@@ -517,13 +875,12 @@ async function generatePdfHtml(
 
   const schedule = await offlineStorage.getSchedule();
 
-  // Load billing records and build lookup map
   const billingRecords = await billingStorage.getAllRecords();
   console.log('ExportUtils: Loaded', billingRecords.length, 'billing records');
   const billingByJobId = new Map(billingRecords.map((r: any) => [r.jobId, r]));
 
   const generatedDate = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+    day: '2-digit', month: 'long', year: 'numeric',
   });
 
   let reportType = 'ALL-TIME REPORT';
@@ -539,12 +896,10 @@ async function generatePdfHtml(
     periodLabel = new Date(options.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   }
 
-  // Sort jobs newest first
   const sortedJobs = jobs.slice().sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  // ── Calculate overall stats ──
   let availableHours = options.availableHours ?? 0;
   if (availableHours === 0 && sortedJobs.length > 0) {
     const oldest = new Date(sortedJobs[sortedJobs.length - 1].createdAt);
@@ -553,7 +908,6 @@ async function generatePdfHtml(
   }
   const overallStats = calcPeriodStats(sortedJobs, availableHours);
 
-  // ── Compute closed/open job lists for this period ──
   const closedJobs = sortedJobs.filter(job => {
     const rec = billingByJobId.get(job.id);
     return rec && normaliseBillingStatus(rec.billingStatus) === 'billed';
@@ -564,45 +918,50 @@ async function generatePdfHtml(
   });
   console.log('ExportUtils: Closed jobs:', closedJobs.length, 'Open jobs:', openJobs.length);
 
-  // Billed hours from billing snapshots (more accurate than awToHours)
   const billedSnapshotHours = closedJobs.reduce((sum, j) => {
     const rec = billingByJobId.get(j.id);
     return sum + (rec?.billedHours ?? awToHours(j.aw ?? 0));
   }, 0);
 
-  // ── Build body content ──
-  let bodyContent = '';
+  const totalClosedHours = billedSnapshotHours;
+  const totalOpenHours = openJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
+
+  // ── PAGE 1: Performance Dashboard ──
+  const page1 = buildPerformanceDashboard(
+    overallStats,
+    closedJobs,
+    openJobs,
+    billedSnapshotHours,
+    availableHours,
+    periodLabel,
+    reportType,
+    technicianName,
+    generatedDate,
+    options,
+    billingByJobId
+  );
+
+  // ── PAGE 2: Detailed Job Records ──
+  let page2 = `
+    <div class="page-break"></div>
+    <div class="page-section-heading">
+      <span class="section-num">PAGE 2</span>
+      <span class="section-title">DETAILED JOB RECORDS</span>
+    </div>
+  `;
 
   if (options.type === 'all') {
-    // Grand overall summary
-    bodyContent += `
-      <div class="tt-section">Performance Summary</div>
-      ${summaryDashboard(overallStats, billedSnapshotHours)}
-    `;
-
-    // Section title
-    bodyContent += `<div class="tt-section">Detailed Job Records</div>`;
-
-    // Group by year
     const yearMap = new Map<number, Job[]>();
     sortedJobs.forEach(job => {
       const yr = new Date(job.createdAt).getFullYear();
       if (!yearMap.has(yr)) yearMap.set(yr, []);
       yearMap.get(yr)!.push(job);
     });
-
     const sortedYears = Array.from(yearMap.keys()).sort((a, b) => b - a);
     sortedYears.forEach(yr => {
-      bodyContent += yearSectionHtml(yr, yearMap.get(yr)!, schedule, billingByJobId);
+      page2 += yearSectionHtml(yr, yearMap.get(yr)!, schedule, billingByJobId);
     });
-
   } else {
-    // Non-entire exports: summary + flat table
-    bodyContent += summaryDashboard(overallStats, billedSnapshotHours);
-
-    bodyContent += `<div class="tt-section">Detailed Job Records</div>`;
-
-    // Build flat table with repeated header every 20 rows
     const ROWS_PER_GROUP = 20;
     let tableRows = '';
     sortedJobs.forEach((job, i) => {
@@ -615,21 +974,22 @@ async function generatePdfHtml(
       tableRows += jobRow(job, i % 2 === 0, billingByJobId.get(job.id));
     });
 
-    bodyContent += `
-      <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;">
+    page2 += `
+      <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-top:8px;">
         ${tableHeaderRow()}
         <tbody>${tableRows}</tbody>
       </table>
+      <div style="font-size:9px;color:#6B7280;text-align:center;margin-top:8px;font-style:italic;">All times recorded during the selected reporting period.</div>
     `;
+
+    // Daily performance table for week/month
+    if (options.type === 'weekly' || options.type === 'monthly') {
+      page2 += buildDailyPerformanceTable(sortedJobs, billingByJobId, schedule);
+    }
   }
 
-  // ── Append closure summary page (all export types) ──
-  const totalClosedHours = closedJobs.reduce((sum, j) => {
-    const rec = billingByJobId.get(j.id);
-    return sum + (rec?.billedHours ?? awToHours(j.aw ?? 0));
-  }, 0);
-  const totalOpenHours = openJobs.reduce((sum, j) => sum + awToHours(j.aw ?? 0), 0);
-  bodyContent += buildClosureSummaryPage(
+  // ── PAGE 3: Invoiced & Open Job Breakdown ──
+  const page3 = buildClosureSummaryPage(
     closedJobs,
     openJobs,
     totalClosedHours,
@@ -638,144 +998,191 @@ async function generatePdfHtml(
     overallStats.soldHours
   );
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
+  // ── PAGE 4: Chart examples (all export only) ──
+  const page4 = options.type === 'all'
+    ? buildChartExamplesPage(billedSnapshotHours, totalOpenHours, availableHours, closedJobs.length, openJobs.length)
+    : '';
+
+  const css = `
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    @page { margin: 14mm 16mm; size: A4 portrait; }
+    @page { margin: 12mm 14mm; size: A4 portrait; }
     body {
       font-family: -apple-system, 'Helvetica Neue', Arial, Helvetica, sans-serif;
       background: #FFFFFF;
       color: #1C2B3A;
-      font-size: 12px;
-      line-height: 1.55;
+      font-size: 11px;
+      line-height: 1.5;
     }
-    /* ── Typography ── */
-    h1 { font-size: 26px; font-weight: 800; color: #1565C0; letter-spacing: -0.5px; line-height: 1.1; }
-    h2 { font-size: 16px; font-weight: 700; color: #1565C0; margin-bottom: 10px; }
-    h3 { font-size: 13px; font-weight: 700; color: #1565C0; margin-bottom: 6px; }
-    /* ── Page header ── */
-    .tt-page-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding-bottom: 10px; margin-bottom: 20px;
+
+    /* ── Dashboard header ── */
+    .dashboard-header {
+      text-align: center;
+      padding: 18px 0 14px;
       border-bottom: 2px solid #BFDBFE;
+      margin-bottom: 16px;
     }
-    .tt-brand { font-size: 10px; font-weight: 800; letter-spacing: 4px; color: #2563EB; text-transform: uppercase; }
-    .tt-report-title { font-size: 22px; font-weight: 800; color: #1565C0; letter-spacing: -0.3px; }
-    .tt-period { font-size: 12px; color: #6B7280; font-weight: 500; margin-top: 2px; }
+    .brand-title {
+      font-size: 11px; font-weight: 800; letter-spacing: 5px;
+      color: #2563EB; text-transform: uppercase; margin-bottom: 4px;
+    }
+    .report-type {
+      font-size: 24px; font-weight: 800; color: #1565C0;
+      letter-spacing: -0.3px; line-height: 1.1; margin-bottom: 4px;
+    }
+    .report-sub { font-size: 11px; color: #6B7280; font-weight: 500; }
+
+    /* ── Metric cards ── */
+    .metric-row {
+      display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .metric-card {
+      flex: 1; min-width: 90px;
+      border-radius: 8px; padding: 12px 10px 10px;
+      page-break-inside: avoid;
+      position: relative;
+    }
+    .metric-icon-wrap {
+      width: 26px; height: 26px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; margin-bottom: 8px;
+    }
+    .metric-value { font-size: 22px; font-weight: 800; line-height: 1.1; margin-bottom: 4px; }
+    .metric-label { font-size: 8.5px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; color: #6B7280; }
+
+    .metric-blue { background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #1565C0; }
+    .metric-blue .metric-value { color: #1565C0; }
+    .metric-icon-blue { background: #DBEAFE; color: #1565C0; }
+
+    .metric-green { background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 4px solid #15803D; }
+    .metric-green .metric-value { color: #15803D; }
+    .metric-icon-green { background: #DCFCE7; color: #15803D; }
+
+    .metric-orange { background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #D97706; }
+    .metric-orange .metric-value { color: #D97706; }
+    .metric-icon-orange { background: #FEF3C7; color: #D97706; }
+
+    /* ── Three-column section ── */
+    .three-col-section {
+      display: flex; gap: 0; margin-top: 14px;
+      border: 1px solid #BFDBFE; border-radius: 8px; overflow: hidden;
+    }
+    .three-col-left, .three-col-centre, .three-col-right {
+      flex: 1; padding: 14px 12px;
+    }
+    .three-col-centre { border-left: 1px solid #BFDBFE; border-right: 1px solid #BFDBFE; }
+    .three-col-title {
+      font-size: 9.5px; font-weight: 800; color: #1565C0;
+      text-transform: uppercase; letter-spacing: 0.6px;
+      margin-bottom: 10px; padding-bottom: 6px;
+      border-bottom: 1px solid #BFDBFE;
+    }
+
+    /* ── Working time table ── */
+    .wt-table { width: 100%; border-collapse: collapse; }
+    .wt-label { font-size: 10px; color: #6B7280; padding: 4px 0; }
+    .wt-value { font-size: 10px; font-weight: 700; color: #1C2B3A; padding: 4px 0; text-align: right; }
+
+    /* ── Donut legend ── */
+    .donut-legend { margin-top: 8px; }
+    .legend-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 5px; font-size: 9.5px;
+    }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+    .legend-label { flex: 1; color: #374151; }
+    .legend-val { font-weight: 700; color: #1C2B3A; min-width: 36px; text-align: right; }
+    .legend-pct { color: #6B7280; min-width: 42px; text-align: right; }
+    .legend-footer { font-size: 8.5px; color: #9CA3AF; margin-top: 6px; padding-top: 5px; border-top: 1px solid #E5E7EB; }
+
+    /* ── Over-performance callout ── */
+    .overperf-callout {
+      background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px;
+      padding: 6px 10px; margin: 8px auto; text-align: center;
+      font-size: 9.5px; font-weight: 700; color: #D97706;
+      max-width: 220px;
+    }
+
     /* ── Section heading ── */
-    .tt-section {
-      margin: 24px 0 10px;
-      padding: 8px 12px;
-      background: #EFF6FF;
-      border-left: 4px solid #2563EB;
-      border-radius: 0 6px 6px 0;
-      font-size: 13px; font-weight: 700; color: #1E40AF;
+    .page-section-heading {
+      background: #1565C0; color: #FFFFFF;
+      padding: 9px 14px; margin: 0 0 0;
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; gap: 10px;
       page-break-after: avoid;
     }
-    /* ── Metric grid ── */
-    .tt-metric-grid {
-      display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0;
-    }
-    .tt-metric-card {
-      flex: 1; min-width: 110px; max-width: 160px;
-      background: #F0F7FF; border: 1px solid #BFDBFE; border-radius: 8px;
-      padding: 14px 10px; text-align: center;
-      page-break-inside: avoid;
-    }
-    .tt-metric-value { font-size: 22px; font-weight: 800; color: #1565C0; line-height: 1.1; }
-    .tt-metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #6B7280; margin-top: 4px; }
-    .tt-metric-sub { font-size: 9px; color: #9CA3AF; margin-top: 2px; }
-    .tt-metric-green .tt-metric-value { color: #15803D; }
-    .tt-metric-green { background: #F0FDF4; border-color: #BBF7D0; }
-    .tt-metric-amber .tt-metric-value { color: #B45309; }
-    .tt-metric-amber { background: #FFFBEB; border-color: #FDE68A; }
-    .tt-metric-red .tt-metric-value { color: #B91C1C; }
-    .tt-metric-red { background: #FFF5F5; border-color: #FECACA; }
-    /* ── Efficiency bar ── */
-    .tt-eff-bar-wrap { background: #E5E7EB; border-radius: 999px; height: 10px; overflow: hidden; margin-top: 6px; }
-    .tt-eff-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #2563EB, #60A5FA); }
-    /* ── Summary panel ── */
-    .tt-summary-panel {
-      background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px;
-      padding: 18px 20px; margin: 14px 0;
-    }
+    .section-num { font-size: 9px; opacity: 0.8; letter-spacing: 0.5px; }
+    .section-title { letter-spacing: 0.5px; }
+
     /* ── Tables ── */
-    table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 0; }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
     th {
       background: #1565C0; color: #FFFFFF;
-      padding: 9px 10px; text-align: left;
-      font-size: 9px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
+      padding: 8px 9px; text-align: left;
+      font-size: 8.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
       border-right: 1px solid #1E40AF;
     }
     th:last-child { border-right: none; }
     td {
-      padding: 8px 10px; font-size: 11px; color: #1C2B3A;
+      padding: 7px 9px; font-size: 10.5px; color: #1C2B3A;
       border-bottom: 1px solid #E5E7EB; vertical-align: middle;
     }
     tr:nth-child(even) td { background: #F8FAFF; }
     tr { page-break-inside: avoid; }
+
     /* ── Status badges ── */
     .tt-badge {
-      display: inline-block; padding: 2px 8px; border-radius: 4px;
-      font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+      display: inline-block; padding: 2px 7px; border-radius: 4px;
+      font-size: 8.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
     }
     .tt-badge-invoiced { background: #15803D; color: #fff; }
-    .tt-badge-open { background: #B91C1C; color: #fff; }
+    .tt-badge-open { background: #D97706; color: #fff; }
     .tt-badge-green { background: #15803D; color: #fff; }
     .tt-badge-amber { background: #B45309; color: #fff; }
     .tt-badge-red { background: #B91C1C; color: #fff; }
     .tt-badge-none { background: #6B7280; color: #fff; }
+
+    /* ── Closure page ── */
+    .tt-closure-col-header {
+      padding: 8px 12px; border-radius: 6px 6px 0 0;
+      font-size: 10px; font-weight: 700; text-align: center; color: #fff;
+      letter-spacing: 0.4px;
+    }
+    .tt-closure-col-header-invoiced { background: #15803D; }
+    .tt-closure-col-header-open { background: #D97706; }
+
     /* ── Footer ── */
     .tt-footer {
       border-top: 1px solid #BFDBFE; text-align: center;
       padding: 10px 0; margin-top: 28px;
-      font-size: 9px; color: #9CA3AF; letter-spacing: 0.5px;
+      font-size: 8.5px; color: #9CA3AF; letter-spacing: 0.4px;
     }
-    /* ── Closure summary page ── */
-    .tt-closure-col-header {
-      padding: 8px 12px; border-radius: 6px 6px 0 0;
-      font-size: 11px; font-weight: 700; text-align: center; color: #fff;
-    }
-    .tt-closure-col-header-invoiced { background: #15803D; }
-    .tt-closure-col-header-open { background: #B91C1C; }
-    .tt-closure-tfoot td { font-weight: 700; border-top: 2px solid currentColor; }
-    /* ── Chart container ── */
-    .tt-chart-container {
-      background: #F8FAFF; border: 1px solid #BFDBFE; border-radius: 10px;
-      padding: 20px; margin: 16px 0; text-align: center;
-    }
-    .tt-chart-title { font-size: 13px; font-weight: 700; color: #1565C0; margin-bottom: 16px; }
-    /* ── Page break helpers ── */
+
+    /* ── Page break ── */
     .page-break { page-break-after: always; }
     .avoid-break { page-break-inside: avoid; }
-    /* ── Print ── */
-    @media print {
-      .tt-page-header { position: running(header); }
-      .tt-footer { position: running(footer); }
-    }
-  </style>
+  `;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>${css}</style>
 </head>
-<body style="padding:20px 24px;">
+<body style="padding:16px 20px;">
 
-  <!-- ═══ HEADER ═══ -->
-  <div class="tt-page-header">
-    <div>
-      <div class="tt-brand">T E C H &nbsp; T I M E S</div>
-      <div class="tt-report-title">${reportType}</div>
-      <div class="tt-period">${technicianName} &nbsp;&middot;&nbsp; ${periodLabel}</div>
-    </div>
-    <div style="text-align:right;font-size:10px;color:#9CA3AF;">
-      Generated<br/>${generatedDate}
-    </div>
-  </div>
+  <!-- ═══ PAGE 1: PERFORMANCE DASHBOARD ═══ -->
+  ${page1}
 
-  <!-- ═══ BODY ═══ -->
-  ${bodyContent}
+  <!-- ═══ PAGE 2: DETAILED JOB RECORDS ═══ -->
+  ${page2}
+
+  <!-- ═══ PAGE 3: INVOICED & OPEN JOB BREAKDOWN ═══ -->
+  ${page3}
+
+  <!-- ═══ PAGE 4: CHART EXAMPLES (all only) ═══ -->
+  ${page4}
 
   <!-- ═══ FOOTER ═══ -->
   <div class="tt-footer">
@@ -805,7 +1212,6 @@ export async function exportToPdf(
   const sourceUri = printResult.uri;
   console.log('ExportUtils: PDF generated at', sourceUri);
 
-  // Copy to a named file in the cache directory (works cross-platform on Android).
   const fileName = `techtimes_${options.type}_${new Date().toISOString().split('T')[0]}.pdf`;
   const cacheDir = FileSystem.cacheDirectory ?? '';
   const destUri = cacheDir + fileName;
@@ -882,8 +1288,6 @@ export async function importFromJson(
   console.log('ExportUtils: importFromJson called — fileUri:', fileUri);
 
   try {
-    // On Android, DocumentPicker returns content:// URIs which expo-file-system/legacy
-    // cannot read directly. Copy to a temp file first.
     let resolvedUri = fileUri;
     if (Platform.OS === 'android' && fileUri.startsWith('content://')) {
       const tmpPath = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '') + `import_tmp_${Date.now()}.json`;
@@ -893,10 +1297,8 @@ export async function importFromJson(
         console.log('ExportUtils: Copied content:// URI to temp file:', tmpPath);
       } catch (copyErr: any) {
         console.error('ExportUtils: Failed to copy content:// URI:', copyErr);
-        // Try reading directly as last resort
         try {
           const testRead = await FileSystem.readAsStringAsync(fileUri);
-          // If direct read works, use original URI
           resolvedUri = fileUri;
           console.log('ExportUtils: Direct read of content:// URI succeeded (length:', testRead.length, ')');
         } catch {
@@ -907,7 +1309,6 @@ export async function importFromJson(
 
     const jsonString = await FileSystem.readAsStringAsync(resolvedUri);
 
-    // Clean up temp file after reading
     if (resolvedUri !== fileUri) {
       try { await FileSystem.deleteAsync(resolvedUri, { idempotent: true }); } catch {}
     }
