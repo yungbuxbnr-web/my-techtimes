@@ -84,6 +84,7 @@ export default function DashboardScreen() {
   const [allBillingRecords, setAllBillingRecords] = useState<any[]>([]);
   const [fabOpen, setFabOpen] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
+  const fabNavigating = useRef(false);
 
   const loadDashboardData = useCallback(async () => {
     // FIX 9: enforce 10-second minimum between loads
@@ -502,6 +503,18 @@ export default function DashboardScreen() {
     }
   };
 
+  const handleFabAction = (destination: string) => {
+    if (fabNavigating.current) return;
+    fabNavigating.current = true;
+    console.log('[HomeFAB] Action pressed — navigating to', destination);
+    setFabOpen(false);
+    Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
+    setTimeout(() => {
+      router.push(destination as any);
+      setTimeout(() => { fabNavigating.current = false; }, 500);
+    }, 50);
+  };
+
   if (!monthlyStats || !todayStats || !weekStats) {
     return (
       <AppBackground>
@@ -525,10 +538,8 @@ export default function DashboardScreen() {
       icon_android: 'build',
       color: theme.primary,
       onPress: () => {
-        console.log('[Dashboard] FAB action: Add Job');
-        setFabOpen(false);
-        Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
-        router.push('/add-job-modal');
+        console.log('[HomeFAB] Add Job tapped');
+        handleFabAction('/add-job-modal');
       },
     },
     {
@@ -537,10 +548,8 @@ export default function DashboardScreen() {
       icon_android: 'event-busy',
       color: theme.chartYellow,
       onPress: () => {
-        console.log('[Dashboard] FAB action: Add Absence');
-        setFabOpen(false);
-        Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
-        router.push('/absence-logger');
+        console.log('[HomeFAB] Add Absence tapped');
+        handleFabAction('/absence-logger');
       },
     },
     {
@@ -549,10 +558,8 @@ export default function DashboardScreen() {
       icon_android: 'more-time',
       color: theme.chartGreen,
       onPress: () => {
-        console.log('[Dashboard] FAB action: Add Overtime');
-        setFabOpen(false);
-        Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
-        router.push('/edit-work-schedule');
+        console.log('[HomeFAB] Add Overtime tapped');
+        handleFabAction('/edit-work-schedule');
       },
     },
   ];
@@ -1453,12 +1460,12 @@ export default function DashboardScreen() {
         }}
       />
 
-      {/* FAB overlay — dismiss on tap outside */}
+      {/* FAB overlay — dismiss on tap outside. zIndex: 999 keeps it BELOW fabContainer */}
       {fabOpen && (
         <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
+          style={[StyleSheet.absoluteFillObject, { zIndex: 999 }]}
           onPress={() => {
-            console.log('[Dashboard] FAB overlay tapped — closing FAB');
+            console.log('[HomeFAB] Overlay tapped — closing FAB');
             setFabOpen(false);
             Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start();
           }}
@@ -1492,6 +1499,8 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.fabActionBtn, { backgroundColor: action.color }]}
                 onPress={action.onPress}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={0.8}
               >
                 <IconSymbol
                   ios_icon_name={action.icon_ios}
@@ -1928,7 +1937,8 @@ const styles = StyleSheet.create({
     bottom: 100,
     right: 20,
     alignItems: 'flex-end',
-    zIndex: 1000,
+    zIndex: 1001,
+    elevation: 10,
   },
   fab: {
     width: 56,
@@ -1936,7 +1946,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
+    elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -1955,7 +1965,7 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
+    elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
