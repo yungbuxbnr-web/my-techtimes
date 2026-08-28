@@ -24,6 +24,7 @@ import {
   getRiskLabel,
   RiskLevel,
 } from '@/utils/billingRiskEngine';
+import { normalizeWip, groupJobsByWip, WipSummary } from '@/utils/wipEngine';
 
 type SortOption = 'oldest' | 'newest' | 'highest_hours' | 'highest_aw' | 'highest_risk';
 type FilterOption = 'all' | 'today' | 'older' | 'with_vhc' | 'without_vhc' | 'billing_attention';
@@ -62,6 +63,9 @@ export default function OpenJobControlScreen() {
   const [filter, setFilter] = useState<FilterOption>(
     params.filter === 'billing_attention' ? 'billing_attention' : 'all'
   );
+  const [wipGrouped, setWipGrouped] = useState(false);
+  const [expandedWips, setExpandedWips] = useState<Set<string>>(new Set());
+  const [openWipSummaries, setOpenWipSummaries] = useState<WipSummary[]>([]);
 
   const load = useCallback(async () => {
     console.log('OpenJobControl: Loading jobs and billing records');
@@ -71,6 +75,12 @@ export default function OpenJobControlScreen() {
       setJobs(j);
       setBillingRecords(b);
       console.log('OpenJobControl: Loaded', j.length, 'jobs and', b.length, 'billing records');
+      const summaries = groupJobsByWip(j, b);
+      const openSummaries = Array.from(summaries.values()).filter(
+        s => s.status === 'open' || s.status === 'mixed' || s.status === 'unknown'
+      );
+      setOpenWipSummaries(openSummaries);
+      console.log('OpenJobControl: Open WIP summaries:', openSummaries.length);
     } catch (err) {
       console.error('OpenJobControl: Error loading data:', err);
     } finally {
@@ -251,15 +261,190 @@ export default function OpenJobControlScreen() {
           })}
         </ScrollView>
 
-        {/* Age groups */}
-        {sorted.length === 0 ? (
+        {/* Group by WIP toggle */}
+        <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>VIEW</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
+          <TouchableOpacity
+            style={[styles.chip, { borderColor: theme.border, backgroundColor: !wipGrouped ? theme.primary : theme.card }]}
+            onPress={() => {
+              console.log('OpenJobControl: Switched to flat view');
+              setWipGrouped(false);
+            }}
+          >
+            <Text style={[styles.chipText, { color: !wipGrouped ? '#fff' : theme.text }]}>Individual Jobs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, { borderColor: theme.border, backgroundColor: wipGrouped ? theme.primary : theme.card }]}
+            onPress={() => {
+              console.log('OpenJobControl: Switched to WIP group view');
+              setWipGrouped(true);
+            }}
+          >
+            <Text style={[styles.chipText, { color: wipGrouped ? '#fff' : theme.text }]}>Group by WIP</Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* WIP grouped view */}
+        {wipGrouped && (
+          <View>
+            {openWipSummaries.length === 0 ? (
+              <View style={[styles.emptyCard, { backgroundColor: theme.card }]}>
+                <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name={'check-circle' as any} size={32} color={theme.chartGreen} />
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>No Open WIPs</Text>
+                <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>All WIPs are billed or no jobs exist.</Text>
+              </View>
+            ) : (
+              openWipSummaries
+                .sort((a, b) => new Date(b.lastWorked).getTime() - new Date(a.lastWorked).getTime())
+                .map(summary => {
+                  const isExpanded = expandedWips.has(summary.normalizedWip);
+                  const statusColor = summary.status === 'billed' ? theme.chartGreen : summary.status === 'mixed' ? theme.chartRed : theme.chartYellow;
+                  const statusLabel = summary.status === 'billed' ? 'INVOICED' : summary.status === 'mixed' ? 'MIXED' : 'OPEN';
+                  const oldestSession = summary.sessions.reduce((oldest, s) =>
+                    new Date(s.createdAt) < new Date(oldest.createdAt) ? s : oldest,
+                    summary.sessions[0]
+                  );
+                  const oldestAgeDays = oldestSession
+                    ? Math.floor((now.getTime() - new Date(oldestSession.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+                    : 0;
+                  const totalAWDisplay = summary.totalAW;
+                  const totalHoursDisplay = summary.totalHours.toFixed(1);
+                  const sessionCountLabel = `${summary.sessionCount} session${summary.sessionCount !== 1 ? 's' : ''}`;
+
+                  return (
+                    <View key={summary.normalizedWip} style={[styles.jobCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('OpenJobControl: WIP group card toggled:', summary.normalizedWip, 'expanded:', !isExpanded);
+                          setExpandedWips(prev => {
+                            const next = new Set(prev);
+                            if (next.has(summary.normalizedWip)) {
+                              next.delete(summary.normalizedWip);
+                            } else {
+                              next.add(summary.normalizedWip);
+                            }
+                            return next;
+                          });
+                        }}
+                        style={styles.jobCardTop}
+                        activeOpacity={0.75}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={[styles.wipNumber, { color: theme.text }]}>{summary.displayWip}</Text>
+                            <View style={{ backgroundColor: statusColor + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: statusColor }}>
+                              <Text style={{ color: statusColor, fontSize: 10, fontWeight: '700' }}>{statusLabel}</Text>
+                            </View>
+                            {summary.hasConflict && (
+                              <View style={{ backgroundColor: theme.chartRed + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                <Text style={{ color: theme.chartRed, fontSize: 10, fontWeight: '700' }}>⚠ CONFLICT</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={[styles.regText, { color: theme.textSecondary }]}>{summary.vehicleReg}</Text>
+                          <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>{sessionCountLabel}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                          <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{totalAWDisplay} AW</Text>
+                          <Text style={{ color: theme.textSecondary, fontSize: 12 }}>{totalHoursDisplay}h</Text>
+                          <Text style={{ color: oldestAgeDays >= 4 ? theme.chartRed : theme.chartYellow, fontSize: 12 }}>
+                            {oldestAgeDays === 0 ? 'Today' : `${oldestAgeDays}d old`}
+                          </Text>
+                        </View>
+                        <IconSymbol
+                          ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}
+                          android_material_icon_name={isExpanded ? 'expand-less' : 'expand-more'}
+                          size={16}
+                          color={theme.textSecondary}
+                          style={{ marginLeft: 8 }}
+                        />
+                      </TouchableOpacity>
+
+                      {isExpanded && (
+                        <View style={{ borderTopWidth: 0.5, borderTopColor: theme.border }}>
+                          {summary.sessions
+                            .slice()
+                            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                            .map((session, idx) => {
+                              const sessionBilling = summary.billingRecords.find(r => r.jobId === session.id) ?? null;
+                              const sessionRisk = getBillingRiskForJob(session, sessionBilling, now);
+                              const sessionAgeDays = Math.floor((now.getTime() - new Date(session.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+                              const sessionAgeLabel = sessionAgeDays === 0 ? 'Today' : sessionAgeDays === 1 ? 'Yesterday' : `${sessionAgeDays}d ago`;
+                              const sessionHours = awToHours(session.aw ?? 0).toFixed(1);
+                              const sessionDate = new Date(session.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                              return (
+                                <TouchableOpacity
+                                  key={session.id}
+                                  onPress={() => {
+                                    console.log('OpenJobControl: WIP session tapped — WIP:', session.wipNumber, 'id:', session.id);
+                                    router.push({ pathname: '/edit-job', params: { jobId: session.id } } as any);
+                                  }}
+                                  style={{
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    paddingHorizontal: 14,
+                                    paddingVertical: 10,
+                                    borderTopWidth: idx > 0 ? 0.5 : 0,
+                                    borderTopColor: theme.border,
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <View>
+                                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '500' }}>{sessionDate}</Text>
+                                    <Text style={{ color: sessionAgeDays >= 4 ? theme.chartRed : theme.chartYellow, fontSize: 11, marginTop: 1 }}>{sessionAgeLabel}</Text>
+                                    {!!session.notes && (
+                                      <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 1 }} numberOfLines={1}>{session.notes}</Text>
+                                    )}
+                                  </View>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{session.aw} AW</Text>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{sessionHours}h</Text>
+                                    {sessionRisk.riskLevel !== 'none' && (
+                                      <View style={{ backgroundColor: getRiskColour(sessionRisk.riskLevel, theme) + '22', borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 }}>
+                                        <Text style={{ color: getRiskColour(sessionRisk.riskLevel, theme), fontSize: 10, fontWeight: '700' }}>
+                                          {getRiskLabel(sessionRisk.riskLevel)}
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          {/* WIP total row */}
+                          <View style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            borderTopWidth: 0.5,
+                            borderTopColor: theme.border,
+                            backgroundColor: theme.background,
+                          }}>
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700' }}>WIP TOTAL</Text>
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                              <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{totalAWDisplay} AW</Text>
+                              <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{totalHoursDisplay}h</Text>
+                            </View>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+            )}
+          </View>
+        )}
+
+        {/* Age groups — individual job view */}
+        {!wipGrouped && sorted.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: theme.card }]}>
             <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name={'check-circle' as any} size={32} color={theme.chartGreen} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>No Open Jobs</Text>
             <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>All jobs are billed or no jobs match the current filter.</Text>
           </View>
-        ) : (
-          groupKeys.map(groupKey => (
+        )}
+        {!wipGrouped && sorted.length > 0 && groupKeys.map(groupKey => (
             <View key={groupKey}>
               <Text style={[styles.groupHeader, { color: theme.textSecondary }]}>{groupKey.toUpperCase()}</Text>
               {groups[groupKey].map(({ job, billing, risk, ageDays }) => {
@@ -339,7 +524,7 @@ export default function OpenJobControlScreen() {
                 );
               })}
             </View>
-          ))
+          )
         )}
       </ScrollView>
     </AppBackground>

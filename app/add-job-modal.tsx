@@ -46,6 +46,7 @@ const safeHaptics = {
 };
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 import { templateStorage, JobTemplate } from '@/utils/moduleStorage';
+import { normalizeWip, getJobsForWip, getBillingRecordsForWip, getWipBillingStatus, completeWip, detectWipVehicleConflict } from '@/utils/wipEngine';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -355,30 +356,57 @@ export default function AddJobModal() {
           }
         }
 
-        // Create billing record
+        // Create billing record — WIP-aware
         try {
           const { billingStorage } = await import('@/utils/billingStorage');
-          const billingRecord = await billingStorage.createRecord({
-            jobId: newJob.id,
-            workStatus: workCompleted ? 'work_complete' : 'open',
-            billingStatus: workCompleted ? 'billed' : 'open',
-            billedAW: workCompleted ? newJob.aw : 0,
-            billedHours: workCompleted ? (newJob.aw * 5) / 60 : 0,
-            billedDate: workCompleted ? newJob.createdAt.split('T')[0] : undefined,
-            billedAt: workCompleted ? new Date().toISOString() : undefined,
-            wipNumber: newJob.wipNumber,
-            vehicleReg: newJob.vehicleReg,
-            workDate: newJob.createdAt.split('T')[0],
-          });
-          console.log('AddJobModal: Billing record created for job:', newJob.id, 'status:', billingRecord.billingStatus);
-          await billingStorage.addHistoryEntry({
-            billingRecordId: billingRecord.id,
-            jobId: newJob.id,
-            eventType: 'billing_created',
-            description: workCompleted
-              ? `Job created as Billed — ${newJob.aw} AW`
-              : `Job created as Open — ${newJob.aw} AW`,
-          });
+          const allJobs = await api.getAllJobs();
+          const allRecords = await billingStorage.getAllRecords();
+          const nwip = normalizeWip(wipNumber);
+
+          // Check for vehicle conflict
+          const existingWipJobs = getJobsForWip(nwip, allJobs.filter(j => j.id !== newJob.id));
+          const conflict = detectWipVehicleConflict(nwip, vehicleReg, existingWipJobs);
+          if (conflict) {
+            console.warn('AddJobModal: WIP vehicle conflict detected:', conflict);
+            toastManager.error(`WIP VEHICLE CONFLICT: WIP ${nwip} previously used with ${conflict.existingReg}. Flagged for review.`);
+          }
+
+          if (workCompleted) {
+            // Job Finished — close the WHOLE WIP
+            console.log('AddJobModal: workCompleted=true — calling completeWip for WIP:', nwip);
+            const result = await completeWip(newJob.id, nwip, allJobs, allRecords);
+            console.log('AddJobModal: completeWip result:', result);
+          } else {
+            // Open session — create open billing record
+            const billingRecord = await billingStorage.createRecord({
+              jobId: newJob.id,
+              workStatus: 'open',
+              billingStatus: 'open',
+              billedAW: 0,
+              billedHours: 0,
+              wipNumber: newJob.wipNumber,
+              vehicleReg: newJob.vehicleReg,
+              workDate: newJob.createdAt.split('T')[0],
+            });
+            console.log('AddJobModal: Billing record created for job:', newJob.id, 'status:', billingRecord.billingStatus);
+            await billingStorage.addHistoryEntry({
+              billingRecordId: billingRecord.id,
+              jobId: newJob.id,
+              eventType: 'billing_created',
+              description: `Job created as Open — ${newJob.aw} AW`,
+            });
+
+            // Check if this WIP was previously closed — warn user
+            const wipRecords = getBillingRecordsForWip(nwip, allRecords);
+            const prevStatus = getWipBillingStatus(wipRecords);
+            if (prevStatus === 'billed' && wipRecords.length > 0) {
+              Alert.alert(
+                'Existing Closed WIP Found',
+                `WIP ${nwip} was previously marked Invoiced/Closed.\n\nThis new session has been added as Open. The WIP is now reopened.\n\nPrevious billing history has been preserved.`,
+                [{ text: 'OK' }]
+              );
+            }
+          }
         } catch (billingError) {
           console.error('AddJobModal: Billing record creation failed (non-fatal):', billingError);
         }
@@ -741,6 +769,32 @@ export default function AddJobModal() {
                 placeholderTextColor={isDarkMode ? '#888' : '#999'}
               />
             </View>
+
+            {/* WIP Status Indicator */}
+            {wipNumber.length >= 3 && (() => {
+              const nwip = normalizeWip(wipNumber);
+              const wipJobs = getJobsForWip(nwip, allJobs);
+              if (wipJobs.length === 0) return null;
+              const openSessions = wipJobs.length;
+              return (
+                <View style={{
+                  backgroundColor: 'rgba(59,130,246,0.12)',
+                  borderRadius: 8,
+                  padding: 10,
+                  marginTop: 4,
+                  marginBottom: 4,
+                  borderLeftWidth: 3,
+                  borderLeftColor: '#3B82F6',
+                }}>
+                  <Text style={{ color: '#3B82F6', fontWeight: '700', fontSize: 12 }}>
+                    EXISTING WIP FOUND
+                  </Text>
+                  <Text style={{ color: theme.text, fontSize: 12, marginTop: 2 }}>
+                    {`WIP ${nwip} has ${openSessions} existing session${openSessions !== 1 ? 's' : ''}. This will be added as another session.`}
+                  </Text>
+                </View>
+              );
+            })()}
 
             {showSuggestions && suggestions.length > 0 && (
               <View style={[styles.suggestionsContainer, {

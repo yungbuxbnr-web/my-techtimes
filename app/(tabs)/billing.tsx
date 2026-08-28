@@ -19,7 +19,8 @@ import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
 import { billingStorage, BillingRecord } from '@/utils/billingStorage';
-import { normaliseBillingStatus, getBillingPosition, resolvePeriodFilter } from '@/utils/billingEngine';
+import { normaliseBillingStatus, getBillingPosition, resolvePeriodFilter, awToHours } from '@/utils/billingEngine';
+import { normalizeWip, getJobsForWip, getBillingRecordsForWip, groupJobsByWip, WipSummary, completeWip, reopenWip } from '@/utils/wipEngine';
 import AppBackground from '@/components/AppBackground';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -750,6 +751,177 @@ function TrendsSubTab({
   );
 }
 
+// ── WipGroupCard ──────────────────────────────────────────────────────────────
+
+interface WipGroupCardProps {
+  summary: WipSummary;
+  expanded: boolean;
+  onToggle: () => void;
+  theme: any;
+  onSessionPress: (job: Job, billing: BillingRecord | undefined) => void;
+}
+
+function WipGroupCard({ summary, expanded, onToggle, theme, onSessionPress }: WipGroupCardProps) {
+  const statusColor = summary.status === 'billed' ? '#22C55E' : summary.status === 'open' ? '#F59E0B' : '#EF4444';
+  const statusLabel = summary.status === 'billed' ? 'INVOICED' : summary.status === 'open' ? 'OPEN' : 'MIXED';
+
+  const formatDate = (iso: string) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  };
+
+  const totalAWDisplay = summary.totalAW;
+  const totalHoursDisplay = summary.totalHours.toFixed(1);
+  const firstWorkedDisplay = formatDate(summary.firstWorked);
+  const lastWorkedDisplay = formatDate(summary.lastWorked);
+  const sessionCountLabel = `${summary.sessionCount} session${summary.sessionCount !== 1 ? 's' : ''}`;
+
+  return (
+    <View style={{
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      borderRadius: 12,
+      marginHorizontal: 16,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.1)',
+      overflow: 'hidden',
+    }}>
+      {/* WIP Header */}
+      <TouchableOpacity onPress={() => {
+        console.log('BillingScreen: WipGroupCard toggled for WIP:', summary.normalizedWip, 'expanded:', !expanded);
+        onToggle();
+      }} style={{ padding: 14 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 16 }}>
+                WIP {summary.displayWip}
+              </Text>
+              <View style={{
+                backgroundColor: statusColor + '22',
+                borderRadius: 6,
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+              }}>
+                <Text style={{ color: statusColor, fontSize: 10, fontWeight: '700' }}>{statusLabel}</Text>
+              </View>
+              {summary.hasConflict && (
+                <View style={{ backgroundColor: '#EF444422', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '700' }}>⚠ CONFLICT</Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }}>
+              {summary.vehicleReg}
+            </Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 1 }}>
+              {sessionCountLabel}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
+              {totalAWDisplay} AW
+            </Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              {totalHoursDisplay}h
+            </Text>
+          </View>
+          <IconSymbol
+            ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={expanded ? 'expand-less' : 'expand-more'}
+            size={16}
+            color={theme.textSecondary}
+            style={{ marginLeft: 8 }}
+          />
+        </View>
+        <View style={{ flexDirection: 'row', marginTop: 8, gap: 12 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+            First: {firstWorkedDisplay}
+          </Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+            Last: {lastWorkedDisplay}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Expanded sessions */}
+      {expanded && (
+        <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' }}>
+          {summary.sessions
+            .slice()
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+            .map((session, idx) => {
+              const billing = summary.billingRecords.find(r => r.jobId === session.id);
+              const isBilled = billing
+                ? (billing.billingStatus === 'billed' || billing.billingStatus === 'legacy_unknown')
+                : false;
+              const sessionStatus = isBilled ? 'INVOICED' : 'OPEN';
+              const sessionColor = isBilled ? '#22C55E' : '#F59E0B';
+              const sessionDateDisplay = new Date(session.createdAt).toLocaleDateString('en-GB', {
+                weekday: 'short', day: '2-digit', month: 'short',
+              });
+              const sessionHours = ((session.aw * 5) / 60).toFixed(1);
+              return (
+                <TouchableOpacity
+                  key={session.id}
+                  onPress={() => {
+                    console.log('BillingScreen: WIP session tapped — WIP:', session.wipNumber, 'id:', session.id);
+                    onSessionPress(session, billing);
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderTopWidth: idx > 0 ? 1 : 0,
+                    borderTopColor: 'rgba(255,255,255,0.05)',
+                    backgroundColor: 'rgba(0,0,0,0.15)',
+                  }}
+                >
+                  <View>
+                    <Text style={{ color: theme.text, fontSize: 13 }}>
+                      {sessionDateDisplay}
+                    </Text>
+                    {session.notes ? (
+                      <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                        {session.notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{session.aw} AW</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{sessionHours}h</Text>
+                    <View style={{ backgroundColor: sessionColor + '22', borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 }}>
+                      <Text style={{ color: sessionColor, fontSize: 10, fontWeight: '700' }}>{sessionStatus}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          {/* WIP Total row */}
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            backgroundColor: 'rgba(255,255,255,0.04)',
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(255,255,255,0.1)',
+          }}>
+            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700' }}>WIP TOTAL</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{totalAWDisplay} AW</Text>
+              <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{totalHoursDisplay}h</Text>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
 export default function BillingScreen() {
@@ -766,6 +938,9 @@ export default function BillingScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [subTab, setSubTab] = useState<SubTab>('overview');
+  const [wipGrouped, setWipGrouped] = useState(false);
+  const [expandedWips, setExpandedWips] = useState<Set<string>>(new Set());
+  const [wipSummaries, setWipSummaries] = useState<Map<string, WipSummary>>(new Map());
 
   const loadData = useCallback(async () => {
     console.log('BillingScreen: Loading billing data');
@@ -784,6 +959,10 @@ export default function BillingScreen() {
       const records = await billingStorage.getAllRecords();
       setBillingRecords(records);
       console.log('BillingScreen: Data loaded — jobs:', allJobs.length, 'records:', records.length);
+      // Build WIP summaries
+      const summaries = groupJobsByWip(allJobs, records);
+      setWipSummaries(summaries);
+      console.log('BillingScreen: WIP summaries built —', summaries.size, 'unique WIPs');
     } catch (error) {
       console.error('BillingScreen: Error loading data:', error);
     }
@@ -891,66 +1070,76 @@ export default function BillingScreen() {
     await loadData();
   };
 
-  const handleMarkBilled = (job: Job, billing: BillingRecord) => {
-    const hoursDisplay = ((job.aw * 5) / 60).toFixed(2);
+  const handleMarkBilled = async (job: Job, billing: BillingRecord) => {
     console.log('BillingScreen: Mark billed tapped for job:', job.wipNumber);
+    const nwip = normalizeWip(job.wipNumber);
+    const allJobs = await api.getAllJobs();
+    const allRecords = await billingStorage.getAllRecords();
+    const wipJobs = getJobsForWip(nwip, allJobs);
+    const wipRecords = getBillingRecordsForWip(nwip, allRecords);
+
+    const openSessions = wipJobs.filter(j => {
+      const r = allRecords.find(rec => rec.jobId === j.id);
+      return !r || normaliseBillingStatus(r.billingStatus) === 'open';
+    });
+
+    const totalAW = wipJobs.reduce((s, j) => s + j.aw, 0);
+    const totalHours = wipJobs.reduce((s, j) => s + awToHours(j.aw), 0);
+
+    const message = wipJobs.length > 1
+      ? `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\n\n${wipJobs.length} sessions · ${totalAW} AW total · ${totalHours.toFixed(1)}h total\n\n${openSessions.length} session(s) will be marked Invoiced.\nEach session receives its own billing snapshot.`
+      : `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\nAW: ${job.aw}\nHours: ${((job.aw * 5) / 60).toFixed(1)}h\n\nThis will create a billing snapshot. Continue?`;
+
     Alert.alert(
-      'Mark Closed / Billed',
-      `WIP: ${job.wipNumber}\nReg: ${job.vehicleReg}\nAW: ${job.aw}\nHours: ${hoursDisplay}h\n\nThis will create a billing snapshot. Continue?`,
+      wipJobs.length > 1 ? `Mark WIP ${job.wipNumber} as Invoiced?` : 'Mark as Invoiced?',
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark Billed',
-          style: 'default',
+          text: 'Mark Invoiced',
           onPress: async () => {
-            console.log('BillingScreen: Confirmed mark billed for job:', job.wipNumber);
-            const now = new Date().toISOString();
-            await billingStorage.updateRecord(billing.id, {
-              billingStatus: 'billed',
-              billedAW: job.aw,
-              billedHours: (job.aw * 5) / 60,
-              billedAt: now,
-              billedDate: now.split('T')[0],
-            });
-            await billingStorage.addHistoryEntry({
-              billingRecordId: billing.id,
-              jobId: job.id,
-              eventType: 'marked_billed',
-              description: `Marked Closed / Billed — ${hoursDisplay}h`,
-              newAW: job.aw,
-              newHours: (job.aw * 5) / 60,
-            });
-            await loadData();
+            console.log('BillingScreen: Confirmed mark invoiced for WIP:', job.wipNumber, 'sessions:', wipJobs.length);
+            try {
+              const result = await completeWip(job.id, nwip, allJobs, allRecords);
+              console.log('BillingScreen: completeWip result:', result);
+              await loadData();
+            } catch (err) {
+              console.error('BillingScreen: handleMarkBilled error:', err);
+              Alert.alert('Error', 'Failed to mark as invoiced. Please try again.');
+            }
           },
         },
       ]
     );
   };
 
-  const handleReopenBilling = (job: Job, billing: BillingRecord) => {
+  const handleReopenBilling = async (job: Job, billing: BillingRecord) => {
     console.log('BillingScreen: Reopen billing tapped for job:', job.wipNumber);
+    const nwip = normalizeWip(job.wipNumber);
+    const allJobs = await api.getAllJobs();
+    const allRecords = await billingStorage.getAllRecords();
+    const wipJobs = getJobsForWip(nwip, allJobs);
+
+    const message = wipJobs.length > 1
+      ? `WIP ${job.wipNumber} contains ${wipJobs.length} sessions and is currently Invoiced.\n\nReopening will return the entire WIP to Open/Awaiting.\n\nPrevious billing snapshots will be preserved.`
+      : `Reopen billing for WIP ${job.wipNumber}? This will set it back to Open/Awaiting.`;
+
     Alert.alert(
-      'Reopen Billing',
-      `Reopen billing for WIP ${job.wipNumber}? This will set it back to Ready to Bill.`,
+      `Reopen WIP ${job.wipNumber}?`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Reopen',
+          text: 'Reopen WIP',
           onPress: async () => {
-            console.log('BillingScreen: Confirmed reopen billing for job:', job.wipNumber);
-            await billingStorage.updateRecord(billing.id, {
-              billingStatus: 'open',
-              workStatus: 'open',
-              billedAt: undefined,
-              billedDate: undefined,
-            });
-            await billingStorage.addHistoryEntry({
-              billingRecordId: billing.id,
-              jobId: job.id,
-              eventType: 'billing_reopened',
-              description: 'Billing reopened',
-            });
-            await loadData();
+            console.log('BillingScreen: Confirmed reopen WIP:', job.wipNumber, 'sessions:', wipJobs.length);
+            try {
+              const result = await reopenWip(nwip, allJobs, allRecords);
+              console.log('BillingScreen: reopenWip result:', result);
+              await loadData();
+            } catch (err) {
+              console.error('BillingScreen: handleReopenBilling error:', err);
+            }
           },
         },
       ]
@@ -1630,29 +1819,128 @@ export default function BillingScreen() {
               })}
             </ScrollView>
 
-            {/* Job List */}
-            <FlatList
-              data={filteredItems}
-              keyExtractor={item => item.billing.id}
-              renderItem={renderItem}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-              }
-              contentContainerStyle={styles.listContent}
-              ListEmptyComponent={
-                <View style={styles.emptyState}>
-                  <IconSymbol
-                    ios_icon_name="creditcard"
-                    android_material_icon_name="receipt"
-                    size={48}
-                    color={theme.textSecondary}
-                  />
-                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                    No jobs found for this filter
-                  </Text>
-                </View>
-              }
-            />
+            {/* Group by WIP toggle */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flexGrow: 0, marginBottom: 4 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 6 }}
+            >
+              <TouchableOpacity
+                onPress={() => {
+                  console.log('BillingScreen: Group by WIP toggled:', !wipGrouped);
+                  setWipGrouped(v => !v);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 16,
+                  backgroundColor: wipGrouped ? theme.primary : 'rgba(255,255,255,0.08)',
+                  borderWidth: 1,
+                  borderColor: wipGrouped ? theme.primary : 'rgba(255,255,255,0.15)',
+                  marginRight: 8,
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="folder"
+                  android_material_icon_name="folder"
+                  size={14}
+                  color={wipGrouped ? '#fff' : theme.textSecondary}
+                />
+                <Text style={{ color: wipGrouped ? '#fff' : theme.textSecondary, fontSize: 12, marginLeft: 4, fontWeight: '600' }}>
+                  Group by WIP
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {/* Job List — WIP grouped or flat */}
+            {wipGrouped ? (
+              <ScrollView
+                contentContainerStyle={[styles.listContent]}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
+              >
+                {Array.from(wipSummaries.values())
+                  .filter(summary => {
+                    if (activeTab === 'open') return summary.status === 'open' || summary.status === 'mixed';
+                    if (activeTab === 'billed') return summary.status === 'billed';
+                    return true;
+                  })
+                  .sort((a, b) => new Date(b.lastWorked).getTime() - new Date(a.lastWorked).getTime())
+                  .map(summary => (
+                    <WipGroupCard
+                      key={summary.normalizedWip}
+                      summary={summary}
+                      expanded={expandedWips.has(summary.normalizedWip)}
+                      onToggle={() => {
+                        setExpandedWips(prev => {
+                          const next = new Set(prev);
+                          if (next.has(summary.normalizedWip)) {
+                            next.delete(summary.normalizedWip);
+                          } else {
+                            next.add(summary.normalizedWip);
+                          }
+                          return next;
+                        });
+                      }}
+                      theme={theme}
+                      onSessionPress={(job, billing) => {
+                        console.log('BillingScreen: WIP session pressed — navigating to edit job:', job.id);
+                        router.push({
+                          pathname: '/add-job-modal',
+                          params: {
+                            editId: job.id,
+                            editWipNumber: job.wipNumber,
+                            editVehicleReg: job.vehicleReg,
+                            editAw: String(job.aw),
+                            editNotes: job.notes ?? '',
+                            editVhcStatus: job.vhcStatus,
+                            editCreatedAt: job.createdAt,
+                            editImageUri: job.imageUri ?? '',
+                          },
+                        });
+                      }}
+                    />
+                  ))}
+                {wipSummaries.size === 0 && (
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="creditcard"
+                      android_material_icon_name="receipt"
+                      size={48}
+                      color={theme.textSecondary}
+                    />
+                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                      No WIP groups found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            ) : (
+              <FlatList
+                data={filteredItems}
+                keyExtractor={item => item.billing.id}
+                renderItem={renderItem}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+                }
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="creditcard"
+                      android_material_icon_name="receipt"
+                      size={48}
+                      color={theme.textSecondary}
+                    />
+                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                      No jobs found for this filter
+                    </Text>
+                  </View>
+                }
+              />
+            )}
           </>
         )}
 
