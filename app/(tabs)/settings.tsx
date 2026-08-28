@@ -5,6 +5,7 @@ import * as Sharing from 'expo-sharing';
 import * as Notifications from 'expo-notifications';
 import { api } from '@/utils/api';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { SplashScreen as IgnitionSweepPreview } from '@/components/SplashScreen';
 import { offlineStorage } from '@/utils/offlineStorage';
 import * as DocumentPicker from 'expo-document-picker';
 import { ProcessNotification } from '@/components/ProcessNotification';
@@ -92,6 +93,7 @@ export default function SettingsScreen() {
   const [isManualTarget, setIsManualTarget] = useState(false);
   const [manualTargetInput, setManualTargetInput] = useState('');
   const [startupAnimMode, setStartupAnimMode] = useState<'full' | 'quick' | 'off'>('full');
+  const [previewVisible, setPreviewVisible] = useState(false);
 
   const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
@@ -1263,6 +1265,35 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('Settings: Preview startup animation pressed — mode:', startupAnimMode);
+              setPreviewVisible(true);
+            }}
+            style={{
+              marginTop: 4,
+              marginBottom: 12,
+              alignSelf: 'center',
+              paddingHorizontal: 20,
+              paddingVertical: 8,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: '#4fc3f7',
+            }}
+          >
+            <Text style={{ color: '#4fc3f7', fontSize: 11, letterSpacing: 2, fontWeight: '600' }}>
+              PREVIEW
+            </Text>
+          </TouchableOpacity>
+          {previewVisible && (
+            <IgnitionSweepPreview
+              mode={startupAnimMode}
+              onComplete={() => {
+                console.log('Settings: Preview animation completed');
+                setPreviewVisible(false);
+              }}
+            />
+          )}
 
           <Text style={[styles.label, { color: theme.textSecondary, marginTop: 16 }]}>
             Background Overlay Strength

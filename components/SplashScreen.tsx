@@ -28,29 +28,48 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
   const insets = useSafeAreaInsets();
   const isMounted = useRef(true);
 
-  // Shared values — full mode
+  // Shared values
   const headlightOpacity = useSharedValue(0);
   const headlightScale = useSharedValue(0.3);
   const carRevealWidth = useSharedValue(0);
   const carOpacity = useSharedValue(0);
+
+  // Rings — scale + rotate for sweep feel
   const ring1Scale = useSharedValue(0);
   const ring1Opacity = useSharedValue(0);
+  const ring1Rotate = useSharedValue(-90);
   const ring2Scale = useSharedValue(0);
   const ring2Opacity = useSharedValue(0);
+  const ring2Rotate = useSharedValue(-90);
   const ring3Scale = useSharedValue(0);
   const ring3Opacity = useSharedValue(0);
+  const ring3Rotate = useSharedValue(-90);
+
+  // Scan line
+  const scanY = useSharedValue(0);
+  const scanOpacity = useSharedValue(0);
+
+  // Scan status text
+  const scanTextOpacity = useSharedValue(0);
+
+  // Title / subtitle / credit
   const titleOpacity = useSharedValue(0);
   const titleTranslateY = useSharedValue(12);
   const subtitleOpacity = useSharedValue(0);
   const creditOpacity = useSharedValue(0);
+
+  // Light streak + flash
   const streakTranslateX = useSharedValue(-SW);
   const streakOpacity = useSharedValue(0);
   const flashOpacity = useSharedValue(0);
+
+  // Container
   const containerOpacity = useSharedValue(1);
 
   const carWidth = Math.min(SW * 0.82, 500);
-  const carHeight = carWidth * (160 / 400);
+  const carHeight = carWidth * (180 / 500);
 
+  // Cleanup on unmount
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -61,10 +80,16 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
       cancelAnimation(carOpacity);
       cancelAnimation(ring1Scale);
       cancelAnimation(ring1Opacity);
+      cancelAnimation(ring1Rotate);
       cancelAnimation(ring2Scale);
       cancelAnimation(ring2Opacity);
+      cancelAnimation(ring2Rotate);
       cancelAnimation(ring3Scale);
       cancelAnimation(ring3Opacity);
+      cancelAnimation(ring3Rotate);
+      cancelAnimation(scanY);
+      cancelAnimation(scanOpacity);
+      cancelAnimation(scanTextOpacity);
       cancelAnimation(titleOpacity);
       cancelAnimation(titleTranslateY);
       cancelAnimation(subtitleOpacity);
@@ -93,79 +118,126 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
         return;
       }
 
-      // QUICK mode or reduceMotion
-      if (mode === 'quick' || reduceMotion) {
-        console.log('SplashScreen: mode=quick/reduceMotion, running quick animation');
-        if (reduceMotion) {
-          // Simple cross-fade only
-          titleOpacity.value = withTiming(1, { duration: 300 });
-          subtitleOpacity.value = withDelay(200, withTiming(1, { duration: 200 }));
-          containerOpacity.value = withDelay(
-            500,
-            withTiming(0, { duration: 100 }, (finished) => {
-              if (finished) runOnJS(safeComplete)();
-            })
-          );
-        } else {
-          // Quick mode: title → subtitle → streak → fade out
-          titleOpacity.value = withTiming(1, { duration: 150 });
-          subtitleOpacity.value = withDelay(150, withTiming(1, { duration: 150 }));
-          // Light streak at 300ms
-          streakOpacity.value = withDelay(300, withTiming(1, { duration: 30 }));
-          streakTranslateX.value = withDelay(
-            300,
-            withTiming(SW, { duration: 180, easing: Easing.in(Easing.quad) })
-          );
-          flashOpacity.value = withDelay(
-            300,
-            withSequence(
-              withTiming(0.08, { duration: 90 }),
-              withTiming(0, { duration: 90 })
-            )
-          );
-          containerOpacity.value = withDelay(
-            450,
-            withTiming(0, { duration: 100 }, (finished) => {
-              if (finished) runOnJS(safeComplete)();
-            })
-          );
-        }
+      // reduceMotion — simple cross-fade
+      if (reduceMotion) {
+        console.log('SplashScreen: reduceMotion=true, running minimal animation');
+        titleOpacity.value = withTiming(1, { duration: 300 });
+        subtitleOpacity.value = withDelay(200, withTiming(1, { duration: 200 }));
+        containerOpacity.value = withDelay(
+          500,
+          withTiming(0, { duration: 100 }, (finished) => {
+            if (finished) runOnJS(safeComplete)();
+          })
+        );
         return;
       }
 
-      // FULL mode
+      // QUICK mode — deliberate short premium sequence
+      if (mode === 'quick') {
+        console.log('SplashScreen: mode=quick, running quick animation');
+        // 0ms: headlights flash on
+        headlightOpacity.value = withTiming(1, { duration: 80 });
+        headlightScale.value = withTiming(1, { duration: 80 });
+        // 80ms: title fades in
+        titleOpacity.value = withDelay(80, withTiming(1, { duration: 120 }));
+        titleTranslateY.value = withDelay(80, withTiming(0, { duration: 120 }));
+        // 150ms: subtitle fades in
+        subtitleOpacity.value = withDelay(150, withTiming(1, { duration: 100 }));
+        // 220ms: light streak fires
+        streakOpacity.value = withDelay(220, withTiming(1, { duration: 20 }));
+        streakTranslateX.value = withDelay(
+          220,
+          withTiming(SW, { duration: 180, easing: Easing.in(Easing.quad) })
+        );
+        flashOpacity.value = withDelay(
+          220,
+          withSequence(
+            withTiming(0.07, { duration: 80 }),
+            withTiming(0, { duration: 80 })
+          )
+        );
+        // 350ms: fade out → onComplete
+        containerOpacity.value = withDelay(
+          350,
+          withTiming(0, { duration: 80 }, (finished) => {
+            if (finished) runOnJS(safeComplete)();
+          })
+        );
+        return;
+      }
+
+      // FULL mode — Ignition Sweep
       console.log('SplashScreen: mode=full, running full Ignition Sweep animation');
 
-      // Phase 2 — 0ms: Headlights emerge
+      // 0ms: Headlights illuminate
       headlightOpacity.value = withTiming(1, { duration: 150 });
       headlightScale.value = withSpring(1, { damping: 12, stiffness: 180 });
 
-      // Phase 3 — 150ms: Car silhouette reveal
+      // 150ms: Car silhouette reveal
       carOpacity.value = withDelay(150, withTiming(1, { duration: 50 }));
       carRevealWidth.value = withDelay(
         150,
         withTiming(carWidth, { duration: 500, easing: Easing.out(Easing.cubic) })
       );
 
-      // Phase 4 — 650ms: Rings appear
+      // 650ms: Rings sweep in (staggered 80ms)
       ring1Scale.value = withDelay(650, withSpring(1, { damping: 14, stiffness: 120 }));
-      ring1Opacity.value = withDelay(650, withTiming(0.6, { duration: 100 }));
-      ring2Scale.value = withDelay(730, withSpring(1, { damping: 14, stiffness: 120 }));
-      ring2Opacity.value = withDelay(730, withTiming(0.4, { duration: 100 }));
-      ring3Scale.value = withDelay(810, withSpring(1, { damping: 14, stiffness: 120 }));
-      ring3Opacity.value = withDelay(810, withTiming(0.25, { duration: 100 }));
+      ring1Opacity.value = withDelay(650, withTiming(0.55, { duration: 100 }));
+      ring1Rotate.value = withDelay(
+        650,
+        withTiming(270, { duration: 600, easing: Easing.out(Easing.cubic) })
+      );
 
-      // Phase 6 — 950ms: Title
+      ring2Scale.value = withDelay(730, withSpring(1, { damping: 14, stiffness: 120 }));
+      ring2Opacity.value = withDelay(730, withTiming(0.35, { duration: 100 }));
+      ring2Rotate.value = withDelay(
+        730,
+        withTiming(270, { duration: 600, easing: Easing.out(Easing.cubic) })
+      );
+
+      ring3Scale.value = withDelay(810, withSpring(1, { damping: 14, stiffness: 120 }));
+      ring3Opacity.value = withDelay(810, withTiming(0.2, { duration: 100 }));
+      ring3Rotate.value = withDelay(
+        810,
+        withTiming(270, { duration: 600, easing: Easing.out(Easing.cubic) })
+      );
+
+      // 750ms: Scan line animates across car
+      const halfH = carHeight / 2;
+      scanY.value = -halfH;
+      scanOpacity.value = withDelay(750, withTiming(0.7, { duration: 60 }));
+      scanY.value = withDelay(
+        750,
+        withTiming(halfH, { duration: 300, easing: Easing.inOut(Easing.quad) })
+      );
+
+      // 850ms: Scan status text fades in, then out at 1000ms
+      scanTextOpacity.value = withDelay(
+        850,
+        withSequence(
+          withTiming(0.6, { duration: 100 }),
+          withTiming(0.6, { duration: 200 }),
+          withTiming(0, { duration: 150 })
+        )
+      );
+
+      // Scan line fades out after sweep
+      scanOpacity.value = withDelay(
+        1050,
+        withTiming(0, { duration: 100 })
+      );
+
+      // 950ms: Title fades + slides in
       titleOpacity.value = withDelay(950, withTiming(1, { duration: 250 }));
       titleTranslateY.value = withDelay(950, withSpring(0, { damping: 14, stiffness: 120 }));
 
-      // Phase 7 — 1100ms: Subtitle
+      // 1100ms: Subtitle
       subtitleOpacity.value = withDelay(1100, withTiming(1, { duration: 200 }));
 
-      // Phase 8 — 1200ms: Credit
+      // 1200ms: Credit
       creditOpacity.value = withDelay(1200, withTiming(0.7, { duration: 200 }));
 
-      // Phase 9 — 1450ms: Light streak
+      // 1450ms: Light streak
       streakOpacity.value = withDelay(1450, withTiming(1, { duration: 30 }));
       streakTranslateX.value = withDelay(
         1450,
@@ -179,7 +251,7 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
         )
       );
 
-      // Phase 10 — 1650ms: Fade out
+      // 1650ms: Fade out → onComplete
       containerOpacity.value = withDelay(
         1650,
         withTiming(0, { duration: 200 }, (finished) => {
@@ -208,18 +280,34 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
 
   const ring1Style = useAnimatedStyle(() => ({
     opacity: ring1Opacity.value,
-    transform: [{ scale: ring1Scale.value }],
+    transform: [
+      { scale: ring1Scale.value },
+      { rotate: `${ring1Rotate.value}deg` },
+    ],
   }));
 
   const ring2Style = useAnimatedStyle(() => ({
     opacity: ring2Opacity.value,
-    transform: [{ scale: ring2Scale.value }],
+    transform: [
+      { scale: ring2Scale.value },
+      { rotate: `${ring2Rotate.value}deg` },
+    ],
   }));
 
   const ring3Style = useAnimatedStyle(() => ({
     opacity: ring3Opacity.value,
-    transform: [{ scale: ring3Scale.value }],
+    transform: [
+      { scale: ring3Scale.value },
+      { rotate: `${ring3Rotate.value}deg` },
+    ],
   }));
+
+  const scanLineStyle = useAnimatedStyle(() => ({
+    opacity: scanOpacity.value,
+    transform: [{ translateY: scanY.value }],
+  }));
+
+  const scanTextStyle = useAnimatedStyle(() => ({ opacity: scanTextOpacity.value }));
 
   const titleStyle = useAnimatedStyle(() => ({
     opacity: titleOpacity.value,
@@ -239,13 +327,18 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
   const isQuick = mode === 'quick' || reduceMotion;
   const isOff = mode === 'off';
 
-  // For off mode, render nothing (effect fires immediately)
   if (isOff) {
     return <View style={[styles.container, { backgroundColor: '#050d1a' }]} />;
   }
 
-  // Car vertical centre position (relative to content area)
   const carCentreY = SH * 0.42;
+
+  // Headlight horizontal positions
+  const leftDRLCentreX = SW * 0.5 - carWidth * 0.32;
+  const rightDRLLeft = SW * 0.5 + carWidth * 0.32 - 40;
+
+  // Scan line sits at carCentreY, translateY drives it from -halfH to +halfH
+  const scanLineTop = carCentreY;
 
   return (
     <Animated.View style={[styles.container, containerStyle]}>
@@ -257,95 +350,142 @@ export function SplashScreen({ onComplete, mode = 'full', reduceMotion = false }
 
       {/* Rings — behind car */}
       {!isQuick && (
-        <View style={[styles.ringsContainer, { top: carCentreY - 95 - 10 }]}>
+        <View style={[styles.ringsContainer, { top: carCentreY - 95 }]}>
           <Animated.View style={[styles.ringWrapper, ring3Style]}>
             <Svg width={190} height={190} viewBox="0 0 190 190">
-              <Circle
-                cx="95"
-                cy="95"
-                r="95"
-                stroke="#b3e5fc"
-                strokeWidth="0.8"
-                fill="none"
-              />
+              <Circle cx="95" cy="95" r="92" stroke="#b3e5fc" strokeWidth="0.7" fill="none" />
             </Svg>
           </Animated.View>
           <Animated.View style={[styles.ringWrapper, ring2Style]}>
             <Svg width={150} height={150} viewBox="0 0 150 150">
-              <Circle
-                cx="75"
-                cy="75"
-                r="75"
-                stroke="#81d4fa"
-                strokeWidth="1"
-                fill="none"
-              />
+              <Circle cx="75" cy="75" r="72" stroke="#81d4fa" strokeWidth="0.9" fill="none" />
             </Svg>
           </Animated.View>
           <Animated.View style={[styles.ringWrapper, ring1Style]}>
             <Svg width={110} height={110} viewBox="0 0 110 110">
-              <Circle
-                cx="55"
-                cy="55"
-                r="55"
-                stroke="#4fc3f7"
-                strokeWidth="1"
-                fill="none"
-              />
+              <Circle cx="55" cy="55" r="52" stroke="#4fc3f7" strokeWidth="1.2" fill="none" />
             </Svg>
           </Animated.View>
         </View>
       )}
 
-      {/* Headlights */}
+      {/* DRL Headlights */}
       {!isQuick && (
-        <View style={[styles.headlightsContainer, { top: carCentreY - 20 }]}>
-          <Animated.View style={[styles.headlightLeft, headlightStyle]} />
-          <Animated.View style={[styles.headlightLeftGlow, headlightStyle]} />
-          <Animated.View style={[styles.headlightRight, headlightStyle]} />
-          <Animated.View style={[styles.headlightRightGlow, headlightStyle]} />
-        </View>
+        <>
+          {/* Left DRL */}
+          <Animated.View
+            style={[
+              styles.drlGroup,
+              { top: carCentreY - 18, left: leftDRLCentreX - 20 },
+              headlightStyle,
+            ]}
+          >
+            {/* Glow behind */}
+            <View style={styles.drlGlow} />
+            {/* Main DRL bar */}
+            <View style={styles.drlBar} />
+            {/* Lower angled strip */}
+            <View style={styles.drlLower} />
+          </Animated.View>
+
+          {/* Right DRL */}
+          <Animated.View
+            style={[
+              styles.drlGroup,
+              { top: carCentreY - 18, left: rightDRLLeft },
+              headlightStyle,
+            ]}
+          >
+            <View style={styles.drlGlow} />
+            <View style={styles.drlBar} />
+            <View style={styles.drlLower} />
+          </Animated.View>
+        </>
       )}
 
       {/* Car silhouette */}
       {!isQuick && (
         <View style={[styles.carContainer, { top: carCentreY - carHeight / 2 }]}>
           <Animated.View style={[{ height: carHeight, overflow: 'hidden' }, carRevealStyle]}>
-            <Svg
-              width={carWidth}
-              height={carHeight}
-              viewBox="0 0 400 160"
-            >
+            <Svg width={carWidth} height={carHeight} viewBox="0 0 500 180">
+              {/* Floor reflection — mirrored body, very low opacity */}
               <Path
-                d="M 20,120 L 20,110 Q 20,100 30,100 L 80,100 Q 100,60 130,50 L 200,42 L 270,42 Q 300,42 320,55 L 360,100 L 370,100 Q 380,100 380,110 L 380,120 L 340,120 Q 340,140 320,140 Q 300,140 300,120 L 100,120 Q 100,140 80,140 Q 60,140 60,120 Z"
+                d="M 30,148 L 30,138 Q 30,128 42,128 L 88,128 Q 108,128 118,122 L 148,90 Q 168,68 200,60 L 260,54 L 310,54 Q 340,54 358,66 L 390,100 L 408,110 Q 418,114 428,114 L 458,114 Q 468,114 470,124 L 470,138 L 470,148 Z"
                 stroke="#4fc3f7"
-                strokeWidth="1.5"
+                strokeWidth="0.5"
+                fill="none"
+                opacity="0.12"
+                transform="scale(1,-1) translate(0,-296)"
+              />
+              {/* Main body */}
+              <Path
+                d="M 30,148 L 30,138 Q 30,128 42,128 L 88,128 Q 108,128 118,122 L 148,90 Q 168,68 200,60 L 260,54 L 310,54 Q 340,54 358,66 L 390,100 L 408,110 Q 418,114 428,114 L 458,114 Q 468,114 470,124 L 470,138 L 470,148 Z"
+                stroke="#4fc3f7"
+                strokeWidth="1.8"
                 fill="none"
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
+              {/* Left wheel arch */}
+              <Circle cx="110" cy="148" r="28" stroke="#3a9cc4" strokeWidth="1.2" fill="none" />
+              {/* Right wheel arch */}
+              <Circle cx="390" cy="148" r="28" stroke="#3a9cc4" strokeWidth="1.2" fill="none" />
             </Svg>
           </Animated.View>
         </View>
       )}
 
+      {/* Scan line */}
+      {!isQuick && (
+        <Animated.View
+          style={[
+            styles.scanLine,
+            { top: scanLineTop, width: carWidth, left: (SW - carWidth) / 2 },
+            scanLineStyle,
+          ]}
+        />
+      )}
+
+      {/* Scan status text */}
+      {!isQuick && (
+        <Animated.View
+          style={[
+            styles.scanTextContainer,
+            { top: carCentreY + carHeight / 2 + 8 },
+            scanTextStyle,
+          ]}
+        >
+          <Text style={styles.scanTextLine1}>WORKSHOP SYSTEM</Text>
+          <Text style={styles.scanTextLine2}>
+            JOBS READY  ·  BILLING READY  ·  SCHEDULE READY
+          </Text>
+        </Animated.View>
+      )}
+
       {/* Text content */}
-      <View style={[styles.textContainer, { top: isQuick ? SH * 0.42 : carCentreY + carHeight / 2 + 30 }]}>
-        <Animated.Text style={[styles.title, titleStyle]}>
-          TECH TIMES
-        </Animated.Text>
+      <View
+        style={[
+          styles.textContainer,
+          { top: isQuick ? SH * 0.42 : carCentreY + carHeight / 2 + 44 },
+        ]}
+      >
+        <Animated.Text style={[styles.title, titleStyle]}>TECH TIMES</Animated.Text>
         <Animated.Text style={[styles.subtitle, subtitleStyle]}>
           Workshop Performance &amp; Productivity
         </Animated.Text>
         {!isQuick && (
-          <Animated.Text style={[styles.credit, creditStyle]}>
-            Created by BNR
-          </Animated.Text>
+          <Animated.Text style={[styles.credit, creditStyle]}>Created by BNR</Animated.Text>
         )}
       </View>
 
       {/* Light streak */}
-      <Animated.View style={[styles.streak, { top: isQuick ? SH * 0.42 : carCentreY }, streakStyle]} />
+      <Animated.View
+        style={[
+          styles.streak,
+          { top: isQuick ? SH * 0.42 : carCentreY },
+          streakStyle,
+        ]}
+      />
 
       {/* Flash overlay */}
       <Animated.View style={[StyleSheet.absoluteFill, styles.flash, flashStyle]} />
@@ -375,53 +515,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headlightsContainer: {
+  // DRL headlight group
+  drlGroup: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    width: 40,
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
   },
-  headlightLeft: {
-    width: 60,
+  drlGlow: {
+    position: 'absolute',
+    width: 52,
+    height: 14,
+    backgroundColor: '#4fc3f7',
+    opacity: 0.12,
+    borderRadius: 7,
+    top: -4,
+  },
+  drlBar: {
+    width: 40,
     height: 2,
     backgroundColor: '#4fc3f7',
-    marginRight: 30,
     borderRadius: 1,
   },
-  headlightLeftGlow: {
-    position: 'absolute',
-    width: 80,
-    height: 6,
-    backgroundColor: '#4fc3f7',
-    opacity: 0.15,
-    marginRight: 30,
-    borderRadius: 3,
-    left: SW / 2 - 110,
-  },
-  headlightRight: {
-    width: 60,
-    height: 2,
-    backgroundColor: '#4fc3f7',
-    marginLeft: 30,
+  drlLower: {
+    width: 28,
+    height: 1.5,
+    backgroundColor: '#81d4fa',
     borderRadius: 1,
-  },
-  headlightRightGlow: {
-    position: 'absolute',
-    width: 80,
-    height: 6,
-    backgroundColor: '#4fc3f7',
-    opacity: 0.15,
-    marginLeft: 30,
-    borderRadius: 3,
-    right: SW / 2 - 110,
+    marginTop: 4,
+    opacity: 0.7,
+    transform: [{ rotate: '-4deg' }],
   },
   carContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
+  },
+  scanLine: {
+    position: 'absolute',
+    height: 1.5,
+    backgroundColor: '#4fc3f7',
+  },
+  scanTextContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  scanTextLine1: {
+    fontSize: 9,
+    letterSpacing: 2,
+    color: '#4fc3f7',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  scanTextLine2: {
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: '#4fc3f7',
+    textAlign: 'center',
+    marginTop: 3,
+    fontWeight: '400',
   },
   textContainer: {
     position: 'absolute',
@@ -430,25 +584,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 38,
+    fontSize: 40,
     fontWeight: '900',
-    letterSpacing: 6,
+    letterSpacing: 7,
     color: '#ffffff',
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#7ab8d4',
-    letterSpacing: 1.5,
+    letterSpacing: 2.5,
     textAlign: 'center',
     marginTop: 10,
   },
   credit: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#4a7a94',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
     textAlign: 'center',
-    marginTop: 14,
+    marginTop: 16,
+    opacity: 0.7,
   },
   streak: {
     position: 'absolute',
