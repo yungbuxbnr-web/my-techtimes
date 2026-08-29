@@ -46,6 +46,7 @@ const safeHaptics = {
 };
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 import { templateStorage, JobTemplate } from '@/utils/moduleStorage';
+import { quickCaptureStorage, quickCaptureStats, QuickPreset } from '@/utils/quickCaptureStorage';
 import { normalizeWip, getJobsForWip, getBillingRecordsForWip, getWipBillingStatus, completeWip, detectWipVehicleConflict } from '@/utils/wipEngine';
 import { billingStorage } from '@/utils/billingStorage';
 
@@ -114,6 +115,16 @@ export default function AddJobModal() {
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
 
+  // Quick Job Capture state
+  const [qcExpanded, setQcExpanded] = useState(true);
+  const [qcCategory, setQcCategory] = useState<'frequent' | 'service' | 'workshop' | 'brakes' | 'pdi' | 'recent'>('frequent');
+  const [qcPresets, setQcPresets] = useState<QuickPreset[]>([]);
+  const [qcSelected, setQcSelected] = useState<string[]>([]);
+  const [qcFrequent, setQcFrequent] = useState<string[]>([]);
+  const [qcRecent, setQcRecent] = useState<string[]>([]);
+  const [qcAwSuggestion, setQcAwSuggestion] = useState<{ suggested: number; range: [number, number]; count: number } | null>(null);
+  const [qcSearch, setQcSearch] = useState('');
+
   // Pre-fill fields when editing an existing job or continuing a WIP
   // All params arrive as strings on Android — parse numerics explicitly
   useEffect(() => {
@@ -162,6 +173,13 @@ export default function AddJobModal() {
   // Load all jobs for suggestions
   useEffect(() => {
     loadJobsForSuggestions();
+  }, []);
+
+  // Load Quick Capture data
+  useEffect(() => {
+    quickCaptureStorage.getAll().then(setQcPresets).catch(() => {});
+    quickCaptureStats.getFrequentDescriptions(8).then(setQcFrequent).catch(() => {});
+    quickCaptureStats.getRecentDescriptions(8).then(setQcRecent).catch(() => {});
   }, []);
 
   const loadJobsForSuggestions = async () => {
@@ -275,6 +293,48 @@ export default function AddJobModal() {
     const awTimeFormatted = formatTime(awMinutes);
     toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
     console.log('AddJobModal: All fields auto-filled from memory - WIP:', suggestion.wipNumber, 'Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw, 'VHC:', suggestion.vhcStatus, 'Notes:', suggestion.notes);
+  };
+
+  const handleQcPresetTap = async (preset: QuickPreset) => {
+    console.log('AddJobModal: Quick Capture preset tapped:', preset.name, 'id:', preset.id);
+    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const alreadySelected = qcSelected.includes(preset.id);
+
+    let newSelected: string[];
+    if (alreadySelected) {
+      newSelected = qcSelected.filter(id => id !== preset.id);
+    } else {
+      newSelected = [...qcSelected, preset.id];
+    }
+    setQcSelected(newSelected);
+
+    // Build combined description from selected presets
+    const selectedPresets = qcPresets.filter(p => newSelected.includes(p.id));
+    const parts = selectedPresets.map(p => p.description);
+    const unique = parts.filter((v, i, a) => a.indexOf(v) === i);
+    const combined = unique.join(', ');
+    setNotes(combined);
+    console.log('AddJobModal: Quick Capture combined description set to:', combined);
+
+    // Get AW suggestion for combined description
+    if (combined.trim()) {
+      const suggestion = await quickCaptureStats.getSuggestedAW(combined);
+      setQcAwSuggestion(suggestion);
+      if (suggestion) {
+        console.log('AddJobModal: Quick Capture AW suggestion:', suggestion.suggested, 'AW (range', suggestion.range[0], '-', suggestion.range[1], ', count:', suggestion.count, ')');
+      }
+    } else {
+      setQcAwSuggestion(null);
+    }
+  };
+
+  const handleQcClear = () => {
+    console.log('AddJobModal: Quick Capture cleared, previously selected:', qcSelected);
+    const selectedPresets = qcPresets.filter(p => qcSelected.includes(p.id));
+    const combined = selectedPresets.map(p => p.description).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+    if (notes === combined) setNotes('');
+    setQcSelected([]);
+    setQcAwSuggestion(null);
   };
 
   const handleSave = async (saveAnother: boolean = false) => {
@@ -436,6 +496,17 @@ export default function AddJobModal() {
 
         console.log('AddJobModal: Updating widget data for live dashboard updates');
         await updateWidgetData();
+
+        // Learn from this saved job for Quick Capture stats
+        if (notes.trim() && aw > 0) {
+          console.log('AddJobModal: Learning from saved job for Quick Capture stats, notes:', notes.trim(), 'aw:', aw);
+          quickCaptureStats.learnFromSavedJob(notes.trim(), aw).catch(() => {});
+        }
+        // Record usage for selected presets
+        for (const presetId of qcSelected) {
+          console.log('AddJobModal: Recording Quick Capture preset usage for:', presetId);
+          quickCaptureStorage.recordUsage(presetId).catch(() => {});
+        }
 
         setSaveNotificationType('success');
         toastManager.success('Job saved successfully!');
@@ -742,6 +813,246 @@ export default function AddJobModal() {
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
+            {/* ── QUICK JOB CAPTURE ── */}
+            <View style={{ marginBottom: 12 }}>
+              {/* Header row */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  paddingVertical: 8, paddingHorizontal: 2,
+                }}
+                onPress={() => {
+                  console.log('AddJobModal: Quick Capture section toggled, expanding:', !qcExpanded);
+                  setQcExpanded(e => !e);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <IconSymbol ios_icon_name="bolt.fill" android_material_icon_name="flash-on" size={14} color="#4fc3f7" />
+                  <Text style={{ color: '#4fc3f7', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 }}>
+                    QUICK JOB CAPTURE
+                  </Text>
+                </View>
+                <IconSymbol
+                  ios_icon_name={qcExpanded ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={qcExpanded ? 'expand-less' : 'expand-more'}
+                  size={18} color={theme.textSecondary}
+                />
+              </TouchableOpacity>
+
+              {qcExpanded && (
+                <View>
+                  {/* Category tabs — horizontal scroll */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    {(['frequent', 'service', 'workshop', 'brakes', 'pdi', 'recent'] as const).map(cat => {
+                      const isActive = qcCategory === cat;
+                      const catLabel = cat === 'brakes' ? 'Brakes & Tyres' : cat.charAt(0).toUpperCase() + cat.slice(1);
+                      return (
+                        <TouchableOpacity
+                          key={cat}
+                          onPress={() => {
+                            console.log('AddJobModal: Quick Capture category changed to:', cat);
+                            setQcCategory(cat);
+                          }}
+                          style={{
+                            paddingHorizontal: 12, paddingVertical: 5, marginRight: 6, borderRadius: 14,
+                            backgroundColor: isActive ? '#4fc3f7' : (isDarkMode ? '#2a2a2a' : '#e8e8e8'),
+                          }}
+                        >
+                          <Text style={{
+                            fontSize: 11, fontWeight: '600', textTransform: 'capitalize',
+                            color: isActive ? '#000' : theme.textSecondary,
+                          }}>
+                            {catLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* Search bar — only show for category tabs with many items */}
+                  {(qcCategory !== 'frequent' && qcCategory !== 'recent') && (
+                    <TextInput
+                      value={qcSearch}
+                      onChangeText={text => {
+                        console.log('AddJobModal: Quick Capture search changed to:', text);
+                        setQcSearch(text);
+                      }}
+                      placeholder="Search presets..."
+                      placeholderTextColor={theme.textSecondary}
+                      style={{
+                        backgroundColor: isDarkMode ? '#1a1a1a' : '#f0f0f0',
+                        borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+                        fontSize: 12, color: theme.text, marginBottom: 8,
+                      }}
+                    />
+                  )}
+
+                  {/* Chips */}
+                  {(() => {
+                    let chipsToShow: Array<{ id: string; name: string; description: string }> = [];
+
+                    if (qcCategory === 'frequent') {
+                      const favs = qcPresets.filter(p => p.isFavourite);
+                      const freqPresets = qcFrequent
+                        .map(desc => qcPresets.find(p => p.description.toLowerCase() === desc.toLowerCase()))
+                        .filter(Boolean) as QuickPreset[];
+                      const combined = [...favs, ...freqPresets].filter((p, i, a) => a.findIndex(x => x.id === p.id) === i);
+                      chipsToShow = combined.length > 0 ? combined.slice(0, 10) : qcPresets.filter(p => p.isDefault).slice(0, 10);
+                    } else if (qcCategory === 'recent') {
+                      chipsToShow = qcRecent
+                        .map(desc => qcPresets.find(p => p.description.toLowerCase() === desc.toLowerCase()))
+                        .filter(Boolean) as QuickPreset[];
+                      if (chipsToShow.length === 0) {
+                        chipsToShow = qcPresets.filter(p => p.category === 'service').slice(0, 6);
+                      }
+                    } else {
+                      chipsToShow = qcPresets.filter(p => p.category === qcCategory);
+                      if (qcSearch.trim()) {
+                        const q = qcSearch.toLowerCase();
+                        chipsToShow = chipsToShow.filter(p =>
+                          p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+                        );
+                      }
+                    }
+
+                    return (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {chipsToShow.map(chip => {
+                          const isSelected = qcSelected.includes(chip.id);
+                          const chipPreset = chip as QuickPreset;
+                          return (
+                            <TouchableOpacity
+                              key={chip.id}
+                              onPress={() => handleQcPresetTap(chipPreset)}
+                              onLongPress={() => {
+                                console.log('AddJobModal: Quick Capture chip long-pressed:', chip.name);
+                                safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                Alert.alert(
+                                  chip.name,
+                                  `Description: "${chip.description}"`,
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                      text: chipPreset.isFavourite ? 'Remove Favourite' : 'Add to Favourites',
+                                      onPress: () => {
+                                        console.log('AddJobModal: Quick Capture toggling favourite for:', chip.id);
+                                        quickCaptureStorage.toggleFavourite(chip.id).then(() =>
+                                          quickCaptureStorage.getAll().then(setQcPresets)
+                                        );
+                                      },
+                                    },
+                                  ]
+                                );
+                              }}
+                              style={{
+                                paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+                                backgroundColor: isSelected ? '#4fc3f7' : (isDarkMode ? '#2a2a2a' : '#e8e8e8'),
+                                borderWidth: isSelected ? 0 : 1,
+                                borderColor: isDarkMode ? '#444' : '#ccc',
+                                flexDirection: 'row', alignItems: 'center', gap: 4,
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              {chipPreset.isFavourite && (
+                                <Text style={{ fontSize: 10 }}>★</Text>
+                              )}
+                              <Text style={{
+                                fontSize: 12, fontWeight: isSelected ? '700' : '500',
+                                color: isSelected ? '#000' : theme.text,
+                              }}>
+                                {chip.name}
+                              </Text>
+                              {isSelected && (
+                                <Text style={{ fontSize: 10, color: '#000', fontWeight: '700' }}>✓</Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                        {chipsToShow.length === 0 && (
+                          <Text style={{ color: theme.textSecondary, fontSize: 12, fontStyle: 'italic', padding: 4 }}>
+                            No presets in this category yet
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
+
+                  {/* AW suggestion + description preview + clear */}
+                  {qcSelected.length > 0 && (
+                    <View style={{
+                      marginTop: 10, padding: 10, borderRadius: 8,
+                      backgroundColor: isDarkMode ? '#1a2a1a' : '#f0fff0',
+                      borderLeftWidth: 3, borderLeftColor: '#4fc3f7',
+                    }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 2 }}>JOB DESCRIPTION PREVIEW</Text>
+                          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }} numberOfLines={2}>
+                            {qcPresets.filter(p => qcSelected.includes(p.id)).map(p => p.description).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
+                          </Text>
+                          {qcAwSuggestion && (
+                            <View style={{ marginTop: 6 }}>
+                              <Text style={{ color: theme.textSecondary, fontSize: 11 }}>SUGGESTED AW</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                                <Text style={{ color: '#4fc3f7', fontSize: 14, fontWeight: '700' }}>
+                                  {qcAwSuggestion.suggested}
+                                </Text>
+                                <Text style={{ color: '#4fc3f7', fontSize: 14, fontWeight: '700' }}>
+                                  AW
+                                </Text>
+                                {qcAwSuggestion.count > 1 && (
+                                  <Text style={{ fontSize: 11, fontWeight: '400', color: theme.textSecondary }}>
+                                    (range {qcAwSuggestion.range[0]}–{qcAwSuggestion.range[1]}, {qcAwSuggestion.count} jobs)
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 2 }}>
+                                Suggestion only — edit AW as needed
+                              </Text>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  if (qcAwSuggestion) {
+                                    console.log('AddJobModal: Quick Capture AW suggestion applied:', qcAwSuggestion.suggested);
+                                    setAw(qcAwSuggestion.suggested);
+                                    safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                  }
+                                }}
+                                style={{
+                                  marginTop: 4, alignSelf: 'flex-start',
+                                  paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+                                  backgroundColor: 'rgba(79,195,247,0.15)',
+                                }}
+                              >
+                                <Text style={{ color: '#4fc3f7', fontSize: 11, fontWeight: '600' }}>
+                                  Apply {qcAwSuggestion.suggested} AW →
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                          {!qcAwSuggestion && qcSelected.length > 0 && (
+                            <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4, fontStyle: 'italic' }}>
+                              No AW history yet — enter AW manually
+                            </Text>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          onPress={handleQcClear}
+                          style={{ padding: 4, marginLeft: 8 }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={{ color: '#f44336', fontSize: 12, fontWeight: '600' }}>CLEAR</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Divider */}
+                  <View style={{ height: 1, backgroundColor: isDarkMode ? '#333' : '#e0e0e0', marginTop: 12 }} />
+                </View>
+              )}
+            </View>
+
             {isContinueMode && (
               <View style={{
                 backgroundColor: 'rgba(79,195,247,0.12)',
