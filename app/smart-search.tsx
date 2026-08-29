@@ -18,6 +18,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
 import { billingStorage, BillingRecord } from '@/utils/billingStorage';
 import { searchHistoryStorage } from '@/utils/moduleStorage';
+import { normalizeWip } from '@/utils/wipEngine';
 
 type ActiveFilter = 'all' | 'open' | 'billed' | 'today' | 'month';
 
@@ -401,6 +402,15 @@ export default function SmartSearchScreen() {
                       <View style={[styles.statusChip, { backgroundColor: chipColor }]}>
                         <Text style={styles.statusChipText}>{chipLabel}</Text>
                       </View>
+                      <TouchableOpacity
+                        style={[styles.wipChip, { backgroundColor: theme.primary + '22', borderColor: theme.primary }]}
+                        onPress={() => {
+                          console.log('SmartSearchScreen: WIP Workspace chip tapped for WIP:', j.wipNumber);
+                          router.push({ pathname: '/wip-workspace', params: { wip: normalizeWip(j.wipNumber) } } as any);
+                        }}
+                      >
+                        <Text style={[styles.wipChipText, { color: theme.primary }]}>WIP</Text>
+                      </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
                 );
@@ -501,6 +511,13 @@ const styles = StyleSheet.create({
   jobHours: { fontSize: 14, fontWeight: '700' },
   statusChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   statusChipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  wipChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  wipChipText: { fontSize: 11, fontWeight: '700' },
   empty: { alignItems: 'center', paddingTop: 40 },
   emptyText: { fontSize: 15 },
 });

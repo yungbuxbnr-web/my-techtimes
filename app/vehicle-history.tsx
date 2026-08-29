@@ -17,6 +17,7 @@ import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
 import { api, Job } from '@/utils/api';
 import { billingStorage, BillingRecord } from '@/utils/billingStorage';
+import { normalizeWip } from '@/utils/wipEngine';
 
 function normaliseReg(reg: string): string {
   return (reg || '').toUpperCase().replace(/\s+/g, '');
@@ -200,6 +201,15 @@ export default function VehicleHistoryScreen() {
                   <View style={[styles.chip, { backgroundColor: chipColor }]}>
                     <Text style={styles.chipText}>{chipLabel}</Text>
                   </View>
+                  <TouchableOpacity
+                    style={[styles.wipChip, { backgroundColor: theme.primary + '22', borderColor: theme.primary }]}
+                    onPress={() => {
+                      console.log('VehicleHistoryScreen: WIP chip tapped for WIP:', job.wipNumber);
+                      router.push({ pathname: '/wip-workspace', params: { wip: normalizeWip(job.wipNumber) } } as any);
+                    }}
+                  >
+                    <Text style={[styles.wipChipText, { color: theme.primary }]}>WIP</Text>
+                  </TouchableOpacity>
                 </View>
               </TouchableOpacity>
             );
@@ -372,6 +382,13 @@ const styles = StyleSheet.create({
   jobHours: { fontSize: 15, fontWeight: '700' },
   chip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   chipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  wipChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  wipChipText: { fontSize: 11, fontWeight: '700' },
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyText: { fontSize: 16 },
 });

@@ -243,7 +243,15 @@ function BillingJobRow({
           )}
           <View style={styles.jobRowContent}>
             <View style={styles.jobRowTop}>
-              <Text style={[styles.jobWip, { color: theme.primary }]}>{job.wipNumber}</Text>
+              <TouchableOpacity
+                onPress={job.wipNumber ? () => {
+                  console.log('BillingScreen: WIP number tapped — navigating to workspace for WIP:', job.wipNumber);
+                  router.push({ pathname: '/wip-workspace', params: { wip: normalizeWip(job.wipNumber ?? '') } } as any);
+                } : undefined}
+                disabled={!job.wipNumber}
+              >
+                <Text style={[styles.jobWip, { color: theme.primary }]}>{job.wipNumber}</Text>
+              </TouchableOpacity>
               <View style={[styles.statusChip, { backgroundColor: chip.bg }]}>
                 <Text style={styles.statusChipText}>{chip.label}</Text>
               </View>
@@ -794,7 +802,7 @@ function WipGroupCard({ summary, expanded, onToggle, theme, onSessionPress }: Wi
       }} style={{ padding: 14 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 16 }}>
                 WIP {summary.displayWip}
               </Text>
@@ -819,13 +827,22 @@ function WipGroupCard({ summary, expanded, onToggle, theme, onSessionPress }: Wi
               {sessionCountLabel}
             </Text>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
               {totalAWDisplay} AW
             </Text>
             <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
               {totalHoursDisplay}h
             </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: theme.primary + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}
+              onPress={() => {
+                console.log('BillingScreen: WipGroupCard Workspace button pressed for WIP:', summary.normalizedWip);
+                router.push({ pathname: '/wip-workspace', params: { wip: summary.normalizedWip } } as any);
+              }}
+            >
+              <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '700' }}>Workspace</Text>
+            </TouchableOpacity>
           </View>
           <IconSymbol
             ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}

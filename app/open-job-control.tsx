@@ -330,7 +330,7 @@ export default function OpenJobControlScreen() {
                         activeOpacity={0.75}
                       >
                         <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <Text style={[styles.wipNumber, { color: theme.text }]}>{summary.displayWip}</Text>
                             <View style={{ backgroundColor: statusColor + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: statusColor }}>
                               <Text style={{ color: statusColor, fontSize: 10, fontWeight: '700' }}>{statusLabel}</Text>
@@ -350,6 +350,15 @@ export default function OpenJobControlScreen() {
                           <Text style={{ color: oldestAgeDays >= 4 ? theme.chartRed : theme.chartYellow, fontSize: 12 }}>
                             {oldestAgeDays === 0 ? 'Today' : `${oldestAgeDays}d old`}
                           </Text>
+                          <TouchableOpacity
+                            style={{ backgroundColor: theme.primary + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}
+                            onPress={() => {
+                              console.log('OpenJobControl: Workspace button pressed for WIP:', summary.normalizedWip);
+                              router.push({ pathname: '/wip-workspace', params: { wip: summary.normalizedWip } } as any);
+                            }}
+                          >
+                            <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '700' }}>Workspace</Text>
+                          </TouchableOpacity>
                         </View>
                         <IconSymbol
                           ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}
