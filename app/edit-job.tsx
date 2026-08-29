@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,9 @@ import {
   StoredImage,
 } from '@/utils/imageStorage';
 import { updateWidgetData } from '@/utils/widgetManager';
+import { jobHistoryStorage, JobHistoryEntry } from '@/utils/jobHistoryStorage';
+import { normalizeWip } from '@/utils/wipEngine';
+import { awToHours } from '@/utils/billingEngine';
 
 const VHC_COLORS: Record<string, string> = {
   NONE: '#636366',
@@ -43,6 +46,9 @@ export default function EditJobScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [sessionHistory, setSessionHistory] = useState<JobHistoryEntry[]>([]);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const originalJobRef = useRef<{ wipNumber: string; vehicleReg: string; aw: number; notes: string; vhcStatus: string } | null>(null);
 
   // Fields
   const [wipNumber, setWipNumber] = useState('');
@@ -74,10 +80,26 @@ export default function EditJobScreen() {
         setNotes(job.notes || '');
         setVhcStatus(job.vhcStatus || 'NONE');
         setJobDate(new Date(job.createdAt));
+        // Store original values for change detection
+        originalJobRef.current = {
+          wipNumber: job.wipNumber,
+          vehicleReg: job.vehicleReg,
+          aw: job.aw ?? 0,
+          notes: job.notes || '',
+          vhcStatus: job.vhcStatus || 'NONE',
+        };
         console.log('EditJobScreen: Job loaded successfully:', jobId);
         const imgs = await getJobImages(job.id);
         console.log('EditJobScreen: Loaded', imgs.length, 'images for job:', jobId);
         setImages(imgs);
+        // Load session history
+        try {
+          const history = await jobHistoryStorage.getForJob(job.id);
+          setSessionHistory(history);
+          console.log('EditJobScreen: Loaded', history.length, 'history events for job:', jobId);
+        } catch (histErr) {
+          console.warn('EditJobScreen: Failed to load session history (non-fatal):', histErr);
+        }
       } else {
         console.warn('EditJobScreen: Job not found:', jobId);
         Alert.alert('Error', 'Job not found', [{ text: 'OK', onPress: () => router.back() }]);
@@ -216,7 +238,95 @@ export default function EditJobScreen() {
         vhcStatus,
         createdAt: jobDate.toISOString(),
       });
-      console.log('EditJobScreen: Job saved, updating widget data');
+      console.log('EditJobScreen: Job saved successfully, recording history events');
+
+      // Record history events for meaningful changes
+      const normWip = normalizeWip(wipNumber);
+      const orig = originalJobRef.current;
+      if (orig) {
+        const origAw = orig.aw ?? 0;
+        const origHours = awToHours(origAw);
+        const newHours = awToHours(awNum);
+
+        if (awNum !== origAw) {
+          console.log('EditJobScreen: AW changed:', origAw, '->', awNum, '— recording AW_CHANGED');
+          await jobHistoryStorage.recordEvent({
+            jobId: jobId!,
+            wipNumber: normWip,
+            eventType: 'AW_CHANGED',
+            timestamp: new Date().toISOString(),
+            description: `AW changed: ${origAw} → ${awNum}`,
+            previousValue: String(origAw),
+            newValue: String(awNum),
+            awValue: awNum,
+          });
+          console.log('EditJobScreen: Hours changed:', origHours.toFixed(1), '->', newHours.toFixed(1), '— recording HOURS_CHANGED');
+          await jobHistoryStorage.recordEvent({
+            jobId: jobId!,
+            wipNumber: normWip,
+            eventType: 'HOURS_CHANGED',
+            timestamp: new Date().toISOString(),
+            description: `Hours changed: ${origHours.toFixed(1)}h → ${newHours.toFixed(1)}h`,
+            previousValue: origHours.toFixed(1),
+            newValue: newHours.toFixed(1),
+            hoursValue: newHours,
+          });
+        }
+
+        if (notes !== (orig.notes ?? '')) {
+          console.log('EditJobScreen: Notes changed — recording NOTES_UPDATED');
+          await jobHistoryStorage.recordEvent({
+            jobId: jobId!,
+            wipNumber: normWip,
+            eventType: 'NOTES_UPDATED',
+            timestamp: new Date().toISOString(),
+            description: 'Job notes updated',
+            previousValue: orig.notes ?? '',
+            newValue: notes,
+          });
+        }
+
+        if (vhcStatus !== orig.vhcStatus) {
+          console.log('EditJobScreen: VHC changed:', orig.vhcStatus, '->', vhcStatus, '— recording VHC_UPDATED');
+          await jobHistoryStorage.recordEvent({
+            jobId: jobId!,
+            wipNumber: normWip,
+            eventType: 'VHC_UPDATED',
+            timestamp: new Date().toISOString(),
+            description: `VHC updated: ${orig.vhcStatus} → ${vhcStatus}`,
+            previousValue: orig.vhcStatus,
+            newValue: vhcStatus,
+          });
+        }
+
+        if (normalizeWip(wipNumber) !== normalizeWip(orig.wipNumber ?? '')) {
+          console.log('EditJobScreen: WIP changed:', orig.wipNumber, '->', wipNumber, '— recording WIP_CHANGED');
+          await jobHistoryStorage.recordEvent({
+            jobId: jobId!,
+            wipNumber: normWip,
+            eventType: 'WIP_CHANGED',
+            timestamp: new Date().toISOString(),
+            description: `WIP changed: ${orig.wipNumber} → ${wipNumber}`,
+            previousValue: orig.wipNumber,
+            newValue: wipNumber,
+          });
+        }
+
+        if (vehicleReg.toUpperCase() !== (orig.vehicleReg ?? '').toUpperCase()) {
+          console.log('EditJobScreen: Reg changed:', orig.vehicleReg, '->', vehicleReg.toUpperCase(), '— recording REG_CHANGED');
+          await jobHistoryStorage.recordEvent({
+            jobId: jobId!,
+            wipNumber: normWip,
+            eventType: 'REG_CHANGED',
+            timestamp: new Date().toISOString(),
+            description: `Registration changed: ${orig.vehicleReg} → ${vehicleReg.toUpperCase()}`,
+            previousValue: orig.vehicleReg,
+            newValue: vehicleReg.toUpperCase(),
+          });
+        }
+      }
+
+      console.log('EditJobScreen: History recorded, updating widget data');
       await updateWidgetData();
       console.log('EditJobScreen: Closing screen after successful save (800ms delay)');
       setTimeout(() => router.back(), 800);
@@ -467,6 +577,74 @@ export default function EditJobScreen() {
             >
               <Text style={styles.imagePickerButtonText}>🖼 Gallery</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* SESSION HISTORY */}
+        {sessionHistory.length > 0 && (
+          <View style={{ marginTop: 24 }}>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('EditJobScreen: Session history toggle tapped, expanding:', !historyExpanded);
+                setHistoryExpanded(v => !v);
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 8,
+              }}
+            >
+              <Text style={[styles.label, { color: theme.textSecondary, marginTop: 0, marginBottom: 0 }]}>
+                SESSION HISTORY
+              </Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+                {historyExpanded ? '▲ HIDE' : `▼ SHOW (${sessionHistory.length})`}
+              </Text>
+            </TouchableOpacity>
+            {historyExpanded && (
+              <View style={{ borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 8 }}>
+                {sessionHistory.map((entry, idx) => {
+                  const entryDate = new Date(entry.timestamp);
+                  const entryDateStr = entryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+                  const entryTimeStr = entryDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                  const isLast = idx === sessionHistory.length - 1;
+                  return (
+                    <View
+                      key={entry.id}
+                      style={{
+                        flexDirection: 'row',
+                        paddingBottom: isLast ? 0 : 10,
+                        borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+                        borderBottomColor: theme.border,
+                        marginBottom: isLast ? 0 : 10,
+                      }}
+                    >
+                      <Text style={{ color: theme.textSecondary, fontSize: 10, width: 80 }}>
+                        {entryDateStr}
+                        {'\n'}
+                        {entryTimeStr}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
+                          {entry.eventType.replace(/_/g, ' ')}
+                        </Text>
+                        <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 1 }}>
+                          {entry.description}
+                        </Text>
+                        {entry.previousValue !== undefined && entry.newValue !== undefined && (
+                          <View style={{ flexDirection: 'row', gap: 4, marginTop: 2, alignItems: 'center' }}>
+                            <Text style={{ color: '#ff6b6b', fontSize: 11 }}>{entry.previousValue}</Text>
+                            <Text style={{ color: theme.textSecondary, fontSize: 11 }}>→</Text>
+                            <Text style={{ color: '#4fc3f7', fontSize: 11 }}>{entry.newValue}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
 

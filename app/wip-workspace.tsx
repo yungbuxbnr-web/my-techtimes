@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,9 @@ import {
   getBillingRecordsForWip,
   getWipSummary,
   reopenWip,
+  buildWipTimeline,
   WipSummary,
+  WipTimelineEvent,
 } from '@/utils/wipEngine';
 import { normaliseBillingStatus, awToHours } from '@/utils/billingEngine';
 import { Job } from '@/utils/api';
@@ -61,6 +63,56 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   notes_changed: 'Notes Updated',
   returned_to_in_progress: 'Returned to In Progress',
 };
+
+// ── Timeline helpers ──────────────────────────────────────────────────────────
+
+function getTimelineDotColor(category: string, eventType: string): string {
+  if (category === 'billing') {
+    if (eventType === 'WIP_REOPENED' || eventType === 'billing_reopened') return '#ff9800';
+    if (eventType === 'WIP_COMPLETED' || eventType === 'marked_billed' || eventType === 'work_marked_complete') return '#4caf50';
+    return '#ff9800';
+  }
+  if (category === 'vhc') return '#ff9800';
+  if (category === 'evidence') return '#9c27b0';
+  if (category === 'changes') return '#ff9800';
+  if (category === 'system') return '#636366';
+  return '#4fc3f7'; // work / default = blue
+}
+
+function getTimelineIcon(eventType: string): string {
+  const icons: Record<string, string> = {
+    WIP_FIRST_RECORDED: '🔧',
+    WORK_SESSION_ADDED: '🔧',
+    JOB_EDITED: '✏️',
+    AW_CHANGED: '✏️',
+    HOURS_CHANGED: '✏️',
+    NOTES_UPDATED: '📝',
+    VHC_UPDATED: '🔍',
+    WIP_CHANGED: '✏️',
+    REG_CHANGED: '✏️',
+    DATE_CHANGED: '📅',
+    IMAGE_ADDED: '📷',
+    IMAGE_REMOVED: '🗑️',
+    TECHNICAL_CASE: '🔬',
+    TECHNICAL_CASE_LINKED: '🔬',
+    HANDOVER_CREATED: '📋',
+    WIP_COMPLETED: '✅',
+    WIP_INVOICED: '✅',
+    work_marked_complete: '✅',
+    marked_billed: '✅',
+    WIP_REOPENED: '🔄',
+    billing_reopened: '🔄',
+    BILLING_ADJUSTED: '💰',
+    billing_adjusted: '💰',
+    DATA_RESTORED: '💾',
+    DATA_REPAIRED: '🔧',
+    WIP_CONFLICT_DETECTED: '⚠️',
+    billing_created: '💰',
+    notes_changed: '📝',
+    returned_to_in_progress: '🔄',
+  };
+  return icons[eventType] ?? '•';
+}
 
 // ── CollapsibleSection ────────────────────────────────────────────────────────
 
@@ -245,6 +297,11 @@ export default function WipWorkspaceScreen() {
   const [data, setData] = useState<WipData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'work' | 'billing' | 'vhc' | 'evidence' | 'changes'>('all');
+  const [timelineNewestFirst, setTimelineNewestFirst] = useState(true);
+  const [expandedTimelineEvents, setExpandedTimelineEvents] = useState<Set<string>>(new Set());
+  const [fullTimeline, setFullTimeline] = useState<WipTimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   const PT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 8 : 16;
 
@@ -291,6 +348,18 @@ export default function WipWorkspaceScreen() {
       console.log('WipWorkspace: Loaded — sessions:', sessions.length, 'billing records:', billingRecords.length, 'history:', billingHistory.length, 'cases:', cases.length);
 
       setData({ summary, sessions, billingRecords, billingHistory, imagesByJobId, cases });
+
+      // Build full timeline
+      setTimelineLoading(true);
+      try {
+        const tl = await buildWipTimeline(wip, allJobs);
+        setFullTimeline(tl);
+        console.log('WipWorkspace: Timeline built with', tl.length, 'events');
+      } catch (tlErr) {
+        console.warn('WipWorkspace: Timeline load error (non-fatal):', tlErr);
+      } finally {
+        setTimelineLoading(false);
+      }
     } catch (err: any) {
       console.error('WipWorkspace: Error loading data:', err);
       setError(err?.message ?? 'Failed to load WIP data');
@@ -367,6 +436,12 @@ export default function WipWorkspaceScreen() {
     }
   }, [data]);
 
+  // ── Filtered/sorted timeline (must be before early returns — hooks rules) ────
+  const filteredTimeline = useMemo(() => {
+    const filtered = timelineFilter === 'all' ? fullTimeline : fullTimeline.filter(e => e.category === timelineFilter);
+    return timelineNewestFirst ? [...filtered].reverse() : filtered;
+  }, [fullTimeline, timelineFilter, timelineNewestFirst]);
+
   if (loading) {
     return (
       <AppBackground>
@@ -435,7 +510,7 @@ export default function WipWorkspaceScreen() {
 
   const hasBillingAttention = wipStatus === 'mixed' || (sessions.length > 0 && billingRecords.length === 0);
 
-  // ── Timeline events ─────────────────────────────────────────────────────────
+  // ── Timeline events (legacy — kept for backward compat) ─────────────────────
 
   interface TimelineEvent {
     timestamp: string;
@@ -810,29 +885,142 @@ export default function WipWorkspaceScreen() {
         )}
 
         {/* SECTION 8 — WIP TIMELINE */}
-        <CollapsibleSection title="WIP TIMELINE" badge={timelineEvents.length} defaultOpen={false} theme={theme}>
-          {timelineEvents.length === 0 ? (
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No timeline events recorded.</Text>
-          ) : (
-            timelineEvents.map((event, idx) => {
-              const dotColor = event.type === 'session' ? theme.primary : '#ff9800';
-              const eventTime = formatDateTime(event.timestamp);
+        <CollapsibleSection title="WIP TIMELINE" badge={fullTimeline.length} defaultOpen={false} theme={theme}>
+          {/* Filter chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+            {(['all', 'work', 'billing', 'vhc', 'evidence', 'changes'] as const).map(f => {
+              const isActive = timelineFilter === f;
               return (
-                <View key={idx} style={styles.timelineItem}>
-                  <View style={styles.timelineLeft}>
-                    <View style={[styles.timelineDot, { backgroundColor: dotColor }]} />
-                    {idx < timelineEvents.length - 1 && (
-                      <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
-                    )}
+                <TouchableOpacity
+                  key={f}
+                  onPress={() => {
+                    console.log('WipWorkspace: Timeline filter changed to:', f);
+                    setTimelineFilter(f);
+                  }}
+                  style={{
+                    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8,
+                    backgroundColor: isActive ? theme.primary : theme.card,
+                    borderWidth: 1, borderColor: isActive ? theme.primary : theme.border,
+                  }}
+                >
+                  <Text style={{ color: isActive ? '#fff' : theme.textSecondary, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Sort toggle */}
+          <TouchableOpacity
+            onPress={() => {
+              const next = !timelineNewestFirst;
+              console.log('WipWorkspace: Timeline sort toggled, newestFirst:', next);
+              setTimelineNewestFirst(next);
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, alignSelf: 'flex-end' }}
+          >
+            <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+              {timelineNewestFirst ? 'NEWEST FIRST' : 'OLDEST FIRST'}
+            </Text>
+          </TouchableOpacity>
+
+          {timelineLoading ? (
+            <ActivityIndicator size="small" color={theme.primary} style={{ marginVertical: 16 }} />
+          ) : filteredTimeline.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+              {fullTimeline.length === 0 ? 'No timeline events recorded yet.' : 'No events match this filter.'}
+            </Text>
+          ) : (
+            filteredTimeline.map((event, idx) => {
+              const isExpanded = expandedTimelineEvents.has(event.id);
+              const isLast = idx === filteredTimeline.length - 1;
+              const dotColor = getTimelineDotColor(event.category, event.eventType);
+              const icon = getTimelineIcon(event.eventType);
+              const eventTimeStr = formatDateTime(event.timestamp);
+              const sessionLabel = event.sessionNumber ? `  ·  Session ${event.sessionNumber}` : '';
+
+              return (
+                <TouchableOpacity
+                  key={event.id}
+                  activeOpacity={event.expandable ? 0.7 : 1}
+                  onPress={() => {
+                    if (!event.expandable) return;
+                    console.log('WipWorkspace: Timeline event tapped, id:', event.id, 'expanding:', !isExpanded);
+                    setExpandedTimelineEvents(prev => {
+                      const next = new Set(prev);
+                      if (next.has(event.id)) next.delete(event.id);
+                      else next.add(event.id);
+                      return next;
+                    });
+                  }}
+                  style={{ flexDirection: 'row', marginBottom: isLast ? 0 : 4 }}
+                >
+                  {/* Left: dot + line */}
+                  <View style={{ width: 28, alignItems: 'center' }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginTop: 4 }} />
+                    {!isLast && <View style={{ width: 1.5, flex: 1, backgroundColor: theme.border, marginTop: 2 }} />}
                   </View>
-                  <View style={styles.timelineContent}>
-                    <Text style={[styles.timelineTime, { color: theme.textSecondary }]}>{eventTime}</Text>
-                    <Text style={[styles.timelineLabel, { color: theme.text }]}>{event.label}</Text>
-                    <Text style={[styles.timelineDetail, { color: theme.textSecondary }]} numberOfLines={2}>
+
+                  {/* Right: content */}
+                  <View style={{ flex: 1, paddingBottom: 14, paddingLeft: 8 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 10, marginBottom: 2 }}>
+                      {eventTimeStr}
+                      {sessionLabel}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 11 }}>{icon}</Text>
+                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }}>{event.label}</Text>
+                      {event.expandable && (
+                        <Text style={{ color: theme.textSecondary, fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</Text>
+                      )}
+                    </View>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }} numberOfLines={isExpanded ? undefined : 2}>
                       {event.detail}
                     </Text>
+
+                    {/* Expanded detail */}
+                    {isExpanded && (
+                      <View style={{ marginTop: 8, padding: 10, backgroundColor: theme.background, borderRadius: 8, gap: 4 }}>
+                        {event.previousValue !== undefined && event.newValue !== undefined && (
+                          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                            <Text style={{ color: '#ff6b6b', fontSize: 12 }}>{event.previousValue}</Text>
+                            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>→</Text>
+                            <Text style={{ color: '#4fc3f7', fontSize: 12 }}>{event.newValue}</Text>
+                          </View>
+                        )}
+                        {event.awValue !== undefined && (
+                          <Text style={{ color: theme.textSecondary, fontSize: 12 }}>AW: {event.awValue}</Text>
+                        )}
+                        {event.hoursValue !== undefined && (
+                          <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Hours: {event.hoursValue.toFixed(1)}h</Text>
+                        )}
+                        {event.jobId && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              console.log('WipWorkspace: Timeline Open Session tapped — jobId:', event.jobId);
+                              router.push({ pathname: '/edit-job', params: { id: event.jobId } } as any);
+                            }}
+                            style={{ marginTop: 4 }}
+                          >
+                            <Text style={{ color: theme.primary, fontSize: 12 }}>Open Session →</Text>
+                          </TouchableOpacity>
+                        )}
+                        {event.relatedId && event.eventType === 'TECHNICAL_CASE' && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              console.log('WipWorkspace: Timeline Open Technical Case tapped — caseId:', event.relatedId);
+                              router.push({ pathname: '/technical-cases', params: { caseId: event.relatedId } } as any);
+                            }}
+                            style={{ marginTop: 4 }}
+                          >
+                            <Text style={{ color: theme.primary, fontSize: 12 }}>Open Technical Case →</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}

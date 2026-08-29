@@ -49,6 +49,8 @@ import { templateStorage, JobTemplate } from '@/utils/moduleStorage';
 import { quickCaptureStorage, quickCaptureStats, QuickPreset } from '@/utils/quickCaptureStorage';
 import { normalizeWip, getJobsForWip, getBillingRecordsForWip, getWipBillingStatus, completeWip, detectWipVehicleConflict } from '@/utils/wipEngine';
 import { billingStorage } from '@/utils/billingStorage';
+import { jobHistoryStorage } from '@/utils/jobHistoryStorage';
+import { awToHours } from '@/utils/billingEngine';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -506,6 +508,33 @@ export default function AddJobModal() {
         for (const presetId of qcSelected) {
           console.log('AddJobModal: Recording Quick Capture preset usage for:', presetId);
           quickCaptureStorage.recordUsage(presetId).catch(() => {});
+        }
+
+        // Record job history event
+        try {
+          const normWip = normalizeWip(wipNumber);
+          const freshJobs = await api.getAllJobs();
+          const wipJobs = getJobsForWip(normWip, freshJobs);
+          const isFirstSession = wipJobs.length <= 1;
+          const sessionNum = wipJobs.length;
+          const hoursVal = awToHours(aw);
+          const histEventType = isFirstSession ? 'WIP_FIRST_RECORDED' : 'WORK_SESSION_ADDED';
+          const histDesc = isFirstSession
+            ? `WIP first recorded — ${notes.trim() || 'No description'}`
+            : `Work session ${sessionNum} added — ${notes.trim() || 'No description'}`;
+          console.log('AddJobModal: Recording job history event:', histEventType, 'for job:', newJob.id, 'WIP:', normWip);
+          await jobHistoryStorage.recordEvent({
+            jobId: newJob.id,
+            wipNumber: normWip,
+            eventType: histEventType,
+            timestamp: new Date().toISOString(),
+            description: histDesc,
+            sessionNumber: sessionNum,
+            awValue: aw,
+            hoursValue: hoursVal,
+          });
+        } catch (histErr) {
+          console.warn('AddJobModal: Job history recording failed (non-fatal):', histErr);
         }
 
         setSaveNotificationType('success');
