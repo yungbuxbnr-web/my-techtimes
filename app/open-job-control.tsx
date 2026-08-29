@@ -359,6 +359,30 @@ export default function OpenJobControlScreen() {
                           >
                             <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '700' }}>Workspace</Text>
                           </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{
+                              backgroundColor: 'rgba(79,195,247,0.12)',
+                              borderRadius: 6,
+                              paddingVertical: 4,
+                              paddingHorizontal: 8,
+                              borderWidth: 1,
+                              borderColor: '#4fc3f7',
+                              marginTop: 2,
+                            }}
+                            onPress={() => {
+                              console.log('OpenJobControl: Continue WIP tapped:', summary.normalizedWip);
+                              router.push({
+                                pathname: '/add-job-modal',
+                                params: {
+                                  continueWip: summary.displayWip,
+                                  continueReg: summary.vehicleReg,
+                                  returnToWorkspace: 'true',
+                                },
+                              } as any);
+                            }}
+                          >
+                            <Text style={{ color: '#4fc3f7', fontSize: 11, fontWeight: '700' }}>+ SESSION</Text>
+                          </TouchableOpacity>
                         </View>
                         <IconSymbol
                           ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}

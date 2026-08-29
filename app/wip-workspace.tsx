@@ -10,8 +10,9 @@ import {
   Image,
   Platform,
   StatusBar,
+  Alert,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -24,6 +25,7 @@ import {
   getJobsForWip,
   getBillingRecordsForWip,
   getWipSummary,
+  reopenWip,
   WipSummary,
 } from '@/utils/wipEngine';
 import { normaliseBillingStatus, awToHours } from '@/utils/billingEngine';
@@ -246,7 +248,7 @@ export default function WipWorkspaceScreen() {
 
   const PT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 8 : 16;
 
-  const load = useCallback(async () => {
+  const loadData = useCallback(async () => {
     console.log('WipWorkspace: Loading data for WIP:', wip);
     setLoading(true);
     setError(null);
@@ -297,9 +299,73 @@ export default function WipWorkspaceScreen() {
     }
   }, [wip]);
 
+  // Alias for backward compat within this component
+  const load = loadData;
+
   useEffect(() => {
-    load();
-  }, [load]);
+    loadData();
+  }, [loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('WipWorkspace: Screen focused — refreshing data');
+      loadData();
+    }, [loadData])
+  );
+
+  // ── Continue WIP handler — defined before early returns to satisfy hooks rules ──
+  const handleContinueWip = useCallback(async () => {
+    const summary = data?.summary;
+    if (!summary) return;
+    const nwip = summary.normalizedWip;
+    const reg = summary.vehicleReg;
+
+    console.log('WipWorkspace: Continue WIP tapped — WIP:', nwip, 'status:', summary.status);
+
+    if (summary.status === 'billed') {
+      Alert.alert(
+        'WIP Currently Closed',
+        `WIP ${summary.displayWip} was previously marked Invoiced / Closed.\n\nAdding more work requires reopening the WIP.\n\nPrevious billing history will be preserved.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Reopen & Continue',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                console.log('WipWorkspace: Reopening WIP:', nwip);
+                const allJobs = await api.getAllJobs();
+                const allRecords = await billingStorage.getAllRecords();
+                const result = await reopenWip(nwip, allJobs, allRecords);
+                console.log('WipWorkspace: Reopen result:', result);
+                router.push({
+                  pathname: '/add-job-modal',
+                  params: {
+                    continueWip: summary.displayWip,
+                    continueReg: reg,
+                    returnToWorkspace: 'true',
+                  },
+                } as any);
+              } catch (err) {
+                console.error('WipWorkspace: Failed to reopen WIP:', err);
+                Alert.alert('Error', 'Failed to reopen WIP. Please try again.');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      console.log('WipWorkspace: Navigating to Add Job for Continue WIP:', nwip);
+      router.push({
+        pathname: '/add-job-modal',
+        params: {
+          continueWip: summary.displayWip,
+          continueReg: reg,
+          returnToWorkspace: 'true',
+        },
+      } as any);
+    }
+  }, [data]);
 
   if (loading) {
     return (
@@ -435,6 +501,42 @@ export default function WipWorkspaceScreen() {
           ) : null}
         </View>
       </View>
+
+      {/* CONTINUE WIP BUTTON */}
+      <TouchableOpacity
+        onPress={handleContinueWip}
+        style={{
+          backgroundColor: summary.status === 'billed' ? '#7c3a00' : '#1a3a5c',
+          borderRadius: 12,
+          paddingVertical: 14,
+          paddingHorizontal: 20,
+          marginHorizontal: 16,
+          marginTop: 12,
+          marginBottom: 4,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 10,
+          borderWidth: 1,
+          borderColor: summary.status === 'billed' ? '#ff9800' : '#4fc3f7',
+        }}
+      >
+        <Text style={{
+          color: summary.status === 'billed' ? '#ff9800' : '#4fc3f7',
+          fontWeight: '800',
+          fontSize: 16,
+          letterSpacing: 1,
+        }}>
+          {summary.status === 'billed' ? 'REOPEN & CONTINUE' : 'CONTINUE WIP'}
+        </Text>
+        <Text style={{
+          color: summary.status === 'billed' ? '#ff9800' : '#4fc3f7',
+          fontSize: 12,
+          opacity: 0.8,
+        }}>
+          {summary.status === 'billed' ? 'Add more work to this WIP' : 'Add another work session'}
+        </Text>
+      </TouchableOpacity>
 
       {/* CONFLICT BANNER */}
       {hasConflict && (

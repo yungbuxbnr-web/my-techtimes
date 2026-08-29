@@ -487,6 +487,38 @@ export default function EditJobScreen() {
             <Text style={styles.saveButtonText}>Save Changes</Text>
           )}
         </TouchableOpacity>
+        {wipNumber.length === 5 && (
+          <TouchableOpacity
+            onPress={() => {
+              console.log('EditJob: Continue This WIP tapped — WIP:', wipNumber);
+              router.push({
+                pathname: '/add-job-modal',
+                params: {
+                  continueWip: wipNumber,
+                  continueReg: vehicleReg,
+                  returnToWorkspace: 'true',
+                },
+              } as any);
+            }}
+            style={{
+              backgroundColor: 'rgba(79,195,247,0.10)',
+              borderRadius: 10,
+              paddingVertical: 12,
+              paddingHorizontal: 16,
+              marginTop: 8,
+              borderWidth: 1,
+              borderColor: '#4fc3f7',
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#4fc3f7', fontWeight: '700', fontSize: 14 }}>
+              CONTINUE THIS WIP
+            </Text>
+            <Text style={{ color: '#4fc3f7', fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+              Add another work session to WIP {wipNumber}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
 

@@ -47,6 +47,7 @@ const safeHaptics = {
 import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 import { templateStorage, JobTemplate } from '@/utils/moduleStorage';
 import { normalizeWip, getJobsForWip, getBillingRecordsForWip, getWipBillingStatus, completeWip, detectWipVehicleConflict } from '@/utils/wipEngine';
+import { billingStorage } from '@/utils/billingStorage';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -73,9 +74,13 @@ export default function AddJobModal() {
     editVhcStatus?: string;
     editCreatedAt?: string;
     editImageUri?: string;
+    continueWip?: string;
+    continueReg?: string;
+    returnToWorkspace?: string;
   }>();
 
   const isEditMode = !!params.editId;
+  const isContinueMode = !!params.continueWip;
 
   const [wipNumber, setWipNumber] = useState('');
   const [vehicleReg, setVehicleReg] = useState('');
@@ -97,6 +102,8 @@ export default function AddJobModal() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState<JobTemplate[]>([]);
 
+  const [existingWipBillingRecords, setExistingWipBillingRecords] = useState<any[]>([]);
+
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [suggestions, setSuggestions] = useState<JobSuggestion[]>([]);
@@ -107,7 +114,7 @@ export default function AddJobModal() {
 
   const awOptions = Array.from({ length: 101 }, (_, i) => i);
 
-  // Pre-fill fields when editing an existing job
+  // Pre-fill fields when editing an existing job or continuing a WIP
   // All params arrive as strings on Android — parse numerics explicitly
   useEffect(() => {
     if (isEditMode) {
@@ -131,8 +138,21 @@ export default function AddJobModal() {
       }
       const rawImageUri = String(params.editImageUri || '');
       if (rawImageUri) setJobCardImageUri(rawImageUri);
+    } else if (isContinueMode) {
+      console.log('AddJobModal: Continue WIP mode — prefilling WIP:', params.continueWip, 'Reg:', params.continueReg);
+      if (params.continueWip) setWipNumber(String(params.continueWip));
+      if (params.continueReg) setVehicleReg(String(params.continueReg));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load billing records for WIP status indicator
+  useEffect(() => {
+    if (wipNumber.length < 3) { setExistingWipBillingRecords([]); return; }
+    const nwip = normalizeWip(wipNumber);
+    billingStorage.getAllRecords().then(records => {
+      setExistingWipBillingRecords(getBillingRecordsForWip(nwip, records));
+    }).catch(() => {});
+  }, [wipNumber]);
 
   // Load templates
   useEffect(() => {
@@ -423,7 +443,15 @@ export default function AddJobModal() {
 
         console.log('AddJobModal: Job saved - all stats will update live');
         console.log('AddJobModal: Closing modal after successful save (800ms delay)');
-        setTimeout(() => router.back(), 800);
+        setTimeout(() => {
+          if (params.returnToWorkspace === 'true' && params.continueWip) {
+            const nwip = normalizeWip(String(params.continueWip));
+            console.log('AddJobModal: Returning to WIP Workspace for WIP:', nwip);
+            router.replace({ pathname: '/wip-workspace', params: { wip: nwip } } as any);
+          } else {
+            router.back();
+          }
+        }, 800);
       }
     } catch (error) {
       console.error('AddJobModal: Error saving job:', error);
@@ -680,7 +708,7 @@ export default function AddJobModal() {
       <Stack.Screen
         options={{
           presentation: 'modal',
-          title: isEditMode ? 'Edit Job' : 'Add Job',
+          title: isContinueMode ? `Continue WIP ${params.continueWip ?? ''}` : isEditMode ? 'Edit Job' : 'Add Job',
           headerShown: true,
           headerLeft: () => (
             <TouchableOpacity
@@ -714,7 +742,28 @@ export default function AddJobModal() {
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
-            <View style={styles.formGroup}>
+            {isContinueMode && (
+              <View style={{
+                backgroundColor: 'rgba(79,195,247,0.12)',
+                borderRadius: 8,
+                padding: 10,
+                marginBottom: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: '#4fc3f7',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <Text style={{ color: '#4fc3f7', fontWeight: '700', fontSize: 12 }}>
+                  CONTINUING WIP {params.continueWip}
+                </Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 11, flex: 1 }}>
+                  Adding a new work session · WIP & Reg locked
+                </Text>
+              </View>
+            )}
+
+            <View style={[styles.formGroup, { opacity: isContinueMode ? 0.7 : 1 }]}>
               <View style={styles.labelRow}>
                 <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>WIP Number *</Text>
                 <TouchableOpacity
@@ -767,31 +816,52 @@ export default function AddJobModal() {
                 maxLength={5}
                 placeholder="12345"
                 placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                editable={!isContinueMode}
               />
             </View>
 
             {/* WIP Status Indicator */}
-            {wipNumber.length >= 3 && (() => {
+            {wipNumber.length >= 3 && !isContinueMode && (() => {
               const nwip = normalizeWip(wipNumber);
               const wipJobs = getJobsForWip(nwip, allJobs);
               if (wipJobs.length === 0) return null;
-              const openSessions = wipJobs.length;
+              const wipBillingRecords = existingWipBillingRecords;
+              const wipStatus = getWipBillingStatus(wipBillingRecords);
+              const isClosed = wipStatus === 'billed';
+              const sessionCount = wipJobs.length;
+              const knownReg = wipJobs[0]?.vehicleReg ?? '';
               return (
                 <View style={{
-                  backgroundColor: 'rgba(59,130,246,0.12)',
+                  backgroundColor: isClosed ? 'rgba(244,67,54,0.10)' : 'rgba(59,130,246,0.12)',
                   borderRadius: 8,
                   padding: 10,
                   marginTop: 4,
                   marginBottom: 4,
                   borderLeftWidth: 3,
-                  borderLeftColor: '#3B82F6',
+                  borderLeftColor: isClosed ? '#f44336' : '#3B82F6',
                 }}>
-                  <Text style={{ color: '#3B82F6', fontWeight: '700', fontSize: 12 }}>
-                    EXISTING WIP FOUND
+                  <Text style={{ color: isClosed ? '#f44336' : '#3B82F6', fontWeight: '700', fontSize: 12 }}>
+                    {isClosed ? 'EXISTING CLOSED WIP' : 'EXISTING OPEN WIP'}
                   </Text>
                   <Text style={{ color: theme.text, fontSize: 12, marginTop: 2 }}>
-                    {`WIP ${nwip} has ${openSessions} existing session${openSessions !== 1 ? 's' : ''}. This will be added as another session.`}
+                    {`WIP ${nwip} · ${sessionCount} session${sessionCount !== 1 ? 's' : ''} · ${knownReg}`}
                   </Text>
+                  {isClosed && (
+                    <Text style={{ color: '#f44336', fontSize: 11, marginTop: 2 }}>
+                      Previously Invoiced / Closed — saving will reopen this WIP
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => {
+                      console.log('AddJobModal: View WIP Workspace tapped for WIP:', nwip);
+                      router.push({ pathname: '/wip-workspace', params: { wip: nwip } } as any);
+                    }}
+                    style={{ marginTop: 6 }}
+                  >
+                    <Text style={{ color: '#4fc3f7', fontSize: 12, fontWeight: '600' }}>
+                      VIEW WIP WORKSPACE →
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               );
             })()}
@@ -872,7 +942,7 @@ export default function AddJobModal() {
               </View>
             )}
 
-            <View style={styles.formGroup}>
+            <View style={[styles.formGroup, { opacity: isContinueMode ? 0.7 : 1 }]}>
               <View style={styles.labelRow}>
                 <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Vehicle Registration *</Text>
                 <TouchableOpacity
@@ -924,6 +994,7 @@ export default function AddJobModal() {
                 autoCapitalize="characters"
                 placeholder="ABC123"
                 placeholderTextColor={isDarkMode ? '#888' : '#999'}
+                editable={!isContinueMode}
               />
             </View>
 
