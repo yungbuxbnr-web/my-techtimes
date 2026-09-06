@@ -9,6 +9,12 @@ import {
   getNetRemainingWorkingMinutes,
   getWorkingProgress,
 } from './workTimeEngine';
+import {
+  getAdjustedAvailableMinutes,
+  getAdjustedAvailableMinutesForPeriod,
+  isEffectiveAvailableWorkingDay,
+} from './absenceCalculations';
+import { getCachedBankHolidays, BankHoliday } from './bankHolidays';
 
 export interface TodayAnalytics {
   date: string;
@@ -51,6 +57,7 @@ export interface MonthAnalytics {
   totalAw: number;
   remainingHours: number;
   remainingWorkingDays: number;
+  remainingAvailableHours: number;
   requiredDailyAverage: number;
   forecast: number;
   forecastConfidence: 'high' | 'medium' | 'low' | 'insufficient';
@@ -97,13 +104,15 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
   const todayStr = now.toISOString().split('T')[0];
   const month = todayStr.slice(0, 7);
 
-  const [schedule, todayJobs, weekJobs, monthlyStats, absences] = await Promise.all([
+  const [schedule, todayJobs, weekJobs, monthlyStats, absences, allBankHolidays] = await Promise.all([
     offlineStorage.getSchedule(),
     api.getTodayJobs(),
     api.getWeekJobs(),
     api.getMonthlyStats(month),
-    offlineStorage.getAbsences(month),
+    offlineStorage.getAllAbsences(),
+    getCachedBankHolidays(),
   ]);
+  const excludeBankHolidays = schedule.excludeBankHolidays ?? true;
 
   console.log('[analyticsEngine] buildFullAnalytics: data loaded', {
     todayJobs: todayJobs.length,
@@ -122,9 +131,10 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
 
   console.log('[analyticsEngine] TODAY engine: netScheduled=%dmin elapsed=%dmin progress=%d%%', netScheduledMins, netElapsedMins, (shiftProgress * 100).toFixed(1));
 
+  const todayAdjustedMins = getAdjustedAvailableMinutes(now, schedule, absences, allBankHolidays, excludeBankHolidays);
+  const todayAvailableHours = todayAdjustedMins / 60;
   const todayAbsence = absences.find(a => a.absenceDate === todayStr);
-  const todayAbsenceHours = todayAbsence?.absenceHours ?? (todayAbsence?.isHalfDay ? dailyHours / 2 : todayAbsence ? dailyHours : 0);
-  const todayAvailableHours = Math.max(0, dailyHours - todayAbsenceHours);
+  const todayAbsenceHours = Math.max(0, (netScheduledMins - todayAdjustedMins) / 60);
 
   const todayAw = todayJobs.reduce((s, j) => s + j.aw, 0);
   const todaySoldHours = (todayAw * 5) / 60;
@@ -166,9 +176,14 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
   weekStart.setDate(now.getDate() - now.getDay() + 1);
   let weekWorkingDaysElapsed = 0;
   for (let d = new Date(weekStart); d <= now; d.setDate(d.getDate() + 1)) {
-    if (workingDays.includes(d.getDay())) weekWorkingDaysElapsed++;
+    if (isEffectiveAvailableWorkingDay(d, schedule, absences, allBankHolidays, excludeBankHolidays)) {
+      weekWorkingDaysElapsed++;
+    }
   }
-  const weekAvailableHours = weekWorkingDaysElapsed * dailyHours;
+  const weekAvailableMins = getAdjustedAvailableMinutesForPeriod(
+    weekStart, now, schedule, absences, allBankHolidays, excludeBankHolidays
+  );
+  const weekAvailableHours = weekAvailableMins / 60;
   const weekEfficiency = weekAvailableHours > 0 ? (weekSoldHours / weekAvailableHours) * 100 : 0;
 
   const week: WeekAnalytics = {
@@ -188,13 +203,27 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
   let remainingWorkingDays = 0;
+  let remainingAvailableMins = 0;
   const lastDay = new Date(year, monthNum, 0);
   for (let d = new Date(tomorrow); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    if (workingDays.includes(d.getDay())) remainingWorkingDays++;
+    const adjMins = getAdjustedAvailableMinutes(d, schedule, absences, allBankHolidays, excludeBankHolidays);
+    if (adjMins > 0) {
+      remainingWorkingDays++;
+      remainingAvailableMins += adjMins;
+    }
   }
+  const remainingAvailableHours = remainingAvailableMins / 60;
 
   const remainingHours = Math.max(0, monthlyStats.targetHours - monthlyStats.soldHours);
   const requiredDailyAverage = remainingWorkingDays > 0 ? remainingHours / remainingWorkingDays : 0;
+
+  // Compute adjusted available hours for the whole current month
+  const monthStart = new Date(year, monthNum - 1, 1);
+  const monthEnd = new Date(year, monthNum, 0);
+  const monthAdjustedMins = getAdjustedAvailableMinutesForPeriod(
+    monthStart, monthEnd, schedule, absences, allBankHolidays, excludeBankHolidays
+  );
+  const monthAdjustedAvailableHours = monthAdjustedMins / 60;
 
   const allJobs = await offlineStorage.getAllJobs();
   const recentDays: number[] = [];
@@ -228,12 +257,13 @@ export async function buildFullAnalytics(): Promise<FullAnalytics> {
     month,
     soldHours: Math.round(monthlyStats.soldHours * 100) / 100,
     targetHours: Math.round(monthlyStats.targetHours * 100) / 100,
-    availableHours: Math.round(monthlyStats.availableHours * 100) / 100,
+    availableHours: Math.round(monthAdjustedAvailableHours * 100) / 100,
     efficiency: Math.round(monthlyStats.efficiency * 10) / 10,
     jobCount: monthlyStats.totalJobs,
     totalAw: monthlyStats.totalAw,
     remainingHours: Math.round(remainingHours * 100) / 100,
     remainingWorkingDays,
+    remainingAvailableHours: Math.round(remainingAvailableHours * 100) / 100,
     requiredDailyAverage: Math.round(requiredDailyAverage * 100) / 100,
     forecast: Math.round(forecast * 100) / 100,
     forecastConfidence,

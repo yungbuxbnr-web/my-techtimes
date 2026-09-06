@@ -1,8 +1,9 @@
 
 // utils/absenceCalculations.ts
 
-import { buildWorkScheduleInput, getNetScheduledHours } from './workTimeEngine';
-import { Schedule } from './offlineStorage';
+import { buildWorkScheduleInput, getNetScheduledHours, getNetScheduledMinutesForDate } from './workTimeEngine';
+import { Schedule, Absence } from './offlineStorage';
+import { BankHoliday, isBankHolidaySync } from './bankHolidays';
 
 export type AbsenceDuration = 'full_day' | 'half_day' | 'custom_hours';
 export type HalfDayPeriod = 'morning' | 'afternoon';
@@ -138,6 +139,101 @@ export function getAbsenceDayFractionForDate(
 
   const absenceHours = getAbsenceHoursForDate(dateStr, absences, scheduledHours);
   return calculateDayFraction(absenceHours, scheduledHours);
+}
+
+/**
+ * Get absence minutes for a specific date from the absence array.
+ * Handles new format (absenceHours), legacy isHalfDay, legacy customHours.
+ * Returns 0 if no absence record exists for that date.
+ * Caps at scheduled minutes to prevent negative availability.
+ */
+export function getAbsenceMinutesForDate(
+  dateStr: string,
+  absences: Absence[],
+  scheduledMinutes: number
+): number {
+  const absence = absences.find(a => a.absenceDate === dateStr);
+  if (!absence) return 0;
+  const safeScheduled = isFinite(scheduledMinutes) && scheduledMinutes > 0 ? scheduledMinutes : 0;
+
+  let absenceMinutes: number;
+  if (absence.absenceHours !== undefined && isFinite(absence.absenceHours) && absence.absenceHours > 0) {
+    absenceMinutes = Math.round(absence.absenceHours * 60);
+  } else if (absence.customHours !== undefined && isFinite(absence.customHours) && absence.customHours > 0) {
+    absenceMinutes = Math.round(absence.customHours * 60);
+  } else if (absence.isHalfDay) {
+    absenceMinutes = Math.round(safeScheduled / 2);
+  } else {
+    absenceMinutes = safeScheduled; // full day
+  }
+  return Math.min(absenceMinutes, safeScheduled);
+}
+
+/**
+ * Get adjusted available minutes for a specific date.
+ * = max(0, netScheduledMinutes - bankHolidayDeduction - absenceMinutes)
+ *
+ * Bank holiday: if excludeBankHolidays is true AND the date is a bank holiday,
+ * the entire scheduled day is excluded (deduction = scheduledMinutes).
+ * Absence is then capped so total deduction never exceeds scheduledMinutes.
+ */
+export function getAdjustedAvailableMinutes(
+  date: Date,
+  schedule: any,
+  absences: Absence[],
+  bankHolidays: BankHoliday[],
+  excludeBankHolidays: boolean
+): number {
+  const scheduledMins = getNetScheduledMinutesForDate(schedule, date);
+  if (scheduledMins <= 0) return 0;
+
+  const dateStr = date.toISOString().split('T')[0];
+
+  // Bank holiday exclusion
+  if (excludeBankHolidays && isBankHolidaySync(dateStr, bankHolidays)) {
+    return 0;
+  }
+
+  const absenceMins = getAbsenceMinutesForDate(dateStr, absences, scheduledMins);
+  return Math.max(0, scheduledMins - absenceMins);
+}
+
+/**
+ * Get adjusted available minutes summed over an inclusive date range.
+ * Iterates each calendar date — only processes dates where schedule has working time.
+ */
+export function getAdjustedAvailableMinutesForPeriod(
+  startDate: Date,
+  endDate: Date,
+  schedule: any,
+  absences: Absence[],
+  bankHolidays: BankHoliday[],
+  excludeBankHolidays: boolean
+): number {
+  let total = 0;
+  const d = new Date(startDate);
+  d.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+  while (d <= end) {
+    total += getAdjustedAvailableMinutes(d, schedule, absences, bankHolidays, excludeBankHolidays);
+    d.setDate(d.getDate() + 1);
+  }
+  return total;
+}
+
+/**
+ * Returns true if the date has any adjusted available working time.
+ * A full-day absence or bank holiday exclusion makes this false.
+ */
+export function isEffectiveAvailableWorkingDay(
+  date: Date,
+  schedule: any,
+  absences: Absence[],
+  bankHolidays: BankHoliday[],
+  excludeBankHolidays: boolean
+): boolean {
+  return getAdjustedAvailableMinutes(date, schedule, absences, bankHolidays, excludeBankHolidays) > 0;
 }
 
 /**

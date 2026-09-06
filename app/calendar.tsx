@@ -15,8 +15,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import AppBackground from '@/components/AppBackground';
 import { api, Job } from '@/utils/api';
+import { offlineStorage, Absence } from '@/utils/offlineStorage';
 import CircularProgress from '@/components/CircularProgress';
 import { calcDailyHoursFromSchedule, countWorkingDaysInMonth, formatTime } from '@/utils/jobCalculations';
+import { getAdjustedAvailableMinutes } from '@/utils/absenceCalculations';
+import { getCachedBankHolidays, BankHoliday } from '@/utils/bankHolidays';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
 
@@ -51,7 +54,14 @@ export default function CalendarScreen() {
       const schedule = await api.getSchedule();
       const settings = await api.getSettings();
       setMonthlyTarget(settings.monthlyTarget);
-      
+
+      const [absences, bankHolidays] = await Promise.all([
+        offlineStorage.getAllAbsences(),
+        getCachedBankHolidays(),
+      ]);
+      const excludeBankHolidays = schedule.excludeBankHolidays ?? true;
+      console.log('CalendarScreen: Loaded', absences.length, 'absences and', bankHolidays.length, 'bank holidays');
+
       const workingDays = schedule.workingDays || [1, 2, 3, 4, 5];
       
       let startDate: Date;
@@ -101,13 +111,10 @@ export default function CalendarScreen() {
         const dayOfWeek = currentDay.getDay();
         const isWorkingDay = workingDays.includes(dayOfWeek);
 
-        const dailyHrs = calcDailyHoursFromSchedule(
-          schedule.startTime || '07:00',
-          schedule.endTime || '18:00',
-          schedule.lunchStartTime || '12:00',
-          schedule.lunchEndTime || '12:30'
+        const adjMins = getAdjustedAvailableMinutes(
+          currentDay, schedule, absences, bankHolidays, excludeBankHolidays
         );
-        const availableHours = isWorkingDay ? dailyHrs : 0;
+        const availableHours = adjMins / 60;
         const totalAw = dayJobs.reduce((sum, job) => sum + job.aw, 0);
         const soldHours = (totalAw * 5) / 60; // 1 AW = 5 minutes = 0.0833 hours
         const efficiency = availableHours > 0 ? (soldHours / availableHours) * 100 : 0;
