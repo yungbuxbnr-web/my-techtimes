@@ -48,6 +48,7 @@ import { saveJobImage, saveImageRecord } from '@/utils/imageStorage';
 import { templateStorage, JobTemplate } from '@/utils/moduleStorage';
 import { quickCaptureStorage, quickCaptureStats, QuickPreset } from '@/utils/quickCaptureStorage';
 import { normalizeWip, getJobsForWip, getBillingRecordsForWip, getWipBillingStatus, completeWip, detectWipVehicleConflict } from '@/utils/wipEngine';
+import { normalizeReg, getRecentVehicleHistory, enrichWithRelatedRepair, VehicleHistoryMatch, comebackStorage } from '@/utils/comebackDetection';
 import { billingStorage } from '@/utils/billingStorage';
 import { jobHistoryStorage } from '@/utils/jobHistoryStorage';
 import { awToHours } from '@/utils/billingEngine';
@@ -106,6 +107,8 @@ export default function AddJobModal() {
   const [availableTemplates, setAvailableTemplates] = useState<JobTemplate[]>([]);
 
   const [existingWipBillingRecords, setExistingWipBillingRecords] = useState<any[]>([]);
+  const [vehicleHistory, setVehicleHistory] = useState<VehicleHistoryMatch[]>([]);
+  const [showVehicleHistory, setShowVehicleHistory] = useState(false);
 
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
@@ -166,6 +169,27 @@ export default function AddJobModal() {
       setExistingWipBillingRecords(getBillingRecordsForWip(nwip, records));
     }).catch(() => {});
   }, [wipNumber]);
+
+  // Vehicle history detection (comeback / repeat repair)
+  useEffect(() => {
+    const normalized = normalizeReg(vehicleReg);
+    if (normalized.length < 4) {
+      setVehicleHistory([]);
+      setShowVehicleHistory(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const currentNormalizedWip = normalizeWip(wipNumber);
+      const matches = getRecentVehicleHistory(normalized, allJobs, currentNormalizedWip || undefined);
+      const enriched = enrichWithRelatedRepair(matches, notes);
+      setVehicleHistory(enriched);
+      setShowVehicleHistory(enriched.length > 0);
+      if (enriched.length > 0) {
+        console.log('[AddJob] Vehicle history found:', enriched.length, 'matches for', normalized);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [vehicleReg, allJobs, notes, wipNumber]);
 
   // Load templates
   useEffect(() => {
@@ -1206,6 +1230,72 @@ export default function AddJobModal() {
               );
             })()}
 
+            {/* Vehicle History Banner */}
+            {showVehicleHistory && vehicleHistory.length > 0 && (
+              <View style={[styles.vehicleHistoryBanner, {
+                backgroundColor: vehicleHistory.some(m => m.isRelated && m.ageDays <= 30)
+                  ? 'rgba(255,152,0,0.12)'
+                  : 'rgba(79,195,247,0.10)',
+                borderColor: vehicleHistory.some(m => m.isRelated && m.ageDays <= 30)
+                  ? 'rgba(255,152,0,0.4)'
+                  : 'rgba(79,195,247,0.3)',
+              }]}>
+                <View style={styles.vehicleHistoryHeader}>
+                  <Text style={[styles.vehicleHistoryTitle, {
+                    color: vehicleHistory.some(m => m.isRelated && m.ageDays <= 30) ? '#ff9800' : '#4fc3f7',
+                  }]}>
+                    {vehicleHistory.some(m => m.isRelated && m.ageDays <= 30)
+                      ? '⚠ POSSIBLE RELATED PREVIOUS REPAIR'
+                      : 'RECENT VEHICLE HISTORY'}
+                  </Text>
+                  <TouchableOpacity onPress={() => {
+                    console.log('[AddJob] Vehicle history banner dismissed');
+                    setShowVehicleHistory(false);
+                  }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 16 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.vehicleHistorySubtitle, { color: theme.textSecondary }]}>
+                  {vehicleHistory.length} previous visit{vehicleHistory.length !== 1 ? 's' : ''} found
+                  {vehicleHistory[0] ? ` · Most recent ${vehicleHistory[0].ageDays} day${vehicleHistory[0].ageDays !== 1 ? 's' : ''} ago` : ''}
+                </Text>
+                {vehicleHistory.slice(0, 3).map((match, idx) => (
+                  <TouchableOpacity
+                    key={match.job.id}
+                    style={[styles.vehicleHistoryRow, { borderTopColor: theme.border, borderTopWidth: idx > 0 ? 1 : 0 }]}
+                    onPress={() => {
+                      console.log('[AddJob] Vehicle history row tapped — navigating to WIP workspace:', match.job.wipNumber);
+                      router.push({ pathname: '/wip-workspace', params: { wip: match.job.wipNumber } } as any);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.vehicleHistoryWip, { color: theme.text }]}>
+                        WIP {match.job.wipNumber}
+                        {match.isRelated ? '  ⚠ Possibly related' : ''}
+                      </Text>
+                      <Text style={[styles.vehicleHistoryDesc, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {match.job.notes || 'No description'} · {match.ageDays}d ago · {match.job.aw} AW
+                      </Text>
+                    </View>
+                    <Text style={{ color: theme.primary, fontSize: 12 }}>VIEW →</Text>
+                  </TouchableOpacity>
+                ))}
+                {vehicleHistory.length > 3 && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      console.log('[AddJob] View all vehicle history tapped — reg:', vehicleReg);
+                      router.push({ pathname: '/vehicle-history', params: { reg: vehicleReg } } as any);
+                    }}
+                    style={{ paddingTop: 8 }}
+                  >
+                    <Text style={{ color: theme.primary, fontSize: 12, textAlign: 'center' }}>
+                      VIEW ALL {vehicleHistory.length} VISITS →
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {showSuggestions && suggestions.length > 0 && (
               <View style={[styles.suggestionsContainer, {
                 backgroundColor: isDarkMode ? '#2a2a2a' : '#ffffff',
@@ -2138,5 +2228,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 0.5,
+  },
+  vehicleHistoryBanner: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+  },
+  vehicleHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  vehicleHistoryTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  vehicleHistorySubtitle: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  vehicleHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 8,
+  },
+  vehicleHistoryWip: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  vehicleHistoryDesc: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

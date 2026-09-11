@@ -32,6 +32,7 @@ import {
 } from '@/utils/wipEngine';
 import { normaliseBillingStatus, awToHours } from '@/utils/billingEngine';
 import { Job } from '@/utils/api';
+import { wipBlockerStorage, WipBlocker, BLOCKER_REASON_LABELS, BlockerReason, getBlockerAgeDays } from '@/utils/wipBlockerStorage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -302,6 +303,10 @@ export default function WipWorkspaceScreen() {
   const [expandedTimelineEvents, setExpandedTimelineEvents] = useState<Set<string>>(new Set());
   const [fullTimeline, setFullTimeline] = useState<WipTimelineEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [activeBlocker, setActiveBlocker] = useState<WipBlocker | null>(null);
+  const [showBlockerModal, setShowBlockerModal] = useState(false);
+  const [selectedBlockerReason, setSelectedBlockerReason] = useState<BlockerReason>('waiting_for_parts');
+  const [blockerNote, setBlockerNote] = useState('');
 
   const PT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 8 : 16;
 
@@ -348,6 +353,11 @@ export default function WipWorkspaceScreen() {
       console.log('WipWorkspace: Loaded — sessions:', sessions.length, 'billing records:', billingRecords.length, 'history:', billingHistory.length, 'cases:', cases.length);
 
       setData({ summary, sessions, billingRecords, billingHistory, imagesByJobId, cases });
+
+      // Load active blocker
+      const normalizedWip = normalizeWip(wip);
+      const blocker = await wipBlockerStorage.getActive(normalizedWip);
+      setActiveBlocker(blocker);
 
       // Build full timeline
       setTimelineLoading(true);
@@ -1026,6 +1036,72 @@ export default function WipWorkspaceScreen() {
           )}
         </CollapsibleSection>
 
+        {/* SECTION 9 — BLOCKER / WAITING REASON */}
+        <CollapsibleSection title="BLOCKER / WAITING REASON" defaultOpen={false} theme={theme}>
+          {activeBlocker ? (
+            <View style={[styles.blockerCard, { backgroundColor: 'rgba(255,152,0,0.08)', borderColor: 'rgba(255,152,0,0.3)' }]}>
+              <View style={styles.blockerActiveRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.blockerReasonText, { color: '#ff9800' }]}>
+                    ⏸ {BLOCKER_REASON_LABELS[activeBlocker.reason]}
+                  </Text>
+                  <Text style={[styles.blockerAgeText, { color: theme.textSecondary }]}>
+                    Active for {getBlockerAgeDays(activeBlocker)} day{getBlockerAgeDays(activeBlocker) !== 1 ? 's' : ''}
+                  </Text>
+                  {activeBlocker.note ? (
+                    <Text style={[styles.blockerNoteText, { color: theme.textSecondary }]}>
+                      "{activeBlocker.note}"
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={[styles.blockerClearBtn, { borderColor: '#ff9800' }]}
+                  onPress={async () => {
+                    console.log('WipWorkspace: Clear Blocker tapped for WIP:', normalizeWip(params.wip as string));
+                    const nwip = normalizeWip(params.wip as string);
+                    await wipBlockerStorage.clearBlocker(nwip);
+                    setActiveBlocker(null);
+                  }}
+                >
+                  <Text style={{ color: '#ff9800', fontSize: 12, fontWeight: '700' }}>CLEAR</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No active blocker set.</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={[styles.blockerSetBtn, { backgroundColor: 'rgba(79,195,247,0.12)', borderWidth: 1, borderColor: 'rgba(79,195,247,0.3)' }]}
+            onPress={() => {
+              console.log('WipWorkspace: Set Blocker tapped for WIP:', normalizeWip(params.wip as string));
+              const nwip = normalizeWip(params.wip as string);
+              const reasons = Object.entries(BLOCKER_REASON_LABELS) as [BlockerReason, string][];
+              Alert.alert(
+                'Set Blocker Reason',
+                'Select the reason this WIP is blocked:',
+                [
+                  ...reasons.map(([key, label]) => ({
+                    text: label,
+                    onPress: async () => {
+                      console.log('WipWorkspace: Blocker reason selected:', key, 'for WIP:', nwip);
+                      await wipBlockerStorage.setBlocker(nwip, key);
+                      const updated = await wipBlockerStorage.getActive(nwip);
+                      setActiveBlocker(updated);
+                    },
+                  })),
+                  { text: 'Cancel', style: 'cancel' as const },
+                ]
+              );
+            }}
+          >
+            <Text style={{ color: '#4fc3f7', fontWeight: '700', fontSize: 13 }}>
+              {activeBlocker ? 'CHANGE BLOCKER REASON' : 'SET BLOCKER REASON'}
+            </Text>
+          </TouchableOpacity>
+        </CollapsibleSection>
+
         {/* FOOTER */}
         <Text style={[styles.footer, { color: theme.textSecondary }]}>
           WIP {displayWip} · {sessionCount} Work Session{sessionCount !== 1 ? 's' : ''} · Generated {todayDisplay}
@@ -1400,4 +1476,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingBottom: 8,
   },
+  blockerCard: { borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1 },
+  blockerActiveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  blockerReasonText: { fontSize: 15, fontWeight: '700' },
+  blockerAgeText: { fontSize: 12, marginTop: 2 },
+  blockerNoteText: { fontSize: 13, marginTop: 6, fontStyle: 'italic' },
+  blockerClearBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  blockerSetBtn: { paddingVertical: 10, borderRadius: 10, alignItems: 'center' as const, marginTop: 8 },
 });

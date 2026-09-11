@@ -17,6 +17,9 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { api } from '@/utils/api';
 import { billingStorage } from '@/utils/billingStorage';
 import { completeWip, normalizeWip } from '@/utils/wipEngine';
+import { wipBlockerStorage, WipBlocker, BLOCKER_REASON_LABELS, getBlockerAgeDays } from '@/utils/wipBlockerStorage';
+import { monthCloseSnapshotStorage, buildSnapshotFromReview, OpenWipSnapshot } from '@/utils/monthCloseSnapshot';
+import { awToHours } from '@/utils/billingEngine';
 import {
   buildOpenWipList,
   getPendingReviewMonth,
@@ -27,7 +30,7 @@ import {
 } from '@/utils/monthEndReview';
 
 type SortOption = 'oldest' | 'newest' | 'hours_desc' | 'aw_desc' | 'wip';
-type FilterOption = 'all' | 'this_month' | 'carried' | 'attention';
+type FilterOption = 'all' | 'this_month' | 'carried' | 'attention' | 'blocked' | 'no_blocker';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -57,9 +60,14 @@ export default function MonthEndReviewScreen() {
     skipped: string[];
   } | null>(null);
 
+  const [wipBlockers, setWipBlockers] = useState<Map<string, WipBlocker>>(new Map());
+  const [snapshotCreated, setSnapshotCreated] = useState(false);
+
   // Keep a ref to allJobs/allBillingRecords for completeWip
   const allJobsRef = useRef<any[]>([]);
   const allBillingRef = useRef<any[]>([]);
+  const selectedWipsRef = useRef<Set<string>>(new Set());
+  const reviewIdRef = useRef<string>(generateId());
 
   const loadData = useCallback(async () => {
     console.log('MonthEndReview: Loading data');
@@ -81,6 +89,13 @@ export default function MonthEndReviewScreen() {
 
       const list = await buildOpenWipList(allJobs, allBillingRecords);
       setWipList(list);
+
+      const allBlockers = await wipBlockerStorage.getAll();
+      const activeBlockerMap = new Map<string, WipBlocker>();
+      for (const b of allBlockers) {
+        if (!b.clearedAt) activeBlockerMap.set(b.normalizedWip, b);
+      }
+      setWipBlockers(activeBlockerMap);
 
       // Select all by default (preserve existing selection if already set)
       setSelectedWips(prev => {
@@ -128,6 +143,8 @@ export default function MonthEndReviewScreen() {
       }
       case 'attention':
         return item.hasBillingAttention;
+      case 'blocked': return wipBlockers.has(item.normalizedWip);
+      case 'no_blocker': return !wipBlockers.has(item.normalizedWip);
       default:
         return true;
     }
@@ -248,6 +265,7 @@ export default function MonthEndReviewScreen() {
   const processClosures = async () => {
     console.log('MonthEndReview: Processing closures for', selectedCount, 'WIPs');
     setProcessing(true);
+    selectedWipsRef.current = new Set(selectedWips);
 
     let closed = 0;
     let carried = 0;
@@ -322,6 +340,79 @@ export default function MonthEndReviewScreen() {
     setResultScreen({ closed, carried, hoursClosed, hoursCarried, skipped });
   };
 
+  // ── Snapshot handler ────────────────────────────────────────────────────────
+
+  const handleCreateSnapshot = async () => {
+    if (!resultScreen || !reviewMonth) return;
+    try {
+      const allJobs = allJobsRef.current;
+      const allBilling = allBillingRef.current;
+
+      // Sold hours = sum of all AW-based hours for jobs in this month
+      const monthJobs = allJobs.filter((j: any) => j.createdAt?.startsWith(reviewMonth));
+      const soldHours = monthJobs.reduce((s: number, j: any) => s + awToHours(j.aw ?? 0), 0);
+      const totalAW = monthJobs.reduce((s: number, j: any) => s + (j.aw ?? 0), 0);
+      const workSessions = monthJobs.length;
+
+      // Invoiced hours = billed billing records for this month's jobs
+      const monthJobIds = new Set(monthJobs.map((j: any) => j.id));
+      const invoicedHours = allBilling
+        .filter((b: any) => monthJobIds.has(b.jobId) && b.billingStatus === 'billed')
+        .reduce((s: number, b: any) => s + (b.billedHours ?? 0), 0);
+      const openHours = soldHours - invoicedHours;
+
+      // Unique WIPs
+      const uniqueWips = new Set(
+        monthJobs
+          .map((j: any) => j.wipNumber?.trim().toUpperCase().replace(/\s+/g, ''))
+          .filter(Boolean)
+      );
+
+      // Open WIPs at close
+      const openWipSnapshots: OpenWipSnapshot[] = wipList
+        .filter(w => !resultScreen.skipped.includes(w.normalizedWip))
+        .filter(w => {
+          const wasSelected = selectedWipsRef.current?.has(w.normalizedWip);
+          return !wasSelected;
+        })
+        .map(w => ({
+          normalizedWip: w.normalizedWip,
+          displayWip: w.displayWip,
+          vehicleReg: w.vehicleReg,
+          openHours: w.openHours,
+          openAW: w.openAW,
+          blockerReason: wipBlockers.get(w.normalizedWip)
+            ? BLOCKER_REASON_LABELS[wipBlockers.get(w.normalizedWip)!.reason]
+            : undefined,
+          lastWorked: w.lastWorked,
+        }));
+
+      const snapshot = buildSnapshotFromReview({
+        monthKey: reviewMonth,
+        sourceReviewId: reviewIdRef.current,
+        soldHours,
+        invoicedHours,
+        openHours: Math.max(0, openHours),
+        totalAW,
+        uniqueWipsWorked: uniqueWips.size,
+        workSessions,
+        wipsClosed: resultScreen.closed,
+        wipsRemainingOpen: resultScreen.carried,
+        adjustedAvailableHours: 0,
+        absenceHours: 0,
+        effectiveAvailableWorkingDays: 0,
+        openWips: openWipSnapshots,
+      });
+
+      await monthCloseSnapshotStorage.save(snapshot);
+      setSnapshotCreated(true);
+      console.log('MonthEndReview: Snapshot created for', reviewMonth);
+    } catch (err) {
+      console.error('MonthEndReview: Failed to create snapshot:', err);
+      Alert.alert('Error', 'Failed to create snapshot. Please try again.');
+    }
+  };
+
   // ── Render helpers ──────────────────────────────────────────────────────────
 
   const sortOptions: { key: SortOption; label: string }[] = [
@@ -337,6 +428,8 @@ export default function MonthEndReviewScreen() {
     { key: 'this_month', label: 'This Month' },
     { key: 'carried', label: 'Carried Forward' },
     { key: 'attention', label: 'Attention' },
+    { key: 'blocked', label: 'Blocked' },
+    { key: 'no_blocker', label: 'No Blocker' },
   ];
 
   const renderWipRow = ({ item }: { item: OpenWipItem }) => {
@@ -414,6 +507,15 @@ export default function MonthEndReviewScreen() {
               <Text style={styles.attentionBadgeText}>NEEDS REVIEW</Text>
             </View>
           )}
+          {(() => {
+            const blocker = wipBlockers.get(item.normalizedWip);
+            if (!blocker) return null;
+            return (
+              <Text style={{ color: '#ff9800', fontSize: 11, fontWeight: '600', marginTop: 3 }}>
+                ⏸ {BLOCKER_REASON_LABELS[blocker.reason]} · {getBlockerAgeDays(blocker)}d
+              </Text>
+            );
+          })()}
         </View>
 
         {/* Navigate arrow */}
@@ -470,6 +572,29 @@ export default function MonthEndReviewScreen() {
                 <Text style={[styles.skippedBody, { color: theme.textSecondary }]}>
                   {resultScreen.skipped.join(', ')}
                 </Text>
+              </View>
+            )}
+
+            {/* Snapshot creation */}
+            {!snapshotCreated && (
+              <TouchableOpacity
+                style={[styles.snapshotBtn, { backgroundColor: 'rgba(79,195,247,0.15)', borderColor: 'rgba(79,195,247,0.4)' }]}
+                onPress={() => {
+                  console.log('MonthEndReview: Create Month Close Snapshot tapped');
+                  handleCreateSnapshot();
+                }}
+              >
+                <Text style={{ color: '#4fc3f7', fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>
+                  CREATE MONTH CLOSE SNAPSHOT
+                </Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>
+                  Preserve this month's figures for reporting
+                </Text>
+              </TouchableOpacity>
+            )}
+            {snapshotCreated && (
+              <View style={[styles.snapshotCreatedBadge, { backgroundColor: 'rgba(76,175,80,0.15)', borderColor: 'rgba(76,175,80,0.4)' }]}>
+                <Text style={{ color: '#4caf50', fontWeight: '700', fontSize: 13 }}>✓ MONTH CLOSE SNAPSHOT CREATED</Text>
               </View>
             )}
 
@@ -1016,4 +1141,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
   },
+  snapshotBtn: { borderRadius: 12, borderWidth: 1, padding: 14, alignItems: 'center' as const, marginTop: 8 },
+  snapshotCreatedBadge: { borderRadius: 12, borderWidth: 1, padding: 14, alignItems: 'center' as const, marginTop: 8 },
 });

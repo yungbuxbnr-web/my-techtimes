@@ -25,9 +25,10 @@ import {
   RiskLevel,
 } from '@/utils/billingRiskEngine';
 import { normalizeWip, groupJobsByWip, WipSummary } from '@/utils/wipEngine';
+import { wipBlockerStorage, WipBlocker, BLOCKER_REASON_LABELS, getBlockerAgeDays } from '@/utils/wipBlockerStorage';
 
 type SortOption = 'oldest' | 'newest' | 'highest_hours' | 'highest_aw' | 'highest_risk';
-type FilterOption = 'all' | 'today' | 'older' | 'with_vhc' | 'without_vhc' | 'billing_attention';
+type FilterOption = 'all' | 'today' | 'older' | 'with_vhc' | 'without_vhc' | 'billing_attention' | 'blocked' | 'no_blocker';
 
 const RISK_ORDER: Record<RiskLevel, number> = { high: 0, medium: 1, low: 2, none: 3 };
 
@@ -66,6 +67,7 @@ export default function OpenJobControlScreen() {
   const [wipGrouped, setWipGrouped] = useState(false);
   const [expandedWips, setExpandedWips] = useState<Set<string>>(new Set());
   const [openWipSummaries, setOpenWipSummaries] = useState<WipSummary[]>([]);
+  const [wipBlockers, setWipBlockers] = useState<Map<string, WipBlocker>>(new Map());
 
   const load = useCallback(async () => {
     console.log('OpenJobControl: Loading jobs and billing records');
@@ -81,6 +83,14 @@ export default function OpenJobControlScreen() {
       );
       setOpenWipSummaries(openSummaries);
       console.log('OpenJobControl: Open WIP summaries:', openSummaries.length);
+
+      const allBlockers = await wipBlockerStorage.getAll();
+      const activeBlockerMap = new Map<string, WipBlocker>();
+      for (const bl of allBlockers) {
+        if (!bl.clearedAt) activeBlockerMap.set(bl.normalizedWip, bl);
+      }
+      setWipBlockers(activeBlockerMap);
+      console.log('OpenJobControl: Active blockers loaded:', activeBlockerMap.size);
     } catch (err) {
       console.error('OpenJobControl: Error loading data:', err);
     } finally {
@@ -121,6 +131,8 @@ export default function OpenJobControlScreen() {
       case 'with_vhc': return job.vhcStatus !== 'NONE';
       case 'without_vhc': return job.vhcStatus === 'NONE';
       case 'billing_attention': return risk.riskLevel !== 'none';
+      case 'blocked': return wipBlockers.has(normalizeWip(job.wipNumber ?? ''));
+      case 'no_blocker': return !wipBlockers.has(normalizeWip(job.wipNumber ?? ''));
       default: return true;
     }
   });
@@ -170,6 +182,8 @@ export default function OpenJobControlScreen() {
     { key: 'with_vhc', label: 'With VHC' },
     { key: 'without_vhc', label: 'Without VHC' },
     { key: 'billing_attention', label: 'Billing Attention' },
+    { key: 'blocked', label: 'Blocked' },
+    { key: 'no_blocker', label: 'No Blocker' },
   ];
 
   if (loading) {
@@ -354,6 +368,17 @@ export default function OpenJobControlScreen() {
                           </View>
                           <Text style={[styles.regText, { color: theme.textSecondary }]}>{summary.vehicleReg}</Text>
                           <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>{sessionCountLabel}</Text>
+                          {(() => {
+                            const blocker = wipBlockers.get(summary.normalizedWip);
+                            if (!blocker) return null;
+                            return (
+                              <View style={[styles.blockerBadge, { backgroundColor: 'rgba(255,152,0,0.12)', borderColor: 'rgba(255,152,0,0.3)' }]}>
+                                <Text style={{ color: '#ff9800', fontSize: 11, fontWeight: '700' }}>
+                                  ⏸ {BLOCKER_REASON_LABELS[blocker.reason]} · {getBlockerAgeDays(blocker)}d
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                         <View style={{ alignItems: 'flex-end', gap: 4 }}>
                           <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{totalAWDisplay} AW</Text>
@@ -680,4 +705,5 @@ const styles = StyleSheet.create({
     color: '#FF9800',
     letterSpacing: 0.4,
   },
+  blockerBadge: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, marginTop: 4, alignSelf: 'flex-start' as const },
 });
