@@ -221,6 +221,17 @@ export default function OpenJobControlScreen() {
           </View>
         </View>
 
+        {/* Month End Review shortcut */}
+        <TouchableOpacity
+          style={[styles.monthEndBtn, { backgroundColor: 'rgba(255,152,0,0.1)', borderColor: 'rgba(255,152,0,0.4)' }]}
+          onPress={() => {
+            console.log('OpenJobControl: Month End Review button tapped');
+            router.push('/month-end-review');
+          }}
+        >
+          <Text style={styles.monthEndBtnText}>MONTH END REVIEW</Text>
+        </TouchableOpacity>
+
         {/* Sort chips */}
         <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>SORT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
@@ -651,4 +662,22 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptySubtitle: { fontSize: 14, textAlign: 'center' },
+
+  monthEndBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  monthEndBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FF9800',
+    letterSpacing: 0.4,
+  },
 });

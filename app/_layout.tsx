@@ -86,6 +86,10 @@ function RootLayoutContent() {
       if (actionId === 'ADD_JOB') {
         router.push('/add-job-modal');
       }
+      // Handle MONTH_END_REVIEW notification tap
+      if (actionId === 'MONTH_END_REVIEW' || response.notification.request.content.data?.action === 'MONTH_END_REVIEW') {
+        router.push('/month-end-review');
+      }
     });
     return () => subscription.remove();
   }, [router]);
@@ -431,6 +435,7 @@ function RootLayoutContent() {
       <Stack.Screen name="end-of-day" options={{ title: "Today's Summary", headerShown: true }} />
       <Stack.Screen name="export-data" options={{ headerShown: false }} />
       <Stack.Screen name="wip-workspace" options={{ headerShown: false }} />
+      <Stack.Screen name="month-end-review" options={{ headerShown: false }} />
     </Stack>
   );
 }

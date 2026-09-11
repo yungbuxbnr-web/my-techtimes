@@ -28,6 +28,8 @@ import {
 } from '@/utils/workTimeEngine';
 import { api } from '@/utils/api';
 import { billingStorage } from '@/utils/billingStorage';
+import { getPendingReviewMonth, buildOpenWipList } from '@/utils/monthEndReview';
+import { scheduleMonthEndReviewNotification } from '@/utils/notificationScheduler';
 import CircularProgress from '@/components/CircularProgress';
 import DailyRings from '@/components/DailyRings';
 import LiveTrackerRing from '@/components/LiveTrackerRing';
@@ -82,6 +84,8 @@ export default function DashboardScreen() {
   const [billingStats, setBillingStats] = useState<any>(null);
   const [allJobs, setAllJobs] = useState<any[]>([]);
   const [allBillingRecords, setAllBillingRecords] = useState<any[]>([]);
+  const [pendingReviewMonth, setPendingReviewMonth] = useState<string | null>(null);
+  const [openWipCount, setOpenWipCount] = useState(0);
   const [fabOpen, setFabOpen] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
   const fabNavigating = useRef(false);
@@ -145,6 +149,25 @@ export default function DashboardScreen() {
         );
         setBillingStats(bStats);
         console.log('DashboardScreen: Billing stats loaded — unbilledHours:', bStats.unbilledHours.toFixed(2));
+
+        // Month-end review check
+        try {
+          const pending = await getPendingReviewMonth();
+          setPendingReviewMonth(pending);
+          if (pending) {
+            const wipList = await buildOpenWipList(allJobsForBilling, allBillingRecs);
+            const count = wipList.length;
+            setOpenWipCount(count);
+            console.log('DashboardScreen: Pending review month:', pending, '— open WIPs:', count);
+            if (count > 0) {
+              await scheduleMonthEndReviewNotification(count);
+            }
+          } else {
+            setOpenWipCount(0);
+          }
+        } catch (reviewErr) {
+          console.warn('DashboardScreen: Month-end review check failed (non-fatal):', reviewErr);
+        }
       } catch (billingError) {
         console.error('DashboardScreen: Billing stats load failed (non-fatal):', billingError);
       }
@@ -938,6 +961,32 @@ export default function DashboardScreen() {
                 {formatDate(currentTime)}
               </Text>
             </View>
+
+            {/* Month End Review Attention Card */}
+            {pendingReviewMonth !== null && openWipCount > 0 && (
+              <TouchableOpacity
+                style={styles.monthEndCard}
+                onPress={() => {
+                  console.log('[Dashboard] Month End Review card tapped — navigating to month-end-review');
+                  router.push('/month-end-review');
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <IconSymbol
+                    ios_icon_name="calendar.badge.exclamationmark"
+                    android_material_icon_name="event-busy"
+                    size={20}
+                    color="#FF9800"
+                  />
+                  <Text style={styles.monthEndCardTitle}>MONTH END REVIEW</Text>
+                </View>
+                <Text style={styles.monthEndCardBody}>
+                  {openWipCount} Open WIP{openWipCount !== 1 ? 's' : ''} require review
+                </Text>
+                <Text style={styles.monthEndCardAction}>REVIEW →</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Streaks Card */}
             {streaksEnabled && streakData && (
@@ -1978,5 +2027,38 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     overflow: 'hidden',
+  },
+
+  // Month End Review attention card
+  monthEndCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderColor: 'rgba(255,152,0,0.3)',
+    borderLeftColor: '#FF9800',
+    backgroundColor: 'rgba(255,152,0,0.08)',
+    padding: 14,
+    gap: 4,
+  },
+  monthEndCardTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FF9800',
+    letterSpacing: 0.5,
+  },
+  monthEndCardBody: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  monthEndCardAction: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF9800',
+    marginTop: 4,
+    letterSpacing: 0.3,
   },
 });

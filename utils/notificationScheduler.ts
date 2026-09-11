@@ -636,6 +636,55 @@ export async function getScheduledNotifications(): Promise<Notifications.Notific
 }
 
 /**
+ * Fire a one-shot month-end review notification if there are open WIPs.
+ * Guards against firing more than once per day.
+ */
+export async function scheduleMonthEndReviewNotification(openWipCount: number): Promise<void> {
+  if (Platform.OS === 'web') return;
+  if (openWipCount === 0) return;
+
+  const today = new Date().toISOString().split('T')[0];
+  const guardKey = '@techtimes_month_end_notif_guard';
+  const lastFired = await AsyncStorage.getItem(guardKey);
+  if (lastFired === today) return;
+
+  console.log('NotificationScheduler: Scheduling month-end review notification for', openWipCount, 'open WIPs');
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Month End Open Job Review',
+        body: `You have ${openWipCount} Open WIP${openWipCount !== 1 ? 's' : ''} to review before closing the month.`,
+        data: { action: 'MONTH_END_REVIEW' },
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        badge: 1,
+        ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+      },
+      trigger: null, // immediate
+    });
+  } catch {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Month End Open Job Review',
+          body: `You have ${openWipCount} Open WIP${openWipCount !== 1 ? 's' : ''} to review before closing the month.`,
+          data: { action: 'MONTH_END_REVIEW' },
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          badge: 1,
+          ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.REMINDERS }),
+        },
+        trigger: { seconds: 1 } as any,
+      });
+    } catch { /* silently swallow */ }
+  }
+
+  await AsyncStorage.setItem(guardKey, today);
+  console.log('NotificationScheduler: Month-end review notification scheduled');
+}
+
+/**
  * Test notification (for testing sound and vibration)
  */
 export async function sendTestNotification(settings: NotificationSettings): Promise<void> {

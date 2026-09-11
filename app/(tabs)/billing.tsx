@@ -1623,6 +1623,23 @@ export default function BillingScreen() {
   // ── Summary cards block ───────────────────────────────────────────────────
   const renderSummaryCards = () => (
     <>
+      {/* Month End Review shortcut */}
+      <TouchableOpacity
+        style={[styles.monthEndBtn, { backgroundColor: 'rgba(255,152,0,0.1)', borderColor: 'rgba(255,152,0,0.4)' }]}
+        onPress={() => {
+          console.log('BillingScreen: Month End Review button tapped');
+          router.push('/month-end-review');
+        }}
+      >
+        <IconSymbol
+          ios_icon_name="calendar.badge.exclamationmark"
+          android_material_icon_name="event-busy"
+          size={16}
+          color="#FF9800"
+        />
+        <Text style={styles.monthEndBtnText}>MONTH END REVIEW</Text>
+      </TouchableOpacity>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -2560,5 +2577,22 @@ const styles = StyleSheet.create({
   },
   trendPrevValue: {
     fontSize: 13,
+  },
+  monthEndBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  monthEndBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FF9800',
+    letterSpacing: 0.4,
   },
 });
