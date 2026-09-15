@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -52,6 +52,7 @@ import { normalizeReg, getRecentVehicleHistory, enrichWithRelatedRepair, Vehicle
 import { billingStorage } from '@/utils/billingStorage';
 import { jobHistoryStorage } from '@/utils/jobHistoryStorage';
 import { awToHours } from '@/utils/billingEngine';
+import { wordPredictionEngine } from '@/utils/wordPredictionEngine';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -130,6 +131,13 @@ export default function AddJobModal() {
   const [qcAwSuggestion, setQcAwSuggestion] = useState<{ suggested: number; range: [number, number]; count: number } | null>(null);
   const [qcSearch, setQcSearch] = useState('');
 
+  // Word prediction state
+  const notesInputRef = useRef<TextInput>(null);
+  const [predictionEnabled, setPredictionEnabled] = useState(true);
+  const [wordPredictions, setWordPredictions] = useState<string[]>([]);
+  const [notesSelection, setNotesSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const predictionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Pre-fill fields when editing an existing job or continuing a WIP
   // All params arrive as strings on Android — parse numerics explicitly
   useEffect(() => {
@@ -206,6 +214,13 @@ export default function AddJobModal() {
     quickCaptureStorage.getAll().then(setQcPresets).catch(() => {});
     quickCaptureStats.getFrequentDescriptions(8).then(setQcFrequent).catch(() => {});
     quickCaptureStats.getRecentDescriptions(8).then(setQcRecent).catch(() => {});
+  }, []);
+
+  // Load prediction enabled setting on mount
+  useEffect(() => {
+    wordPredictionEngine.isPredictionEnabled().then(enabled => {
+      setPredictionEnabled(enabled);
+    }).catch(() => {});
   }, []);
 
   const loadJobsForSuggestions = async () => {
@@ -362,6 +377,43 @@ export default function AddJobModal() {
     setQcSelected([]);
     setQcAwSuggestion(null);
   };
+
+  const updatePredictions = useCallback(async (text: string, selection: { start: number; end: number }) => {
+    if (!predictionEnabled) { setWordPredictions([]); return; }
+    try {
+      const cursorPos = selection.end;
+      const textBeforeCursor = text.slice(0, cursorPos);
+      const partialMatch = textBeforeCursor.match(/[\w]+$/);
+      const partialWord = partialMatch ? partialMatch[0] : '';
+      console.log('[AddJobModal] updatePredictions — partialWord:', partialWord, 'cursorPos:', cursorPos);
+      const predictions = await wordPredictionEngine.getPredictions(textBeforeCursor, partialWord, 3);
+      setWordPredictions(predictions);
+    } catch {
+      setWordPredictions([]);
+    }
+  }, [predictionEnabled]);
+
+  const handlePredictionTap = useCallback((word: string) => {
+    console.log('[AddJobModal] Prediction chip tapped:', word);
+    const cursorPos = notesSelection.end;
+    const textBeforeCursor = notes.slice(0, cursorPos);
+    const textAfterCursor = notes.slice(cursorPos);
+
+    const partialMatch = textBeforeCursor.match(/[\w]+$/);
+    const partialLen = partialMatch ? partialMatch[0].length : 0;
+
+    const newBefore = textBeforeCursor.slice(0, textBeforeCursor.length - partialLen) + word + ' ';
+    const newText = newBefore + textAfterCursor.replace(/^\s+/, '');
+
+    setNotes(newText);
+    const newCursor = newBefore.length;
+    setNotesSelection({ start: newCursor, end: newCursor });
+
+    if (predictionDebounceRef.current) clearTimeout(predictionDebounceRef.current);
+    predictionDebounceRef.current = setTimeout(() => {
+      updatePredictions(newText, { start: newCursor, end: newCursor });
+    }, 50);
+  }, [notes, notesSelection, predictionEnabled, updatePredictions]);
 
   const handleSave = async (saveAnother: boolean = false) => {
     console.log('AddJobModal: User tapped Save button, isEditMode:', isEditMode, 'saveAnother:', saveAnother);
@@ -527,6 +579,11 @@ export default function AddJobModal() {
         if (notes.trim() && aw > 0) {
           console.log('AddJobModal: Learning from saved job for Quick Capture stats, notes:', notes.trim(), 'aw:', aw);
           quickCaptureStats.learnFromSavedJob(notes.trim(), aw).catch(() => {});
+        }
+        // Learn from this saved job for word prediction engine
+        if (newJob?.id && notes.trim()) {
+          console.log('[AddJobModal] Learning description for word prediction, jobId:', newJob.id);
+          wordPredictionEngine.learnDescription(String(newJob.id), notes.trim()).catch(() => {});
         }
         // Record usage for selected presets
         for (const presetId of qcSelected) {
@@ -1616,7 +1673,23 @@ export default function AddJobModal() {
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: isDarkMode ? '#fff' : '#000' }]}>Notes (Optional)</Text>
+              {/* Word Prediction Bar */}
+              {predictionEnabled && wordPredictions.length > 0 && (
+                <View style={styles.predictionBar}>
+                  {wordPredictions.map((word, idx) => (
+                    <TouchableOpacity
+                      key={`pred_${idx}_${word}`}
+                      style={styles.predictionChip}
+                      onPress={() => handlePredictionTap(word)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.predictionChipText}>{word}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
               <TextInput
+                ref={notesInputRef}
                 style={[styles.textArea, {
                   backgroundColor: isDarkMode ? '#000' : '#fff',
                   color: isDarkMode ? '#fff' : '#000',
@@ -1625,6 +1698,26 @@ export default function AddJobModal() {
                 value={notes}
                 onChangeText={(text) => {
                   setNotes(text);
+                  const sel = notesSelection;
+                  if (predictionDebounceRef.current) clearTimeout(predictionDebounceRef.current);
+                  predictionDebounceRef.current = setTimeout(() => {
+                    updatePredictions(text, sel);
+                  }, 200);
+                }}
+                onSelectionChange={(e) => {
+                  const sel = e.nativeEvent.selection;
+                  setNotesSelection(sel);
+                  if (predictionDebounceRef.current) clearTimeout(predictionDebounceRef.current);
+                  predictionDebounceRef.current = setTimeout(() => {
+                    updatePredictions(notes, sel);
+                  }, 150);
+                }}
+                onFocus={() => {
+                  console.log('[AddJobModal] Notes input focused — triggering predictions');
+                  updatePredictions(notes, notesSelection);
+                }}
+                onBlur={() => {
+                  setTimeout(() => setWordPredictions([]), 300);
                 }}
                 multiline
                 numberOfLines={4}
@@ -2263,5 +2356,27 @@ const styles = StyleSheet.create({
   vehicleHistoryDesc: {
     fontSize: 12,
     marginTop: 2,
+  },
+  predictionBar: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 6,
+    flexWrap: 'nowrap',
+  },
+  predictionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.35)',
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  predictionChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#3b82f6',
+    letterSpacing: 0.2,
   },
 });

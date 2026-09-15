@@ -7,6 +7,7 @@ import { api } from '@/utils/api';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SplashScreen as IgnitionSweepPreview } from '@/components/SplashScreen';
 import { offlineStorage } from '@/utils/offlineStorage';
+import { wordPredictionEngine } from '@/utils/wordPredictionEngine';
 import * as DocumentPicker from 'expo-document-picker';
 import { ProcessNotification } from '@/components/ProcessNotification';
 import {
@@ -94,6 +95,8 @@ export default function SettingsScreen() {
   const [manualTargetInput, setManualTargetInput] = useState('');
   const [startupAnimMode, setStartupAnimMode] = useState<'full' | 'quick' | 'off'>('full');
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [predictiveWordsEnabled, setPredictiveWordsEnabled] = useState(true);
+  const [rebuildingPredictions, setRebuildingPredictions] = useState(false);
 
   const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
@@ -236,6 +239,9 @@ export default function SettingsScreen() {
       const wDays = countWorkingDaysInMonth(now.getFullYear(), now.getMonth() + 1, sched.workingDays || [1, 2, 3, 4, 5], undefined, sched);
       setMonthlyTarget((wDays * dailyHrs).toFixed(1));
       
+      const predEnabled = await wordPredictionEngine.isPredictionEnabled();
+      setPredictiveWordsEnabled(predEnabled);
+
       console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);
     } catch (error) {
       console.error('SettingsScreen: Error loading settings:', error);
@@ -394,6 +400,46 @@ export default function SettingsScreen() {
     console.log('SettingsScreen: Toggling lock on resume to', value);
     await setAuthLockOnResume(value);
     toastManager.show(value ? 'Lock on resume enabled' : 'Lock on resume disabled', 'success');
+  };
+
+  const handleTogglePredictiveWords = async (value: boolean) => {
+    console.log('SettingsScreen: Toggling predictive words to', value);
+    setPredictiveWordsEnabled(value);
+    await wordPredictionEngine.setPredictionEnabled(value);
+    wordPredictionEngine.invalidateCache();
+  };
+
+  const handleRebuildPredictions = async () => {
+    console.log('SettingsScreen: User tapped Rebuild Word Predictions');
+    Alert.alert(
+      'Rebuild Word Predictions',
+      'This will rebuild the prediction vocabulary from all your saved Job Descriptions. This may take a moment.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Rebuild',
+          onPress: async () => {
+            setRebuildingPredictions(true);
+            try {
+              console.log('SettingsScreen: Starting word prediction rebuild');
+              const allJobs = await offlineStorage.getAllJobs();
+              const descriptions = allJobs
+                .map((j: any) => j.notes?.trim())
+                .filter((d: any): d is string => !!d && d.length > 0);
+              console.log('SettingsScreen: Rebuilding predictions from', descriptions.length, 'descriptions');
+              await wordPredictionEngine.buildPredictionIndex(descriptions);
+              wordPredictionEngine.invalidateCache();
+              toastManager.show('Word predictions rebuilt successfully', 'success');
+            } catch (e) {
+              console.error('SettingsScreen: Error rebuilding predictions:', e);
+              toastManager.show('Failed to rebuild predictions', 'error');
+            } finally {
+              setRebuildingPredictions(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleOpenExportModal = () => {
@@ -1101,6 +1147,37 @@ export default function SettingsScreen() {
               </View>
             </>
           )}
+        </View>
+
+        {/* Predictive Job Words */}
+        <View style={[styles.section, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderRadius: 12, marginBottom: 16, padding: 16 }]}>
+          <Text style={[styles.sectionTitle, { color: theme.primary, marginBottom: 12 }]}>PREDICTIVE JOB WORDS</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={[styles.settingLabel, { color: isDarkMode ? '#fff' : '#000' }]}>Word Predictions</Text>
+              <Text style={[styles.settingHint, { color: isDarkMode ? '#888' : '#666', fontSize: 12, marginTop: 2 }]}>
+                Suggests individual words while typing Job Descriptions, learned from your history
+              </Text>
+            </View>
+            <Switch
+              value={predictiveWordsEnabled}
+              onValueChange={handleTogglePredictiveWords}
+              trackColor={{ false: '#767577', true: theme.primary }}
+              thumbColor={predictiveWordsEnabled ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.primary, opacity: rebuildingPredictions ? 0.6 : 1, marginTop: 8 }]}
+            onPress={handleRebuildPredictions}
+            disabled={rebuildingPredictions}
+          >
+            <IconSymbol ios_icon_name="arrow.clockwise" android_material_icon_name="refresh" size={16} color="#ffffff" />
+            <Text style={[styles.actionButtonText, { color: '#ffffff', marginLeft: 6 }]}>
+              {rebuildingPredictions ? 'Rebuilding...' : 'Rebuild Word Predictions'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.section, { backgroundColor: theme.card }]}>
