@@ -28,6 +28,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
+import { buildReportData, generatePDFHTML, getDefaultReportOptions, getPDFFilename } from '@/utils/reportEngine';
+import { offlineStorage } from '@/utils/offlineStorage';
 
 const BACKUP_HISTORY_KEY = '@techtimes_billing_backup_history';
 
@@ -467,106 +469,43 @@ function ReportsSubTab({
     : 0;
 
   const handleGeneratePDF = async () => {
-    console.log('BillingScreen: Generate PDF report tapped for period:', periodLabel);
+    console.log('BillingScreen: Generate PDF report tapped for period:', periodLabel, '| periodMode:', periodMode);
     setGenerating(true);
     try {
-      const now = new Date();
-      const currentDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-      const conversionDisplay = billingConversion.toFixed(1);
-
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 30px; background: #f5f5f5; color: #2c3e50; }
-            .container { background: white; border-radius: 16px; padding: 36px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-            .header { text-align: center; padding: 24px; background: linear-gradient(135deg, #0a0a2e, #1a1a5e); border-radius: 12px; margin-bottom: 32px; }
-            .header h1 { color: #00d4ff; font-size: 32px; font-weight: 800; }
-            .header .period { color: #fff; font-size: 18px; margin-top: 8px; }
-            .header .meta { color: #aaaacc; font-size: 13px; margin-top: 8px; }
-            .section { margin-bottom: 28px; }
-            h2 { font-size: 20px; color: #0a0a5e; border-bottom: 2px solid #00d4ff; padding-bottom: 8px; margin-bottom: 16px; }
-            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-            .stat-card { background: #f0f4ff; border-radius: 10px; padding: 16px; border-left: 4px solid #00d4ff; }
-            .stat-card .value { font-size: 28px; font-weight: 800; color: #0055cc; }
-            .stat-card .label { font-size: 13px; color: #555; margin-top: 4px; }
-            .stat-card .sub { font-size: 12px; color: #888; margin-top: 2px; }
-            .conversion { background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-left-color: #4caf50; }
-            .conversion .value { color: #2e7d32; }
-            .footer { margin-top: 32px; text-align: center; color: #888; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>Billing Report</h1>
-              <div class="period">${periodLabel}</div>
-              <div class="meta">Generated: ${currentDate} &nbsp;|&nbsp; Tech Times</div>
-            </div>
-            <div class="section">
-              <h2>Hours Summary</h2>
-              <div class="grid">
-                <div class="stat-card">
-                  <div class="value">${periodStats.recordedHours.toFixed(1)}h</div>
-                  <div class="label">Recorded Hours</div>
-                  <div class="sub">${periodStats.jobsRecorded} jobs</div>
-                </div>
-                <div class="stat-card">
-                  <div class="value">${periodStats.billedHours.toFixed(1)}h</div>
-                  <div class="label">Billed Hours</div>
-                  <div class="sub">${periodStats.jobsBilled} jobs closed</div>
-                </div>
-                <div class="stat-card">
-                  <div class="value">${periodStats.openHours.toFixed(1)}h</div>
-                  <div class="label">Open Hours</div>
-                  <div class="sub">${periodStats.jobsOpen} jobs open</div>
-                </div>
-                <div class="stat-card">
-                  <div class="value">${unbilledHours.toFixed(1)}h</div>
-                  <div class="label">Total Unbilled</div>
-                  <div class="sub">All open jobs</div>
-                </div>
-              </div>
-            </div>
-            <div class="section">
-              <h2>Billing Conversion</h2>
-              <div class="grid">
-                <div class="stat-card conversion">
-                  <div class="value">${conversionDisplay}%</div>
-                  <div class="label">Billing Conversion</div>
-                  <div class="sub">Billed ÷ Recorded</div>
-                </div>
-                <div class="stat-card">
-                  <div class="value">${periodStats.jobsOpen}</div>
-                  <div class="label">Open Jobs</div>
-                  <div class="sub">${periodStats.openHours.toFixed(1)}h pending</div>
-                </div>
-              </div>
-            </div>
-            <div class="footer">Tech Times Billing Report &nbsp;|&nbsp; ${periodLabel} &nbsp;|&nbsp; ${currentDate}</div>
-          </div>
-        </body>
-        </html>
-      `;
-
+      const [jobs, records, schedule, absences] = await Promise.all([
+        api.getAllJobs(),
+        billingStorage.getAllRecords(),
+        api.getSchedule(),
+        offlineStorage.getAllAbsences(),
+      ]);
+      console.log('BillingScreen: Data loaded — jobs:', jobs.length, '| records:', records.length, '| absences:', absences.length);
+      const opts = {
+        ...getDefaultReportOptions(),
+        period: periodMode as any,
+        dateMode: 'work_date' as const,
+        reportType: 'billing',
+        detailLevel: 'standard' as const,
+        includeSections: {
+          ...getDefaultReportOptions().includeSections,
+          summary: true,
+          availability: true,
+          billedJobsTable: true,
+          openJobsTable: true,
+          billingClosure: true,
+          dailyPerformance: false,
+        },
+      };
+      const data = await buildReportData(opts, jobs, records, schedule, absences);
+      const html = generatePDFHTML(data, opts);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       console.log('BillingScreen: PDF generated at', uri);
-      const fileName = `TechTimes_BillingReport_${new Date().toISOString().split('T')[0]}.pdf`;
-      const destUri = (FileSystem.cacheDirectory ?? '') + fileName;
-      if (uri !== destUri) {
-        await FileSystem.copyAsync({ from: uri, to: destUri });
-        try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
-      }
-      console.log('BillingScreen: PDF report copied to', destUri);
+      const filename = getPDFFilename('billing', data.period, undefined);
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(destUri, { mimeType: 'application/pdf', dialogTitle: 'Share Billing Report', UTI: 'com.adobe.pdf' });
-        console.log('BillingScreen: PDF report shared successfully');
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Share ${filename}` });
+        console.log('BillingScreen: PDF report shared successfully —', filename);
       } else {
-        Alert.alert('PDF Saved', `Report saved to: ${destUri}`);
+        Alert.alert('PDF Generated', `Saved to: ${uri}`);
       }
     } catch (err: any) {
       console.error('BillingScreen: PDF report generation failed', err);

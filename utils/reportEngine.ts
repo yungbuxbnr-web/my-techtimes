@@ -3,7 +3,10 @@
 // Unified report engine for Tech Times PDF generation.
 
 import { getBillingPosition, resolvePeriodFilter, awToHours, PeriodMode, BillingPosition } from './billingEngine';
-import { getNetScheduledHoursForDate, isWorkingDay } from './workTimeEngine';
+import { getNetScheduledHoursForDate } from './workTimeEngine';
+import { getAdjustedAvailableMinutes, isEffectiveAvailableWorkingDay } from './absenceCalculations';
+import { getCachedBankHolidays } from './bankHolidays';
+import { groupJobsByWip } from './wipEngine';
 
 const APP_VERSION = '1.10.0';
 
@@ -130,6 +133,8 @@ export interface ReportData {
   vehicleHistory?: VehicleHistoryData | null;
   vhcData?: VHCData | null;
   comparisonData?: ComparisonData | null;
+  uniqueWips?: number;
+  workSessions?: number;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -241,8 +246,10 @@ export async function buildReportData(
   for (const job of jobs) {
     const rec = byJobId.get(job.id);
     if (!rec) continue;
-    const jobDate = job.createdAt.split('T')[0];
-    if (jobDate < startStr || jobDate > endStr) continue;
+    const effectiveDate = options.dateMode === 'billing_date' && rec.billedDate
+      ? rec.billedDate
+      : job.createdAt.split('T')[0];
+    if (effectiveDate < startStr || effectiveDate > endStr) continue;
     const status = rec.billingStatus === 'billed' || rec.billingStatus === 'legacy_unknown' ? 'billed' : 'open';
     if (status === 'billed') billedJobs.push({ job, billing: rec });
     else openJobs.push({ job, billing: rec });
@@ -252,18 +259,22 @@ export async function buildReportData(
   const dailyRows: DailyRow[] = [];
   let availableHours = 0;
 
+  const bankHolidays = await getCachedBankHolidays();
+  const excludeBankHolidays = schedule?.excludeBankHolidays ?? true;
+
   if (schedule) {
     const cursor = new Date(bounds.start);
     while (cursor <= bounds.end) {
       const dateStr = cursor.toISOString().split('T')[0];
       const dayName = cursor.toLocaleDateString('en-GB', { weekday: 'short' });
-      const absence = absences.find((a: any) => a.absenceDate === dateStr);
+
+      const adjMins = getAdjustedAvailableMinutes(cursor, schedule, absences, bankHolidays, excludeBankHolidays);
+      const dayAvailable = adjMins / 60;
       const scheduledHrs = getNetScheduledHoursForDate(schedule, cursor);
-      const absenceHrs = absence ? (absence.absenceHours ?? 0) : 0;
-      const dayAvailable = Math.max(0, scheduledHrs - absenceHrs);
+      const absenceHrs = Math.max(0, scheduledHrs - dayAvailable);
       availableHours += dayAvailable;
 
-      const isWorking = isWorkingDay(schedule, cursor);
+      const isWorking = isEffectiveAvailableWorkingDay(cursor, schedule, absences, bankHolidays, excludeBankHolidays);
 
       // Jobs for this date
       const dayJobs = jobs.filter((j: any) => j.createdAt.split('T')[0] === dateStr);
@@ -283,9 +294,8 @@ export async function buildReportData(
       }, 0);
       const openHrs = dayOpenJobs.reduce((sum: number, j: any) => sum + awToHours(j.aw ?? 0), 0);
 
-      const safeAvail = dayAvailable > 0 ? dayAvailable : 1;
-      const recEff = dayAvailable > 0 ? (recHrs / safeAvail) * 100 : 0;
-      const billEff = dayAvailable > 0 ? (billHrs / safeAvail) * 100 : 0;
+      const recEff = dayAvailable > 0 ? (recHrs / dayAvailable) * 100 : 0;
+      const billEff = dayAvailable > 0 ? (billHrs / dayAvailable) * 100 : 0;
 
       dailyRows.push({
         date: dateStr,
@@ -306,21 +316,12 @@ export async function buildReportData(
 
       cursor.setDate(cursor.getDate() + 1);
     }
-  } else {
-    // No schedule — still calculate available hours from absences
-    const cursor = new Date(bounds.start);
-    while (cursor <= bounds.end) {
-      const dateStr = cursor.toISOString().split('T')[0];
-      const absence = absences.find((a: any) => a.absenceDate === dateStr);
-      const absenceHrs = absence ? (absence.absenceHours ?? 0) : 0;
-      availableHours += Math.max(0, 8 - absenceHrs); // default 8h day
-      cursor.setDate(cursor.getDate() + 1);
-    }
   }
+  // No schedule — available hours = 0 (no fallback hardcoded default)
 
-  const safeAvailable = availableHours > 0 ? availableHours : 1;
-  const recordedEfficiency = Math.min(200, (billing.recordedHours / safeAvailable) * 100);
-  const billedEfficiency = Math.min(200, (billing.billedHours / safeAvailable) * 100);
+  const safeAvailable = availableHours > 0 ? availableHours : null;
+  const recordedEfficiency = safeAvailable ? (billing.recordedHours / safeAvailable) * 100 : 0;
+  const billedEfficiency = safeAvailable ? (billing.billedHours / safeAvailable) * 100 : 0;
 
   // VHC data
   const totalJobs = jobs.length;
@@ -341,7 +342,12 @@ export async function buildReportData(
     avgItemsPerJob: jobsWithVHC > 0 ? totalItems / jobsWithVHC : 0,
   };
 
-  console.log('[reportEngine] Report data built — availableHours:', availableHours.toFixed(2), '| recEff:', recordedEfficiency.toFixed(1) + '%', '| billEff:', billedEfficiency.toFixed(1) + '%', '| dailyRows:', dailyRows.length);
+  // WIP grouping
+  const wipGroups = groupJobsByWip(jobs, billingRecords);
+  const uniqueWips = wipGroups.size;
+  const workSessions = jobs.length;
+
+  console.log('[reportEngine] Report data built — availableHours:', availableHours.toFixed(2), '| recEff:', recordedEfficiency.toFixed(1) + '%', '| billEff:', billedEfficiency.toFixed(1) + '%', '| dailyRows:', dailyRows.length, '| uniqueWips:', uniqueWips);
 
   return {
     period: {
@@ -365,6 +371,8 @@ export async function buildReportData(
     vhcData,
     vehicleHistory: null,
     comparisonData: null,
+    uniqueWips,
+    workSessions,
   };
 }
 
@@ -682,6 +690,37 @@ function reportTypeLabel(reportType?: string): string {
   return map[reportType ?? 'custom'] ?? 'Performance Report';
 }
 
+// ─── Report data validation ───────────────────────────────────────────────────
+
+interface ValidationResult {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+function validateReportDataset(data: ReportData): ValidationResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const { billing } = data;
+
+  if (!isFinite(billing.recordedHours)) errors.push('Recorded hours is not a valid number');
+  if (!isFinite(billing.billedHours)) errors.push('Billed hours is not a valid number');
+  if (!isFinite(billing.openHours)) errors.push('Open hours is not a valid number');
+  if (!isFinite(data.availableHours)) errors.push('Available hours is not a valid number');
+  if (!isFinite(data.recordedEfficiency)) errors.push('Recorded efficiency is not a valid number');
+  if (!isFinite(data.billedEfficiency)) errors.push('Billed efficiency is not a valid number');
+  if (data.availableHours < 0) errors.push('Available hours is negative');
+
+  const soldCheck = Math.abs(billing.recordedHours - (billing.billedHours + billing.openHours));
+  if (soldCheck > 0.1) {
+    warnings.push(
+      `Billing relationship: Recorded ${billing.recordedHours.toFixed(2)}h ≠ Billed ${billing.billedHours.toFixed(2)}h + Open ${billing.openHours.toFixed(2)}h (diff: ${soldCheck.toFixed(2)}h)`
+    );
+  }
+
+  return { valid: errors.length === 0, warnings, errors };
+}
+
 // ─── PDF HTML generator ───────────────────────────────────────────────────────
 
 export function generatePDFHTML(data: ReportData, options: ReportOptions): string {
@@ -693,6 +732,18 @@ export function generatePDFHTML(data: ReportData, options: ReportOptions): strin
   const rptLabel = reportTypeLabel(options.reportType);
 
   const sections: string[] = [];
+
+  // ── Validation banner ────────────────────────────────────────────────────────
+  const validation = validateReportDataset(data);
+  if (!validation.valid || validation.warnings.length > 0) {
+    const items = [...validation.errors, ...validation.warnings].map(w => `<li>${w}</li>`).join('');
+    sections.push(`
+      <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <strong style="color: #856404;">&#9888; REPORT DATA ATTENTION</strong>
+        <ul style="margin-top: 8px; padding-left: 20px; color: #856404; font-size: 12px;">${items}</ul>
+      </div>
+    `);
+  }
 
   // ── Page header ─────────────────────────────────────────────────────────────
   const pageHeader = `
@@ -750,6 +801,8 @@ export function generatePDFHTML(data: ReportData, options: ReportOptions): strin
           ${metricCard('Total Jobs', String(safeNum(billing.totalJobs)))}
           ${metricCard('Jobs Billed', String(safeNum(billing.billedJobs)))}
           ${metricCard('Jobs Open', String(safeNum(billing.openJobs)))}
+          ${metricCard('Unique WIPs', String(safeNum(data.uniqueWips ?? billing.totalJobs)))}
+          ${metricCard('Work Sessions', String(safeNum(data.workSessions ?? billing.totalJobs)))}
         </div>
       </div>
     `);

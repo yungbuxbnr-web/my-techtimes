@@ -24,6 +24,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { api } from '@/utils/api';
 import { billingStorage } from '@/utils/billingStorage';
+import { offlineStorage } from '@/utils/offlineStorage';
 import {
   getDefaultReportOptions,
   buildReportData,
@@ -181,9 +182,9 @@ export default function ReportBuilderScreen() {
         api.getAllJobs(),
         billingStorage.getAllRecords(),
         api.getSchedule(),
-        api.getAbsences(new Date().toISOString().slice(0, 7)),
+        offlineStorage.getAllAbsences(),
       ]);
-      console.log('ReportBuilderScreen: Data loaded — jobs:', jobs.length, '| records:', records.length);
+      console.log('ReportBuilderScreen: Data loaded — jobs:', jobs.length, '| records:', records.length, '| absences:', absences.length);
 
       setGeneratingProgress('Building report...');
       const data = await buildReportData(reportOptions, jobs, records, schedule, absences);
@@ -270,11 +271,12 @@ export default function ReportBuilderScreen() {
   const handlePreview = async () => {
     console.log('ReportBuilderScreen: Preview tapped — period:', options.period, '| theme:', options.theme);
     try {
-      const [jobs, records] = await Promise.all([api.getAllJobs(), billingStorage.getAllRecords()]);
-      const today = new Date();
-      const monthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-      const absences = await api.getAbsences(monthStr);
-      const schedule = await api.getSchedule();
+      const [jobs, records, schedule, absences] = await Promise.all([
+        api.getAllJobs(),
+        billingStorage.getAllRecords(),
+        api.getSchedule(),
+        offlineStorage.getAllAbsences(),
+      ]);
       const data = await buildReportData(options, jobs, records, schedule, absences);
 
       const dailyRowCount = data.dailyRows?.length ?? 0;

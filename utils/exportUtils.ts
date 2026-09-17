@@ -8,6 +8,8 @@ import { awToMinutes, calcDailyHoursFromSchedule, countWorkingDaysInMonth } from
 import { offlineStorage, Schedule } from './offlineStorage';
 import { billingStorage } from './billingStorage';
 import { normaliseBillingStatus, awToHours } from './billingEngine';
+import { getAdjustedAvailableMinutesForPeriod } from './absenceCalculations';
+import { getCachedBankHolidays } from './bankHolidays';
 
 export interface ExportOptions {
   type: 'daily' | 'weekly' | 'monthly' | 'all';
@@ -49,35 +51,20 @@ function getWeekKey(date: Date): string {
 
 // ── Available hours calculation ───────────────────────────────────────────────
 
-function calcAvailableHoursForPeriod(
+async function calcAvailableHoursForPeriod(
   startDate: Date,
   endDate: Date,
-  schedule: Schedule
-): number {
-  const workingDays = schedule.workingDays ?? [1, 2, 3, 4, 5];
-  const dailyHours = schedule.startTime && schedule.endTime
-    ? calcDailyHoursFromSchedule(
-        schedule.startTime,
-        schedule.endTime,
-        schedule.lunchStartTime ?? '12:00',
-        schedule.lunchEndTime ?? '12:30'
-      )
-    : schedule.dailyWorkingHours ?? 8.5;
-
-  let total = 0;
-  const cursor = new Date(startDate);
-  cursor.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999);
-
-  while (cursor <= end) {
-    const dow = cursor.getDay();
-    if (workingDays.includes(dow)) {
-      total += dailyHours;
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return total;
+  schedule: Schedule,
+  preloadedAbsences?: any[],
+  preloadedBankHolidays?: any[]
+): Promise<number> {
+  const [absences, bankHolidays] = await Promise.all([
+    preloadedAbsences ? Promise.resolve(preloadedAbsences) : offlineStorage.getAllAbsences(),
+    preloadedBankHolidays ? Promise.resolve(preloadedBankHolidays) : getCachedBankHolidays(),
+  ]);
+  const excludeBankHolidays = (schedule as any)?.excludeBankHolidays ?? true;
+  const mins = getAdjustedAvailableMinutesForPeriod(startDate, endDate, schedule, absences, bankHolidays, excludeBankHolidays);
+  return mins / 60;
 }
 
 // ── Stats calculation ─────────────────────────────────────────────────────────
@@ -536,10 +523,10 @@ function monthSectionHtml(yearMonth: string, jobs: Job[], billingByJobId: Map<st
 
 // ── Year section ──────────────────────────────────────────────────────────────
 
-function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule, billingByJobId: Map<string, any>): string {
+async function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule, billingByJobId: Map<string, any>, preloadedAbsences?: any[], preloadedBankHolidays?: any[]): Promise<string> {
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31);
-  const availHours = calcAvailableHoursForPeriod(yearStart, yearEnd, schedule);
+  const availHours = await calcAvailableHoursForPeriod(yearStart, yearEnd, schedule, preloadedAbsences, preloadedBankHolidays);
   const stats = calcPeriodStats(jobs, availHours);
 
   const yearBilledHours = jobs.reduce((sum, j) => {
@@ -599,11 +586,13 @@ function yearSectionHtml(year: number, jobs: Job[], schedule: Schedule, billingB
 
 // ── Daily performance table ───────────────────────────────────────────────────
 
-function buildDailyPerformanceTable(
+async function buildDailyPerformanceTable(
   sortedJobs: Job[],
   billingByJobId: Map<string, any>,
-  schedule: Schedule
-): string {
+  schedule: Schedule,
+  preloadedAbsences?: any[],
+  preloadedBankHolidays?: any[]
+): Promise<string> {
   const dayMap = groupJobsByDay(sortedJobs);
   const sortedDays = Array.from(dayMap.keys()).sort((a, b) => a.localeCompare(b));
 
@@ -611,10 +600,10 @@ function buildDailyPerformanceTable(
 
   let totAvail = 0, totSold = 0, totInv = 0, totOpen = 0, totClosed = 0, totOpenJobs = 0;
 
-  const rows = sortedDays.map(day => {
+  const rowsData = await Promise.all(sortedDays.map(async day => {
     const dayJobs = dayMap.get(day)!;
     const dayDate = new Date(day);
-    const avail = calcAvailableHoursForPeriod(dayDate, dayDate, schedule);
+    const avail = await calcAvailableHoursForPeriod(dayDate, dayDate, schedule, preloadedAbsences, preloadedBankHolidays);
     const dayStats = calcPeriodStats(dayJobs, avail);
     const dayClosedJobs = dayJobs.filter(j => {
       const rec = billingByJobId.get(j.id);
@@ -631,25 +620,27 @@ function buildDailyPerformanceTable(
     const dayOpenH = dayOpenJobs.reduce((s, j) => s + awToHours(j.aw ?? 0), 0);
     const recEff = avail > 0 ? (dayStats.soldHours / avail) * 100 : 0;
     const billedEff = avail > 0 ? (dayInv / avail) * 100 : 0;
-
-    totAvail += avail;
-    totSold += dayStats.soldHours;
-    totInv += dayInv;
-    totOpen += dayOpenH;
-    totClosed += dayClosedJobs.length;
-    totOpenJobs += dayOpenJobs.length;
-
     const dayLabel = dayDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return { avail, soldHours: dayStats.soldHours, dayInv, dayOpenH, closedCount: dayClosedJobs.length, openCount: dayOpenJobs.length, recEff, billedEff, dayLabel };
+  }));
+
+  const rows = rowsData.map(d => {
+    totAvail += d.avail;
+    totSold += d.soldHours;
+    totInv += d.dayInv;
+    totOpen += d.dayOpenH;
+    totClosed += d.closedCount;
+    totOpenJobs += d.openCount;
     return `<tr>
-      <td style="font-weight:600;">${dayLabel}</td>
-      <td style="text-align:center;">${avail.toFixed(1)}h</td>
-      <td style="text-align:center;">${dayStats.soldHours.toFixed(1)}h</td>
-      <td style="text-align:center;">${dayInv.toFixed(1)}h</td>
-      <td style="text-align:center;">${dayOpenH.toFixed(1)}h</td>
-      <td style="text-align:center;">${recEff.toFixed(0)}%</td>
-      <td style="text-align:center;">${billedEff.toFixed(0)}%</td>
-      <td style="text-align:center;">${dayClosedJobs.length}</td>
-      <td style="text-align:center;">${dayOpenJobs.length}</td>
+      <td style="font-weight:600;">${d.dayLabel}</td>
+      <td style="text-align:center;">${d.avail.toFixed(1)}h</td>
+      <td style="text-align:center;">${d.soldHours.toFixed(1)}h</td>
+      <td style="text-align:center;">${d.dayInv.toFixed(1)}h</td>
+      <td style="text-align:center;">${d.dayOpenH.toFixed(1)}h</td>
+      <td style="text-align:center;">${d.recEff.toFixed(0)}%</td>
+      <td style="text-align:center;">${d.billedEff.toFixed(0)}%</td>
+      <td style="text-align:center;">${d.closedCount}</td>
+      <td style="text-align:center;">${d.openCount}</td>
     </tr>`;
   }).join('');
 
@@ -873,10 +864,13 @@ async function generatePdfHtml(
 ): Promise<string> {
   console.log('ExportUtils: Generating PDF HTML for', options.type, 'export with', jobs.length, 'jobs');
 
-  const schedule = await offlineStorage.getSchedule();
-
-  const billingRecords = await billingStorage.getAllRecords();
-  console.log('ExportUtils: Loaded', billingRecords.length, 'billing records');
+  const [schedule, billingRecords, preloadedAbsences, preloadedBankHolidays] = await Promise.all([
+    offlineStorage.getSchedule(),
+    billingStorage.getAllRecords(),
+    offlineStorage.getAllAbsences(),
+    getCachedBankHolidays(),
+  ]);
+  console.log('ExportUtils: Loaded', billingRecords.length, 'billing records,', preloadedAbsences.length, 'absences');
   const billingByJobId = new Map(billingRecords.map((r: any) => [r.jobId, r]));
 
   const generatedDate = new Date().toLocaleDateString('en-GB', {
@@ -904,7 +898,7 @@ async function generatePdfHtml(
   if (availableHours === 0 && sortedJobs.length > 0) {
     const oldest = new Date(sortedJobs[sortedJobs.length - 1].createdAt);
     const newest = new Date(sortedJobs[0].createdAt);
-    availableHours = calcAvailableHoursForPeriod(oldest, newest, schedule);
+    availableHours = await calcAvailableHoursForPeriod(oldest, newest, schedule, preloadedAbsences, preloadedBankHolidays);
   }
   const overallStats = calcPeriodStats(sortedJobs, availableHours);
 
@@ -958,9 +952,9 @@ async function generatePdfHtml(
       yearMap.get(yr)!.push(job);
     });
     const sortedYears = Array.from(yearMap.keys()).sort((a, b) => b - a);
-    sortedYears.forEach(yr => {
-      page2 += yearSectionHtml(yr, yearMap.get(yr)!, schedule, billingByJobId);
-    });
+    for (const yr of sortedYears) {
+      page2 += await yearSectionHtml(yr, yearMap.get(yr)!, schedule, billingByJobId, preloadedAbsences, preloadedBankHolidays);
+    }
   } else {
     const ROWS_PER_GROUP = 20;
     let tableRows = '';
@@ -984,7 +978,7 @@ async function generatePdfHtml(
 
     // Daily performance table for week/month
     if (options.type === 'weekly' || options.type === 'monthly') {
-      page2 += buildDailyPerformanceTable(sortedJobs, billingByJobId, schedule);
+      page2 += await buildDailyPerformanceTable(sortedJobs, billingByJobId, schedule, preloadedAbsences, preloadedBankHolidays);
     }
   }
 
