@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { api, Job } from '@/utils/api';
 import { billingStorage, BillingRecord } from '@/utils/billingStorage';
 import { normaliseBillingStatus } from '@/utils/billingEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getBackupHealth } from '@/utils/autoBackup';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const BACKUP_HISTORY_KEY = '@techtimes_billing_backup_history';
 const IGNORE_NOTES_KEY = '@techtimes_dq_ignore_notes';
@@ -447,6 +449,20 @@ export default function DataQualityScreen() {
   const { theme } = useThemeContext();
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [dbStats, setDbStats] = useState<{
+    jobs: number; uniqueWips: number; openWips: number; closedWips: number;
+    billingRecords: number; absences: number; technicalCases: number;
+    attachments: number; monthCloseSnapshots: number; timelineEvents: number;
+    totalStorageBytes: number; attachmentStorageBytes: number;
+    lastBackupDate: string | null; lastBackupVerified: boolean;
+    schemaVersion: number;
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  useEffect(() => {
+    loadDbStats();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [activeCategory, setActiveCategory] = useState('All');
   const [repairing, setRepairing] = useState<string | null>(null);
 
@@ -468,6 +484,75 @@ export default function DataQualityScreen() {
       setScanning(false);
     }
   }, []);
+
+  const loadDbStats = async () => {
+    setLoadingStats(true);
+    try {
+      const [jobsRaw, billingRaw, absencesRaw, casesRaw, snapshotsRaw, historyRaw] = await Promise.all([
+        AsyncStorage.getItem('@techtimes_jobs'),
+        AsyncStorage.getItem('@techtimes_billing_records'),
+        AsyncStorage.getItem('@techtimes_absences'),
+        AsyncStorage.getItem('@techtimes_technical_cases'),
+        AsyncStorage.getItem('@techtimes_month_close_snapshots'),
+        AsyncStorage.getItem('@techtimes_job_history'),
+      ]);
+      const jobs = JSON.parse(jobsRaw || '[]');
+      const billing = JSON.parse(billingRaw || '[]');
+      const absences = JSON.parse(absencesRaw || '[]');
+      const cases = JSON.parse(casesRaw || '[]');
+      const snapshots = JSON.parse(snapshotsRaw || '[]');
+      const history = JSON.parse(historyRaw || '[]');
+
+      const wipSet = new Set(jobs.map((j: any) => j.wipNumber).filter(Boolean));
+      const openWips = billing.filter((b: any) => {
+        const s = (b.billingStatus || b.status || '').toLowerCase();
+        return s === 'open';
+      }).length;
+      const closedWips = billing.filter((b: any) => {
+        const s = (b.billingStatus || b.status || '').toLowerCase();
+        return s === 'invoiced' || s === 'billed';
+      }).length;
+
+      let attachmentBytes = 0;
+      let attachmentCount = 0;
+      try {
+        const imgDir = (FileSystem.documentDirectory || '') + 'job_images/';
+        const dirInfo = await FileSystem.getInfoAsync(imgDir);
+        if (dirInfo.exists) {
+          const files = await FileSystem.readDirectoryAsync(imgDir);
+          attachmentCount = files.length;
+          for (const f of files) {
+            const info = await FileSystem.getInfoAsync(imgDir + f);
+            if (info.exists && 'size' in info) attachmentBytes += (info as any).size || 0;
+          }
+        }
+      } catch {}
+
+      const health = await getBackupHealth();
+
+      setDbStats({
+        jobs: jobs.length,
+        uniqueWips: wipSet.size,
+        openWips,
+        closedWips,
+        billingRecords: billing.length,
+        absences: absences.length,
+        technicalCases: cases.length,
+        attachments: attachmentCount,
+        monthCloseSnapshots: snapshots.length,
+        timelineEvents: history.length,
+        totalStorageBytes: 0,
+        attachmentStorageBytes: attachmentBytes,
+        lastBackupDate: health.lastBackupDate,
+        lastBackupVerified: health.lastBackupVerified,
+        schemaVersion: 1,
+      });
+    } catch (e) {
+      console.error('DataQualityScreen: loadDbStats error:', e);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
 
   const handleRepair = async (issue: Issue) => {
     if (!issue.repairAction) return;
@@ -540,6 +625,77 @@ export default function DataQualityScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* DATABASE STATISTICS */}
+        <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, letterSpacing: 0.8 }}>DATABASE STATISTICS</Text>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('DataQualityScreen: Refresh DB stats pressed');
+                loadDbStats();
+              }}
+              style={{ padding: 4 }}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="refresh"
+                size={18}
+                color={theme.primary}
+              />
+            </TouchableOpacity>
+          </View>
+          {loadingStats ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : dbStats ? (
+            <>
+              <View style={styles.statsGrid}>
+                {[
+                  { label: 'Jobs', value: dbStats.jobs },
+                  { label: 'Unique WIPs', value: dbStats.uniqueWips },
+                  { label: 'Open WIPs', value: dbStats.openWips },
+                  { label: 'Closed WIPs', value: dbStats.closedWips },
+                  { label: 'Billing Records', value: dbStats.billingRecords },
+                  { label: 'Absences', value: dbStats.absences },
+                  { label: 'Technical Cases', value: dbStats.technicalCases },
+                  { label: 'Attachments', value: dbStats.attachments },
+                  { label: 'Month Snapshots', value: dbStats.monthCloseSnapshots },
+                  { label: 'Timeline Events', value: dbStats.timelineEvents },
+                ].map(stat => (
+                  <View key={stat.label} style={[styles.statCell, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                    <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 18 }}>{stat.value}</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>{stat.label}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={{ marginTop: 8, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Attachment Storage</Text>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
+                    {dbStats.attachmentStorageBytes >= 1024 * 1024
+                      ? `${(dbStats.attachmentStorageBytes / (1024 * 1024)).toFixed(1)} MB`
+                      : `${Math.round(dbStats.attachmentStorageBytes / 1024)} KB`}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Last Backup</Text>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
+                    {dbStats.lastBackupDate
+                      ? new Date(dbStats.lastBackupDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : 'Never'}
+                    {dbStats.lastBackupVerified ? '  ✓' : ''}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Schema Version</Text>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>v{dbStats.schemaVersion}</Text>
+                </View>
+              </View>
+            </>
+          ) : (
+            <Text style={{ color: theme.textSecondary, fontSize: 13 }}>Tap refresh to load statistics</Text>
+          )}
+        </View>
+
         {!scanResult && !scanning ? (
           <View style={styles.preScan}>
             <View style={[styles.preScanIcon, { backgroundColor: theme.card }]}>
@@ -774,4 +930,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   actionBtnText: { fontSize: 13, fontWeight: '600' },
+  statsCard: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  statCell: {
+    width: '30%',
+    flexGrow: 1,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 10,
+    alignItems: 'center',
+  },
 });

@@ -53,6 +53,7 @@ import { billingStorage } from '@/utils/billingStorage';
 import { jobHistoryStorage } from '@/utils/jobHistoryStorage';
 import { awToHours } from '@/utils/billingEngine';
 import { wordPredictionEngine } from '@/utils/wordPredictionEngine';
+import { jobDraftStorage, JobDraft } from '@/utils/jobDraftStorage';
 
 interface JobSuggestion {
   wipNumber: string;
@@ -130,6 +131,12 @@ export default function AddJobModal() {
   const [qcRecent, setQcRecent] = useState<string[]>([]);
   const [qcAwSuggestion, setQcAwSuggestion] = useState<{ suggested: number; range: [number, number]; count: number } | null>(null);
   const [qcSearch, setQcSearch] = useState('');
+
+  // Draft autosave state
+  const [draftId] = useState<string>(() => `draft_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  const [showDraftRecovery, setShowDraftRecovery] = useState(false);
+  const [recoveredDraft, setRecoveredDraft] = useState<JobDraft | null>(null);
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Word prediction state
   const notesInputRef = useRef<TextInput>(null);
@@ -209,6 +216,20 @@ export default function AddJobModal() {
     loadJobsForSuggestions();
   }, []);
 
+  // Check for unsaved drafts on mount (new jobs only)
+  useEffect(() => {
+    if (!params.editId) {
+      jobDraftStorage.getUnsavedDrafts().then(unsaved => {
+        const relevant = unsaved.filter(d => d.draftId !== draftId && d.wipNumber);
+        if (relevant.length > 0) {
+          setRecoveredDraft(relevant[0]);
+          setShowDraftRecovery(true);
+        }
+      }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load Quick Capture data
   useEffect(() => {
     quickCaptureStorage.getAll().then(setQcPresets).catch(() => {});
@@ -233,6 +254,27 @@ export default function AddJobModal() {
       console.error('AddJobModal: Error loading jobs for suggestions:', error);
     }
   };
+
+  const scheduleDraftSave = useCallback(() => {
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    draftSaveTimer.current = setTimeout(async () => {
+      try {
+        await jobDraftStorage.saveDraft({
+          draftId,
+          wipNumber: wipNumber || '',
+          vehicleReg: vehicleReg || '',
+          notes: notes || '',
+          aw: String(aw || 0),
+          hours: '',
+          vhcStatus: vhcStatus || 'NONE',
+          jobFinished: false,
+          workDate: jobDateTime ? jobDateTime.toISOString() : new Date().toISOString(),
+          editId: params.editId,
+          savedSuccessfully: false,
+        });
+      } catch {}
+    }, 2000);
+  }, [draftId, wipNumber, vehicleReg, notes, aw, vhcStatus, jobDateTime, params.editId]);
 
   // Generate suggestions based on input
   const generateSuggestions = (input: string, field: 'wip' | 'reg'): JobSuggestion[] => {
@@ -292,6 +334,7 @@ export default function AddJobModal() {
   const handleWipChange = (text: string) => {
     setWipNumber(text);
     setActiveField('wip');
+    scheduleDraftSave();
 
     if (text.length > 0) {
       const newSuggestions = generateSuggestions(text, 'wip');
@@ -306,6 +349,7 @@ export default function AddJobModal() {
     const upperText = text.toUpperCase();
     setVehicleReg(upperText);
     setActiveField('reg');
+    scheduleDraftSave();
 
     if (upperText.length > 0) {
       const newSuggestions = generateSuggestions(upperText, 'reg');
@@ -491,6 +535,8 @@ export default function AddJobModal() {
         }
 
         await updateWidgetData();
+        await jobDraftStorage.markDraftSaved(draftId).catch(() => {});
+        await jobDraftStorage.cleanupSavedDrafts().catch(() => {});
         setSaveNotificationType('success');
         toastManager.success('Job updated successfully!');
         safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -618,6 +664,8 @@ export default function AddJobModal() {
           console.warn('AddJobModal: Job history recording failed (non-fatal):', histErr);
         }
 
+        await jobDraftStorage.markDraftSaved(draftId).catch(() => {});
+        await jobDraftStorage.cleanupSavedDrafts().catch(() => {});
         setSaveNotificationType('success');
         toastManager.success('Job saved successfully!');
         safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -923,6 +971,42 @@ export default function AddJobModal() {
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a1a1a' : '#f5f5f5' }]}>
+            {/* Draft Recovery Banner */}
+            {showDraftRecovery && recoveredDraft && (
+              <View style={[styles.draftRecoveryBanner, { backgroundColor: '#1a3a5c', borderColor: '#2196F3' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>UNSAVED JOB FOUND</Text>
+                  <Text style={{ color: '#90CAF9', fontSize: 12, marginTop: 2 }}>
+                    WIP {recoveredDraft.wipNumber || '—'} · {recoveredDraft.vehicleReg || '—'} · Last saved {new Date(recoveredDraft.updatedAt).toLocaleTimeString()}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('[AddJobModal] Draft recovery: restoring draft', recoveredDraft.draftId);
+                    if (recoveredDraft.wipNumber) setWipNumber(recoveredDraft.wipNumber);
+                    if (recoveredDraft.vehicleReg) setVehicleReg(recoveredDraft.vehicleReg);
+                    if (recoveredDraft.notes) setNotes(recoveredDraft.notes);
+                    if (recoveredDraft.aw) setAw(parseInt(recoveredDraft.aw, 10) || 0);
+                    setShowDraftRecovery(false);
+                    jobDraftStorage.deleteDraft(recoveredDraft.draftId).catch(() => {});
+                  }}
+                  style={{ backgroundColor: '#2196F3', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 8 }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>RESTORE</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('[AddJobModal] Draft recovery: dismissed');
+                    setShowDraftRecovery(false);
+                    jobDraftStorage.deleteDraft(recoveredDraft.draftId).catch(() => {});
+                  }}
+                  style={{ marginLeft: 8, padding: 4 }}
+                >
+                  <Text style={{ color: '#90CAF9', fontSize: 16 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* ── QUICK JOB CAPTURE ── */}
             <View style={{ marginBottom: 12 }}>
               {/* Header row */}
@@ -1698,6 +1782,7 @@ export default function AddJobModal() {
                 value={notes}
                 onChangeText={(text) => {
                   setNotes(text);
+                  scheduleDraftSave();
                   const sel = notesSelection;
                   if (predictionDebounceRef.current) clearTimeout(predictionDebounceRef.current);
                   predictionDebounceRef.current = setTimeout(() => {
@@ -2378,5 +2463,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#3b82f6',
     letterSpacing: 0.2,
+  },
+  draftRecoveryBanner: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

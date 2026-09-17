@@ -437,6 +437,8 @@ function RootLayoutContent() {
       <Stack.Screen name="wip-workspace" options={{ headerShown: false }} />
       <Stack.Screen name="month-end-review" options={{ headerShown: false }} />
       <Stack.Screen name="titanium-backup" options={{ title: 'Titanium Backup', headerShown: false }} />
+      <Stack.Screen name="global-search" options={{ headerShown: false }} />
+      <Stack.Screen name="undo-centre" options={{ headerShown: false }} />
     </Stack>
   );
 }

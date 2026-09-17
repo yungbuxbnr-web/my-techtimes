@@ -29,6 +29,7 @@ import {
 import { api } from '@/utils/api';
 import { billingStorage } from '@/utils/billingStorage';
 import { getPendingReviewMonth, buildOpenWipList } from '@/utils/monthEndReview';
+import { getBackupHealth, BackupHealthInfo } from '@/utils/autoBackup';
 import { scheduleMonthEndReviewNotification } from '@/utils/notificationScheduler';
 import CircularProgress from '@/components/CircularProgress';
 import DailyRings from '@/components/DailyRings';
@@ -89,6 +90,7 @@ export default function DashboardScreen() {
   const [fabOpen, setFabOpen] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
   const fabNavigating = useRef(false);
+  const [backupHealth, setBackupHealth] = useState<BackupHealthInfo | null>(null);
 
   const loadDashboardData = useCallback(async () => {
     // FIX 9: enforce 10-second minimum between loads
@@ -168,6 +170,12 @@ export default function DashboardScreen() {
         } catch (reviewErr) {
           console.warn('DashboardScreen: Month-end review check failed (non-fatal):', reviewErr);
         }
+
+        // Backup health
+        try {
+          const health = await getBackupHealth();
+          setBackupHealth(health);
+        } catch {}
       } catch (billingError) {
         console.error('DashboardScreen: Billing stats load failed (non-fatal):', billingError);
       }
@@ -610,6 +618,20 @@ export default function DashboardScreen() {
             <Text style={[styles.headerTitle, { color: theme.text, fontSize: titleSize }]}>{technicianName}</Text>
           </View>
           <View style={styles.headerIcons}>
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}
+              onPress={() => {
+                console.log('[Dashboard] Global Search button pressed');
+                router.push('/global-search');
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={22}
+                color={theme.primary}
+              />
+            </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.iconButton, { backgroundColor: theme.primary }]}
               onPress={() => router.push('/(tabs)/settings')}
@@ -985,6 +1007,81 @@ export default function DashboardScreen() {
                   {openWipCount} Open WIP{openWipCount !== 1 ? 's' : ''} require review
                 </Text>
                 <Text style={styles.monthEndCardAction}>REVIEW →</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Backup Health Card */}
+            {backupHealth && (
+              <TouchableOpacity
+                style={[styles.backupHealthCard, { backgroundColor: theme.card }]}
+                onPress={() => {
+                  console.log('[Dashboard] Backup Health card tapped — navigating to titanium-backup');
+                  router.push('/titanium-backup');
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.backupHealthRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <IconSymbol
+                      ios_icon_name="lock.shield.fill"
+                      android_material_icon_name="security"
+                      size={18}
+                      color={
+                        backupHealth.status === 'healthy' ? '#4CAF50' :
+                        backupHealth.status === 'warning' ? '#FF9800' : '#f44336'
+                      }
+                    />
+                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13, letterSpacing: 0.5 }}>
+                      BACKUP HEALTH
+                    </Text>
+                  </View>
+                  <View style={[
+                    styles.backupHealthBadge,
+                    {
+                      backgroundColor:
+                        backupHealth.status === 'healthy' ? '#4CAF5022' :
+                        backupHealth.status === 'warning' ? '#FF980022' : '#f4433622',
+                      borderWidth: 1,
+                      borderColor:
+                        backupHealth.status === 'healthy' ? '#4CAF50' :
+                        backupHealth.status === 'warning' ? '#FF9800' : '#f44336',
+                    },
+                  ]}>
+                    <Text style={{
+                      fontSize: 10,
+                      fontWeight: '800',
+                      color:
+                        backupHealth.status === 'healthy' ? '#4CAF50' :
+                        backupHealth.status === 'warning' ? '#FF9800' : '#f44336',
+                    }}>
+                      {backupHealth.status.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ marginTop: 6, gap: 2 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+                    {backupHealth.lastBackupDate
+                      ? `Last backup: ${new Date(backupHealth.lastBackupDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                      : 'Never backed up'}
+                    {backupHealth.lastBackupVerified ? '  ✓ Verified' : ''}
+                  </Text>
+                  {backupHealth.lastBackupJobCount > 0 && (
+                    <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+                      {backupHealth.lastBackupJobCount} jobs · {backupHealth.lastBackupAttachmentCount} attachments
+                    </Text>
+                  )}
+                </View>
+                {(backupHealth.status === 'warning' || backupHealth.status === 'critical' || backupHealth.status === 'never') && (
+                  <TouchableOpacity
+                    style={{ marginTop: 8, backgroundColor: '#f44336', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start' }}
+                    onPress={() => {
+                      console.log('[Dashboard] Back Up Now button pressed');
+                      router.push('/titanium-backup');
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>BACK UP NOW</Text>
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
             )}
 
@@ -2060,5 +2157,21 @@ const styles = StyleSheet.create({
     color: '#FF9800',
     marginTop: 4,
     letterSpacing: 0.3,
+  },
+  backupHealthCard: {
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  backupHealthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backupHealthBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
 });

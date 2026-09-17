@@ -48,6 +48,7 @@ import AppBackground from '@/components/AppBackground';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import CircularProgress from '@/components/CircularProgress';
+import { getAutoBackupSettings, saveAutoBackupSettings, AutoBackupSettings, DEFAULT_AUTO_BACKUP_SETTINGS } from '@/utils/autoBackup';
 
 export default function SettingsScreen() {
   const { theme, isDarkMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
@@ -97,6 +98,7 @@ export default function SettingsScreen() {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [predictiveWordsEnabled, setPredictiveWordsEnabled] = useState(true);
   const [rebuildingPredictions, setRebuildingPredictions] = useState(false);
+  const [autoBackupSettings, setAutoBackupSettings] = useState<AutoBackupSettings>(DEFAULT_AUTO_BACKUP_SETTINGS);
 
   const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
@@ -242,10 +244,22 @@ export default function SettingsScreen() {
       const predEnabled = await wordPredictionEngine.isPredictionEnabled();
       setPredictiveWordsEnabled(predEnabled);
 
+      try {
+        const abs = await getAutoBackupSettings();
+        setAutoBackupSettings(abs);
+      } catch {}
+
       console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);
     } catch (error) {
       console.error('SettingsScreen: Error loading settings:', error);
     }
+  };
+
+  const handleAutoBackupSettingChange = async (updates: Partial<AutoBackupSettings>) => {
+    console.log('SettingsScreen: Auto backup setting changed:', updates);
+    const updated = { ...autoBackupSettings, ...updates };
+    setAutoBackupSettings(updated);
+    await saveAutoBackupSettings(updated);
   };
 
   const checkAppPermissions = async () => {
@@ -1564,6 +1578,83 @@ export default function SettingsScreen() {
             <IconSymbol ios_icon_name="lock.shield.fill" android_material_icon_name="security" size={18} color={theme.primary} />
             <Text style={[styles.actionButtonText, { color: theme.primary }]}>Titanium Backup</Text>
           </TouchableOpacity>
+
+          {/* Automatic Titanium Backup Settings */}
+          <View style={{ marginTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingTop: 14 }}>
+            <Text style={[styles.settingHint, { color: theme.text, fontWeight: '700', fontSize: 13, letterSpacing: 0.5, marginBottom: 10 }]}>
+              AUTOMATIC TITANIUM BACKUP
+            </Text>
+            <View style={[styles.settingRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+              <Text style={[styles.settingLabel, { color: theme.text, flex: 1 }]}>Automatic Backup</Text>
+              <Switch
+                value={autoBackupSettings.enabled}
+                onValueChange={(value) => {
+                  console.log('Settings: Auto backup toggle changed to:', value);
+                  handleAutoBackupSettingChange({ enabled: value });
+                }}
+                trackColor={{ false: theme.border, true: theme.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+            {autoBackupSettings.enabled && (
+              <>
+                <Text style={[styles.settingHint, { color: theme.textSecondary, marginTop: 10, marginBottom: 6 }]}>Frequency</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {(['daily', 'weekly', 'manual'] as const).map(freq => {
+                    const isActive = autoBackupSettings.frequency === freq;
+                    const freqLabel = freq === 'manual' ? 'Manual Only' : freq.charAt(0).toUpperCase() + freq.slice(1);
+                    return (
+                      <TouchableOpacity
+                        key={freq}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: isActive ? theme.primary : theme.border,
+                          backgroundColor: isActive ? theme.primary + '20' : 'transparent',
+                        }}
+                        onPress={() => {
+                          console.log('Settings: Auto backup frequency changed to:', freq);
+                          handleAutoBackupSettingChange({ frequency: freq });
+                        }}
+                      >
+                        <Text style={{ color: isActive ? theme.primary : theme.textSecondary, fontSize: 13, fontWeight: isActive ? '700' : '400' }}>
+                          {freqLabel}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={[styles.settingHint, { color: theme.textSecondary, marginBottom: 6 }]}>Retention</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                  {([7, 14, 30] as const).map(count => {
+                    const isActive = autoBackupSettings.retentionCount === count;
+                    return (
+                      <TouchableOpacity
+                        key={count}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: isActive ? theme.primary : theme.border,
+                          backgroundColor: isActive ? theme.primary + '20' : 'transparent',
+                        }}
+                        onPress={() => {
+                          console.log('Settings: Auto backup retention changed to:', count);
+                          handleAutoBackupSettingChange({ retentionCount: count });
+                        }}
+                      >
+                        <Text style={{ color: isActive ? theme.primary : theme.textSecondary, fontSize: 13, fontWeight: isActive ? '700' : '400' }}>
+                          Keep Last {count}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+            <Text style={[styles.settingHint, { color: theme.textSecondary, marginTop: 4 }]}>
+              Automatic backups run after app opens. Manual backups are never auto-deleted.
+            </Text>
+          </View>
         </View>
 
         {/* Job Records Backup & Restore */}
