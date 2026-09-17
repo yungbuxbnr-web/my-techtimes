@@ -1548,6 +1548,24 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Titanium Backup */}
+        <View style={[styles.card, { backgroundColor: theme.card, marginHorizontal: 16, marginBottom: 16 }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Titanium Backup</Text>
+          <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
+            Complete encrypted snapshot for disaster recovery and device migration
+          </Text>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.primary + '20', borderColor: theme.primary, borderWidth: 1, marginTop: 12 }]}
+            onPress={() => {
+              console.log('Settings: User pressed Titanium Backup button');
+              router.push('/titanium-backup');
+            }}
+          >
+            <IconSymbol ios_icon_name="lock.shield.fill" android_material_icon_name="security" size={18} color={theme.primary} />
+            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Titanium Backup</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Job Records Backup & Restore */}
         <View style={[styles.card, { backgroundColor: theme.card, marginHorizontal: 16, marginBottom: 16 }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>Job Records Backup & Restore</Text>

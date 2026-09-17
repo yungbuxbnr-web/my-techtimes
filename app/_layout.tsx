@@ -436,6 +436,7 @@ function RootLayoutContent() {
       <Stack.Screen name="export-data" options={{ headerShown: false }} />
       <Stack.Screen name="wip-workspace" options={{ headerShown: false }} />
       <Stack.Screen name="month-end-review" options={{ headerShown: false }} />
+      <Stack.Screen name="titanium-backup" options={{ title: 'Titanium Backup', headerShown: false }} />
     </Stack>
   );
 }
