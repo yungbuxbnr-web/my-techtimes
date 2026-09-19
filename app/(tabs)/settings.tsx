@@ -48,7 +48,7 @@ import AppBackground from '@/components/AppBackground';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import CircularProgress from '@/components/CircularProgress';
-import { getAutoBackupSettings, saveAutoBackupSettings, AutoBackupSettings, DEFAULT_AUTO_BACKUP_SETTINGS } from '@/utils/autoBackup';
+import { getAutoBackupSettings, saveAutoBackupSettings, AutoBackupSettings, DEFAULT_AUTO_BACKUP_SETTINGS, getBackupHealth, BackupHealthInfo, getAutoBackupHistory } from '@/utils/autoBackup';
 
 export default function SettingsScreen() {
   const { theme, isDarkMode, toggleTheme, overlayStrength, setOverlayStrength } = useThemeContext();
@@ -99,6 +99,8 @@ export default function SettingsScreen() {
   const [predictiveWordsEnabled, setPredictiveWordsEnabled] = useState(true);
   const [rebuildingPredictions, setRebuildingPredictions] = useState(false);
   const [autoBackupSettings, setAutoBackupSettings] = useState<AutoBackupSettings>(DEFAULT_AUTO_BACKUP_SETTINGS);
+  const [backupHealth, setBackupHealth] = useState<BackupHealthInfo | null>(null);
+  const [backupCount, setBackupCount] = useState(0);
 
   const LIVE_WIDGET_PREF_KEY = 'live_widget_enabled';
 
@@ -247,6 +249,10 @@ export default function SettingsScreen() {
       try {
         const abs = await getAutoBackupSettings();
         setAutoBackupSettings(abs);
+        const health = await getBackupHealth();
+        setBackupHealth(health);
+        const history = await getAutoBackupHistory();
+        setBackupCount(history.length);
       } catch {}
 
       console.log('SettingsScreen: Settings loaded - biometrics available:', biometricsAvailable, 'enabled:', biometricsEnabled);
@@ -1564,23 +1570,103 @@ export default function SettingsScreen() {
 
         {/* Titanium Backup */}
         <View style={[styles.card, { backgroundColor: theme.card, marginHorizontal: 16, marginBottom: 16 }]}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Titanium Backup</Text>
-          <Text style={[styles.settingHint, { color: theme.textSecondary }]}>
-            Complete encrypted snapshot for disaster recovery and device migration
-          </Text>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: theme.primary + '20', borderColor: theme.primary, borderWidth: 1, marginTop: 12 }]}
-            onPress={() => {
-              console.log('Settings: User pressed Titanium Backup button');
-              router.push('/titanium-backup');
-            }}
-          >
-            <IconSymbol ios_icon_name="lock.shield.fill" android_material_icon_name="security" size={18} color={theme.primary} />
-            <Text style={[styles.actionButtonText, { color: theme.primary }]}>Titanium Backup</Text>
-          </TouchableOpacity>
+          {/* Header row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <IconSymbol ios_icon_name="lock.shield.fill" android_material_icon_name="security" size={22} color={theme.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: theme.text, marginBottom: 0 }]}>TITANIUM BACKUP</Text>
+              <Text style={[styles.settingHint, { color: theme.textSecondary, marginTop: 2 }]}>
+                Complete encrypted recovery snapshot
+              </Text>
+            </View>
+          </View>
+
+          {/* Live status section */}
+          <View style={{ backgroundColor: theme.background, borderRadius: 10, padding: 12, marginTop: 10, marginBottom: 14, gap: 8 }}>
+            {/* Last Verified Backup */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Last Verified Backup</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.text }}>
+                {backupHealth?.lastBackupDate
+                  ? new Date(backupHealth.lastBackupDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : 'Never'}
+              </Text>
+            </View>
+            {/* Status badge */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Status</Text>
+              <View style={{
+                paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8,
+                backgroundColor: backupHealth?.status === 'healthy' ? (theme.chartGreen + '25')
+                  : backupHealth?.status === 'warning' ? ((theme.chartYellow ?? '#f59e0b') + '25')
+                  : backupHealth?.status === 'critical' ? (theme.chartRed + '25')
+                  : (theme.textSecondary + '25'),
+              }}>
+                <Text style={{
+                  fontSize: 12, fontWeight: '700', letterSpacing: 0.5,
+                  color: backupHealth?.status === 'healthy' ? theme.chartGreen
+                    : backupHealth?.status === 'warning' ? (theme.chartYellow ?? '#f59e0b')
+                    : backupHealth?.status === 'critical' ? theme.chartRed
+                    : theme.textSecondary,
+                }}>
+                  {backupHealth?.status === 'healthy' ? 'HEALTHY'
+                    : backupHealth?.status === 'warning' ? 'ATTENTION'
+                    : backupHealth?.status === 'critical' ? 'FAILED'
+                    : 'NO BACKUP'}
+                </Text>
+              </View>
+            </View>
+            {/* Auto Backup frequency */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Auto Backup</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.text }}>
+                {autoBackupSettings.enabled
+                  ? (autoBackupSettings.frequency === 'daily' ? 'Daily'
+                    : autoBackupSettings.frequency === 'weekly' ? 'Weekly'
+                    : 'Manual Only')
+                  : 'Off'}
+              </Text>
+            </View>
+            {/* Retained backups count */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Retained Backups</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.text }}>{backupCount}</Text>
+            </View>
+          </View>
+
+          {/* Three action buttons */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: theme.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => {
+                console.log('Settings: User pressed BACK UP NOW button');
+                router.push({ pathname: '/titanium-backup', params: { action: 'create' } } as any);
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', letterSpacing: 0.3 }}>BACK UP NOW</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, borderWidth: 1.5, borderColor: theme.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => {
+                console.log('Settings: User pressed RESTORE button');
+                router.push({ pathname: '/titanium-backup', params: { action: 'restore' } } as any);
+              }}
+            >
+              <Text style={{ color: theme.primary, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 }}>RESTORE</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => {
+                console.log('Settings: User pressed MANAGE button');
+                router.push({ pathname: '/titanium-backup', params: { action: 'manage' } } as any);
+              }}
+            >
+              <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 }}>MANAGE</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Automatic Titanium Backup Settings */}
-          <View style={{ marginTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingTop: 14 }}>
+          <View style={{ marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingTop: 14 }}>
             <Text style={[styles.settingHint, { color: theme.text, fontWeight: '700', fontSize: 13, letterSpacing: 0.5, marginBottom: 10 }]}>
               AUTOMATIC TITANIUM BACKUP
             </Text>

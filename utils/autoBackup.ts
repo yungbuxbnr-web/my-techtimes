@@ -39,6 +39,7 @@ export interface AutoBackupHistoryEntry {
   jobCount: number;
   attachmentCount: number;
   fileSize?: number;
+  protected?: boolean;
 }
 
 export const DEFAULT_AUTO_BACKUP_SETTINGS: AutoBackupSettings = {
@@ -135,9 +136,9 @@ export async function addAutoBackupHistoryEntry(entry: AutoBackupHistoryEntry): 
 
 export async function pruneOldAutoBackups(retentionCount: number): Promise<void> {
   const history = await getAutoBackupHistory();
-  // Only prune automatic, non-safety entries
-  const prunable = history.filter(e => e.isAutomatic && !e.isSafetySnapshot);
-  const keep = history.filter(e => !e.isAutomatic || e.isSafetySnapshot);
+  // Only prune automatic, non-safety, non-protected entries
+  const prunable = history.filter(e => e.isAutomatic && !e.isSafetySnapshot && !e.protected);
+  const keep = history.filter(e => !e.isAutomatic || e.isSafetySnapshot || e.protected);
   // Keep the most recent retentionCount prunable entries
   const prunableKeep = prunable.slice(0, retentionCount);
   const toDelete = prunable.slice(retentionCount);
@@ -224,6 +225,31 @@ export async function runAutoBackupIfDue(
   } catch (e: any) {
     return { ran: true, success: false, error: e?.message ?? 'Unknown error' };
   }
+}
+
+export async function protectBackup(id: string): Promise<void> {
+  const history = await getAutoBackupHistory();
+  const updated = history.map(e => e.id === id ? { ...e, protected: true } : e);
+  await AsyncStorage.setItem(AUTO_BACKUP_HISTORY_KEY, JSON.stringify(updated));
+}
+
+export async function unprotectBackup(id: string): Promise<void> {
+  const history = await getAutoBackupHistory();
+  const updated = history.map(e => e.id === id ? { ...e, protected: false } : e);
+  await AsyncStorage.setItem(AUTO_BACKUP_HISTORY_KEY, JSON.stringify(updated));
+}
+
+export async function deleteBackupEntry(id: string): Promise<void> {
+  const history = await getAutoBackupHistory();
+  const entry = history.find(e => e.id === id);
+  if (entry?.filePath) {
+    try {
+      const info = await FileSystem.getInfoAsync(entry.filePath);
+      if (info.exists) await FileSystem.deleteAsync(entry.filePath, { idempotent: true });
+    } catch {}
+  }
+  const updated = history.filter(e => e.id !== id);
+  await AsyncStorage.setItem(AUTO_BACKUP_HISTORY_KEY, JSON.stringify(updated));
 }
 
 export async function createSafetySnapshot(

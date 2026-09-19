@@ -11,12 +11,14 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import AppBackground from '@/components/AppBackground';
+import * as Sharing from 'expo-sharing';
 import {
   createTitaniumBackup,
+  verifyTitaniumBackup,
   pickAndDecryptTitaniumBackup,
   analyseTitaniumBackupForMerge,
   performOverwriteRestore,
@@ -28,6 +30,13 @@ import {
   TitaniumRestoreResult,
   RestoreHistoryEntry,
 } from '@/utils/titaniumBackup';
+import {
+  AutoBackupHistoryEntry,
+  getAutoBackupHistory,
+  protectBackup,
+  unprotectBackup,
+  deleteBackupEntry,
+} from '@/utils/autoBackup';
 
 type ViewState =
   | 'menu'
@@ -40,11 +49,13 @@ type ViewState =
   | 'confirming_overwrite'
   | 'restoring'
   | 'complete'
-  | 'history';
+  | 'history'
+  | 'manage';
 
 export default function TitaniumBackupScreen() {
   const { theme } = useThemeContext();
   const [view, setView] = useState<ViewState>('menu');
+  const { action } = useLocalSearchParams<{ action?: string }>();
 
   // Create flow
   const [createPassword, setCreatePassword] = useState('');
@@ -74,9 +85,30 @@ export default function TitaniumBackupScreen() {
   // History
   const [historyEntries, setHistoryEntries] = useState<RestoreHistoryEntry[]>([]);
 
+  // Manage backups
+  const [manageBackups, setManageBackups] = useState<AutoBackupHistoryEntry[]>([]);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
+  const [verifyPassword, setVerifyPassword] = useState('');
+
   // Animated dots
   const [dotCount, setDotCount] = useState(1);
   const dotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Handle action param on mount
+  useEffect(() => {
+    if (action === 'create') {
+      console.log('TitaniumBackup: action=create param detected');
+      setShowCreateForm(true);
+    } else if (action === 'restore') {
+      console.log('TitaniumBackup: action=restore param detected');
+      setView('pick_restore');
+    } else if (action === 'manage') {
+      console.log('TitaniumBackup: action=manage param detected');
+      handleOpenManage();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (view === 'creating' || view === 'analysing' || view === 'restoring') {
@@ -240,6 +272,87 @@ export default function TitaniumBackupScreen() {
     setView('history');
   }
 
+  async function handleOpenManage() {
+    console.log('TitaniumBackup: Opening manage backups view');
+    setManageLoading(true);
+    setView('manage');
+    const history = await getAutoBackupHistory();
+    setManageBackups(history);
+    setManageLoading(false);
+  }
+
+  async function handleProtectToggle(entry: AutoBackupHistoryEntry) {
+    if (entry.protected) {
+      console.log('TitaniumBackup: Unprotecting backup', entry.id);
+      await unprotectBackup(entry.id);
+    } else {
+      console.log('TitaniumBackup: Protecting backup', entry.id);
+      await protectBackup(entry.id);
+    }
+    const updated = await getAutoBackupHistory();
+    setManageBackups(updated);
+  }
+
+  async function handleDeleteEntry(entry: AutoBackupHistoryEntry) {
+    if (entry.protected) {
+      Alert.alert('Protected Backup', 'This backup is protected. Unprotect it first before deleting.');
+      return;
+    }
+    Alert.alert(
+      'Delete Backup',
+      'Delete this backup? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => console.log('TitaniumBackup: Delete cancelled for', entry.id) },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('TitaniumBackup: Deleting backup entry', entry.id);
+            await deleteBackupEntry(entry.id);
+            const updated = await getAutoBackupHistory();
+            setManageBackups(updated);
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleShareEntry(entry: AutoBackupHistoryEntry) {
+    console.log('TitaniumBackup: Sharing backup', entry.id, entry.filePath);
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Sharing Not Available', 'Sharing is not available on this device.');
+        return;
+      }
+      await Sharing.shareAsync(entry.filePath);
+    } catch (err: any) {
+      console.error('TitaniumBackup: Share failed:', err);
+      Alert.alert('Share Failed', err?.message ?? 'Could not share the backup file.');
+    }
+  }
+
+  async function handleVerifyEntry(entry: AutoBackupHistoryEntry, password: string) {
+    console.log('TitaniumBackup: Verifying backup', entry.id);
+    try {
+      const result = await verifyTitaniumBackup(entry.filePath, password);
+      if (result.valid && result.manifest) {
+        const jobCount = result.manifest.recordCounts.jobs;
+        const attachmentCount = result.manifest.attachmentCount;
+        Alert.alert('Verification Passed', `Backup is valid.\n${jobCount} jobs · ${attachmentCount} attachments`);
+        console.log('TitaniumBackup: Verification passed for', entry.id);
+      } else {
+        Alert.alert('Verification Failed', result.error ?? 'The backup file could not be verified.');
+        console.warn('TitaniumBackup: Verification failed for', entry.id, result.error);
+      }
+    } catch (err: any) {
+      console.error('TitaniumBackup: Verify error:', err);
+      Alert.alert('Verification Error', err?.message ?? 'An error occurred during verification.');
+    }
+    setVerifyingEntryId(null);
+    setVerifyPassword('');
+  }
+
   function handleDone() {
     console.log('TitaniumBackup: User pressed DONE, returning to settings');
     router.back();
@@ -259,7 +372,7 @@ export default function TitaniumBackupScreen() {
             style={s.backButton}
             onPress={() => {
               console.log('TitaniumBackup: Back button pressed from view:', view);
-              if (view === 'history' || view === 'created' || view === 'complete') {
+              if (view === 'history' || view === 'created' || view === 'complete' || view === 'manage') {
                 setView('menu');
               } else if (view === 'pick_restore') {
                 setView('menu');
@@ -339,6 +452,14 @@ export default function TitaniumBackupScreen() {
             >
               <IconSymbol ios_icon_name="arrow.down.doc.fill" android_material_icon_name="restore" size={20} color={theme.primary} />
               <Text style={[s.secondaryButtonText, { color: theme.primary }]}>RESTORE TITANIUM BACKUP</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.secondaryButton, { borderColor: theme.textSecondary }]}
+              onPress={handleOpenManage}
+            >
+              <IconSymbol ios_icon_name="list.bullet" android_material_icon_name="list" size={20} color={theme.textSecondary} />
+              <Text style={[s.secondaryButtonText, { color: theme.textSecondary }]}>MANAGE BACKUPS</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={s.textLink} onPress={handleViewHistory}>
@@ -1042,6 +1163,162 @@ export default function TitaniumBackupScreen() {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // MANAGE VIEW
+  // ---------------------------------------------------------------------------
+
+  if (view === 'manage') {
+    return (
+      <AppBackground>
+        <SafeAreaView style={s.safeArea}>
+          {renderHeader('Manage Backups')}
+          <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
+            {manageLoading ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <Text style={[s.sectionLabel, { color: theme.textSecondary, marginTop: 12 }]}>Loading backups...</Text>
+              </View>
+            ) : manageBackups.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <IconSymbol ios_icon_name="lock.shield" android_material_icon_name="security" size={48} color={theme.textSecondary} />
+                <Text style={[s.sectionLabel, { color: theme.textSecondary, textAlign: 'center', marginTop: 16 }]}>
+                  No backups found. Create your first Titanium Backup to protect your data.
+                </Text>
+              </View>
+            ) : (
+              manageBackups.map(entry => {
+                const entryDate = new Date(entry.createdAt).toLocaleDateString('en-GB', {
+                  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                });
+                const typeBadge = entry.isSafetySnapshot ? 'SAFETY' : entry.isAutomatic ? 'AUTOMATIC' : 'MANUAL';
+                const typeBadgeColor = entry.isSafetySnapshot
+                  ? (theme.chartYellow ?? '#f59e0b')
+                  : entry.isAutomatic ? theme.primary : theme.chartGreen;
+                const fileSizeText = entry.fileSize
+                  ? entry.fileSize >= 1024 * 1024
+                    ? (entry.fileSize / (1024 * 1024)).toFixed(1) + ' MB'
+                    : Math.round(entry.fileSize / 1024) + ' KB'
+                  : null;
+                const isVerifying = verifyingEntryId === entry.id;
+
+                return (
+                  <View key={entry.id} style={[s.manageCard, { backgroundColor: theme.card }]}>
+                    {/* Date + badges row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                      <Text style={[s.historyDate, { color: theme.text, flex: 1 }]}>{entryDate}</Text>
+                      <View style={{ backgroundColor: typeBadgeColor + '25', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: typeBadgeColor, letterSpacing: 0.3 }}>{typeBadge}</Text>
+                      </View>
+                      {entry.protected && (
+                        <View style={{ backgroundColor: theme.chartGreen + '25', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: theme.chartGreen }}>🔒 PROTECTED</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Stats row */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 4 }}>
+                      <Text style={{ fontSize: 12, color: theme.textSecondary }}>
+                        {entry.jobCount} jobs · {entry.attachmentCount} attachments
+                      </Text>
+                      {fileSizeText && (
+                        <Text style={{ fontSize: 12, color: theme.textSecondary }}>{fileSizeText}</Text>
+                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={{ fontSize: 12, color: entry.verified ? theme.chartGreen : theme.textSecondary }}>
+                          {entry.verified ? '✓ VERIFIED' : 'UNVERIFIED'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Safety reason */}
+                    {entry.isSafetySnapshot && entry.safetyReason && (
+                      <Text style={{ fontSize: 12, color: theme.chartYellow ?? '#f59e0b', marginBottom: 4 }}>
+                        Reason: {entry.safetyReason}
+                      </Text>
+                    )}
+
+                    {/* Verify inline form */}
+                    {isVerifying && (
+                      <View style={{ marginTop: 8, marginBottom: 4 }}>
+                        <TextInput
+                          style={[s.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border, marginBottom: 8 }]}
+                          placeholder="Enter backup password"
+                          placeholderTextColor={theme.textSecondary}
+                          secureTextEntry
+                          value={verifyPassword}
+                          onChangeText={setVerifyPassword}
+                          autoFocus
+                        />
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity
+                            style={{ flex: 1, backgroundColor: theme.primary, borderRadius: 8, paddingVertical: 9, alignItems: 'center' }}
+                            onPress={() => {
+                              console.log('TitaniumBackup: Confirm verify for entry', entry.id);
+                              handleVerifyEntry(entry, verifyPassword);
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>CONFIRM</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 9, alignItems: 'center' }}
+                            onPress={() => {
+                              console.log('TitaniumBackup: Cancelled verify for entry', entry.id);
+                              setVerifyingEntryId(null);
+                              setVerifyPassword('');
+                            }}
+                          >
+                            <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>CANCEL</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Action buttons */}
+                    {!isVerifying && (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                        <TouchableOpacity
+                          style={[s.manageActionBtn, { borderColor: theme.primary }]}
+                          onPress={() => {
+                            console.log('TitaniumBackup: User tapped VERIFY for entry', entry.id);
+                            setVerifyingEntryId(entry.id);
+                            setVerifyPassword('');
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: theme.primary }}>VERIFY</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[s.manageActionBtn, { borderColor: theme.textSecondary }]}
+                          onPress={() => handleShareEntry(entry)}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: theme.textSecondary }}>SHARE</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[s.manageActionBtn, { borderColor: entry.protected ? theme.chartGreen : theme.primary }]}
+                          onPress={() => handleProtectToggle(entry)}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: entry.protected ? theme.chartGreen : theme.primary }}>
+                            {entry.protected ? 'UNPROTECT' : 'PROTECT'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[s.manageActionBtn, { borderColor: theme.chartRed }]}
+                          onPress={() => handleDeleteEntry(entry)}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: theme.chartRed }}>DELETE</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </AppBackground>
+    );
+  }
+
   // Fallback
   return null;
 }
@@ -1165,6 +1442,9 @@ function styles(theme: any) {
     historyDate: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
     historyMeta: { fontSize: 13, marginBottom: 4 },
     historyStats: { fontSize: 13 },
+
+    manageCard: { borderRadius: 12, padding: 14, marginBottom: 10 },
+    manageActionBtn: { borderWidth: 1, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10 },
 
     modalOverlay: {
       position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
