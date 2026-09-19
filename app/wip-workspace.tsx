@@ -558,6 +558,12 @@ export default function WipWorkspaceScreen() {
   const firstWorkedDisplay = formatDate(firstWorked);
   const lastWorkedDisplay = formatDate(lastWorked);
 
+  // ── Visit number map — sort sessions ascending by createdAt → 1-based index ─
+  const visitNumberMap = new Map<string, number>();
+  [...sessions]
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .forEach((s, idx) => visitNumberMap.set(s.id, idx + 1));
+
   return (
     <AppBackground>
       {/* HEADER */}
@@ -665,6 +671,7 @@ export default function WipWorkspaceScreen() {
             <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No work sessions recorded.</Text>
           ) : (
             sessions.map(session => {
+              const visitNumber = visitNumberMap.get(session.id) ?? 1;
               const sessionDate = session.createdAt.split('T')[0];
               const sessionTime = formatTime(session.createdAt);
               const sessionImages = imagesByJobId.get(session.id) ?? [];
@@ -689,6 +696,17 @@ export default function WipWorkspaceScreen() {
                 >
                   <View style={styles.sessionTop}>
                     <View style={styles.sessionDateRow}>
+                      <View style={{
+                        backgroundColor: theme.primary + '22',
+                        borderRadius: 4,
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        marginRight: 6,
+                      }}>
+                        <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+                          VISIT {visitNumber}
+                        </Text>
+                      </View>
                       <Text style={[styles.sessionDate, { color: theme.text }]}>{sessionDate}</Text>
                       {sessionTime ? (
                         <Text style={[styles.sessionTime, { color: theme.textSecondary }]}>{sessionTime}</Text>

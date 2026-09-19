@@ -112,6 +112,11 @@ export default function AddJobModal() {
   const [vehicleHistory, setVehicleHistory] = useState<VehicleHistoryMatch[]>([]);
   const [showVehicleHistory, setShowVehicleHistory] = useState(false);
 
+  // Autofill tracking state
+  const [sourceJobId, setSourceJobId] = useState<string | null>(null);
+  const [showAutofillBanner, setShowAutofillBanner] = useState(false);
+  const [autofillWipNumber, setAutofillWipNumber] = useState<string>('');
+
   // Suggestions state
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [suggestions, setSuggestions] = useState<JobSuggestion[]>([]);
@@ -336,6 +341,14 @@ export default function AddJobModal() {
     setActiveField('wip');
     scheduleDraftSave();
 
+    // Clear autofill state if user manually edits WIP to something different
+    if (sourceJobId && autofillWipNumber && normalizeWip(text) !== normalizeWip(autofillWipNumber)) {
+      console.log('[AddJobModal] Autofill cleared — user manually changed WIP from', autofillWipNumber, 'to', text);
+      setSourceJobId(null);
+      setShowAutofillBanner(false);
+      setAutofillWipNumber('');
+    }
+
     if (text.length > 0) {
       const newSuggestions = generateSuggestions(text, 'wip');
       setSuggestions(newSuggestions);
@@ -364,20 +377,93 @@ export default function AddJobModal() {
     console.log('AddJobModal: User selected suggestion - auto-filling all fields:', suggestion);
     safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    setWipNumber(suggestion.wipNumber);
-    setVehicleReg(suggestion.vehicleReg);
-    setAw(suggestion.aw);
-    setNotes(suggestion.notes || '');
-    setVhcStatus(suggestion.vhcStatus || 'NONE');
-
     setShowSuggestions(false);
     setActiveField(null);
     Keyboard.dismiss();
 
-    const awMinutes = awToMinutes(suggestion.aw);
-    const awTimeFormatted = formatTime(awMinutes);
-    toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
-    console.log('AddJobModal: All fields auto-filled from memory - WIP:', suggestion.wipNumber, 'Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw, 'VHC:', suggestion.vhcStatus, 'Notes:', suggestion.notes);
+    // Find the most recent job matching this suggestion to track sourceJobId
+    const nwip = normalizeWip(suggestion.wipNumber);
+    const matchingJobs = allJobs
+      .filter(j => normalizeWip(j.wipNumber) === nwip && j.vehicleReg.toUpperCase() === suggestion.vehicleReg.toUpperCase())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const sourceJob = matchingJobs[0] ?? null;
+
+    // Check if the source WIP is still OPEN (any billing record not billed)
+    const wipIsOpen = existingWipBillingRecords.length > 0
+      ? existingWipBillingRecords.some(r => r.billingStatus !== 'billed')
+      : false;
+
+    console.log('[AddJobModal] selectSuggestion — sourceJob:', sourceJob?.id, 'wipIsOpen:', wipIsOpen, 'billingRecords:', existingWipBillingRecords.length);
+
+    const applyFullAutofill = () => {
+      setWipNumber(suggestion.wipNumber);
+      setVehicleReg(suggestion.vehicleReg);
+      setAw(suggestion.aw);
+      setNotes(suggestion.notes || '');
+      setVhcStatus(suggestion.vhcStatus || 'NONE');
+      if (sourceJob) {
+        setSourceJobId(sourceJob.id);
+        setAutofillWipNumber(suggestion.wipNumber);
+        setShowAutofillBanner(true);
+        console.log('[AddJobModal] Autofill banner shown — sourceJobId:', sourceJob.id, 'WIP:', suggestion.wipNumber);
+      }
+      const awMinutes = awToMinutes(suggestion.aw);
+      const awTimeFormatted = formatTime(awMinutes);
+      toastManager.success(`Auto-filled: ${suggestion.wipNumber} - ${suggestion.vehicleReg} - ${suggestion.aw} AW (${awTimeFormatted})`);
+      console.log('AddJobModal: All fields auto-filled from memory - WIP:', suggestion.wipNumber, 'Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw, 'VHC:', suggestion.vhcStatus, 'Notes:', suggestion.notes);
+    };
+
+    const applyRegOnlyAutofill = () => {
+      setVehicleReg(suggestion.vehicleReg);
+      setAw(suggestion.aw);
+      setNotes(suggestion.notes || '');
+      setVhcStatus(suggestion.vhcStatus || 'NONE');
+      // Clear WIP so user enters a new one
+      setWipNumber('');
+      if (sourceJob) {
+        setSourceJobId(sourceJob.id);
+        setAutofillWipNumber('');
+        setShowAutofillBanner(true);
+        console.log('[AddJobModal] Autofill banner shown (new WIP mode) — sourceJobId:', sourceJob.id);
+      }
+      toastManager.info(`Reg & details filled — enter a new WIP number`);
+      console.log('AddJobModal: Partial autofill (new WIP) — Reg:', suggestion.vehicleReg, 'AW:', suggestion.aw);
+    };
+
+    if (wipIsOpen) {
+      // Show WIP decision modal
+      console.log('[AddJobModal] Open WIP detected — showing SAME WIP OR NEW WIP? alert for WIP:', suggestion.wipNumber);
+      Alert.alert(
+        'SAME WIP OR NEW WIP?',
+        `This vehicle has an open WIP ${suggestion.wipNumber}. Continue the same WIP or start a new one?`,
+        [
+          {
+            text: 'CONTINUE WIP',
+            onPress: () => {
+              console.log('[AddJobModal] User chose CONTINUE WIP for:', suggestion.wipNumber);
+              applyFullAutofill();
+            },
+          },
+          {
+            text: 'NEW WIP',
+            onPress: () => {
+              console.log('[AddJobModal] User chose NEW WIP — clearing WIP number');
+              applyRegOnlyAutofill();
+            },
+          },
+          {
+            text: 'CANCEL',
+            style: 'cancel',
+            onPress: () => {
+              console.log('[AddJobModal] User cancelled WIP decision modal');
+            },
+          },
+        ]
+      );
+    } else {
+      // WIP is closed or no billing records — fill all fields normally
+      applyFullAutofill();
+    }
   };
 
   const handleQcPresetTap = async (preset: QuickPreset) => {
@@ -911,7 +997,13 @@ export default function AddJobModal() {
   const dateDisplay = jobDateTime.toLocaleDateString('en-GB');
   const timeDisplay = jobDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const awDisplay = `${aw} AW`;
-  const saveButtonLabel = saving ? 'Saving...' : isEditMode ? 'Update Record' : 'Save Record';
+  const saveButtonLabel = saving
+    ? 'Saving...'
+    : isEditMode
+    ? 'UPDATE JOB'
+    : sourceJobId
+    ? 'SAVE NEW VISIT'
+    : 'SAVE JOB';
 
   const getVhcColor = (status: string) => {
     switch (status) {
@@ -1371,6 +1463,44 @@ export default function AddJobModal() {
               );
             })()}
 
+            {/* NEW VISIT AUTOFILL Banner */}
+            {showAutofillBanner && sourceJobId && (
+              <View style={{
+                backgroundColor: 'rgba(76,175,80,0.10)',
+                borderRadius: 8,
+                padding: 10,
+                marginTop: 4,
+                marginBottom: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: '#4caf50',
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#4caf50', fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }}>
+                    NEW VISIT AUTOFILL
+                  </Text>
+                  <Text style={{ color: theme.text, fontSize: 12, marginTop: 2 }}>
+                    {autofillWipNumber
+                      ? `Using details from WIP ${autofillWipNumber}. This will create a NEW Job record. The previous Job will not be changed.`
+                      : 'Using details from a previous visit. Enter a new WIP number. This will create a NEW Job record.'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('[AddJobModal] Autofill banner dismissed by user');
+                    setShowAutofillBanner(false);
+                    setSourceJobId(null);
+                    setAutofillWipNumber('');
+                  }}
+                  style={{ marginLeft: 8, padding: 4 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={{ color: '#4caf50', fontSize: 16 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Vehicle History Banner */}
             {showVehicleHistory && vehicleHistory.length > 0 && (
               <View style={[styles.vehicleHistoryBanner, {
@@ -1382,13 +1512,18 @@ export default function AddJobModal() {
                   : 'rgba(79,195,247,0.3)',
               }]}>
                 <View style={styles.vehicleHistoryHeader}>
-                  <Text style={[styles.vehicleHistoryTitle, {
-                    color: vehicleHistory.some(m => m.isRelated && m.ageDays <= 30) ? '#ff9800' : '#4fc3f7',
-                  }]}>
-                    {vehicleHistory.some(m => m.isRelated && m.ageDays <= 30)
-                      ? '⚠ POSSIBLE RELATED PREVIOUS REPAIR'
-                      : 'RECENT VEHICLE HISTORY'}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.vehicleHistoryTitle, {
+                      color: vehicleHistory.some(m => m.isRelated && m.ageDays <= 30) ? '#ff9800' : '#4fc3f7',
+                    }]}>
+                      {vehicleHistory.some(m => m.isRelated && m.ageDays <= 30)
+                        ? '⚠ POSSIBLE RELATED PREVIOUS REPAIR'
+                        : 'RETURNING VEHICLE'}
+                    </Text>
+                    <Text style={{ color: '#4caf50', fontSize: 10, fontWeight: '700', letterSpacing: 0.4, marginTop: 1 }}>
+                      RETURNING VEHICLE
+                    </Text>
+                  </View>
                   <TouchableOpacity onPress={() => {
                     console.log('[AddJob] Vehicle history banner dismissed');
                     setShowVehicleHistory(false);
@@ -1397,8 +1532,11 @@ export default function AddJobModal() {
                   </TouchableOpacity>
                 </View>
                 <Text style={[styles.vehicleHistorySubtitle, { color: theme.textSecondary }]}>
-                  {vehicleHistory.length} previous visit{vehicleHistory.length !== 1 ? 's' : ''} found
+                  Previous Visits: {vehicleHistory.length}
                   {vehicleHistory[0] ? ` · Most recent ${vehicleHistory[0].ageDays} day${vehicleHistory[0].ageDays !== 1 ? 's' : ''} ago` : ''}
+                </Text>
+                <Text style={{ color: '#4caf50', fontSize: 11, fontWeight: '600', marginBottom: 6 }}>
+                  This will become Visit {vehicleHistory.length + 1} when saved.
                 </Text>
                 {vehicleHistory.slice(0, 3).map((match, idx) => (
                   <TouchableOpacity

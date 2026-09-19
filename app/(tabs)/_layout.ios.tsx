@@ -74,6 +74,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="workspaces"
+        options={{
+          title: 'Workspaces',
+          tabBarIcon: ({ color, size }) => (
+            <IconSymbol ios_icon_name="square.grid.2x2.fill" android_material_icon_name="work" size={size + 2} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="more"
         options={{
           title: 'More',
