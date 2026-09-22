@@ -1,11 +1,12 @@
-/// <reference lib="dom" />
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
+import { gcm } from '@noble/ciphers/aes.js';
+import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { getAllImages } from './imageStorage';
 
 export const TITANIUM_FORMAT_VERSION = 1;
@@ -141,57 +142,40 @@ export interface RestoreHistoryEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Encryption helpers
+// Encryption helpers — pure JS, Hermes/React Native compatible
+// Uses @noble/ciphers (AES-256-GCM) + @noble/hashes (PBKDF2-SHA256)
+// No dependency on crypto.subtle, window.crypto, or Node crypto
 // ---------------------------------------------------------------------------
 
-async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKeyBytes(password: string, salt: Uint8Array): Promise<Uint8Array> {
   const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: salt as unknown as BufferSource, iterations: 100000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
+  return pbkdf2Async(sha256, enc.encode(password), salt, { c: 100000, dkLen: 32 });
 }
 
 async function encryptPayload(plaintext: string, password: string): Promise<string> {
   const salt = Crypto.getRandomBytes(32);
-  const iv = Crypto.getRandomBytes(12);
-  const key = await deriveKey(password, salt);
+  const nonce = Crypto.getRandomBytes(12);
+  const keyBytes = await deriveKeyBytes(password, salt);
   const enc = new TextEncoder();
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as unknown as BufferSource },
-    key,
-    enc.encode(plaintext)
-  );
-  const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+  const stream = gcm(keyBytes, nonce);
+  const ciphertext = stream.encrypt(enc.encode(plaintext));
+  // Layout: [32 salt][12 nonce][ciphertext+tag]
+  const combined = new Uint8Array(salt.length + nonce.length + ciphertext.length);
   combined.set(salt, 0);
-  combined.set(iv, salt.length);
-  combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
+  combined.set(nonce, salt.length);
+  combined.set(ciphertext, salt.length + nonce.length);
   return uint8ArrayToBase64(combined);
 }
 
 async function decryptPayload(base64: string, password: string): Promise<string> {
   const combined = base64ToUint8Array(base64);
   const salt = combined.slice(0, 32);
-  const iv = combined.slice(32, 44);
+  const nonce = combined.slice(32, 44);
   const ciphertext = combined.slice(44);
-  const key = await deriveKey(password, salt);
-  const dec = new TextDecoder();
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    ciphertext
-  );
-  return dec.decode(plaintext);
+  const keyBytes = await deriveKeyBytes(password, salt);
+  const stream = gcm(keyBytes, nonce);
+  const plaintext = stream.decrypt(ciphertext);
+  return new TextDecoder().decode(plaintext);
 }
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
